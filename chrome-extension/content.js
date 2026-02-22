@@ -235,9 +235,16 @@
 
   // ── AUTO SCRAPE ────────────────────────────────────────────────────────────
   if (/\/p\/[A-Za-z0-9_]+/.test(window.location.pathname)) {
-    const run = () => { saveProduct(scrapeProduct()); };
+    const run = function() {
+      const d = scrapeProduct();
+      saveProduct(d);
+      // Notify background so queue can advance to next URL
+      try {
+        chrome.runtime.sendMessage({ action: 'page_scraped', data: d });
+      } catch(e) {}
+    };
     if (document.readyState === 'complete') setTimeout(run, 1500);
-    else window.addEventListener('load', () => setTimeout(run, 2000));
+    else window.addEventListener('load', function() { setTimeout(run, 2000); });
   }
 
   // ── MESSAGES ───────────────────────────────────────────────────────────────

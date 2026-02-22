@@ -907,17 +907,17 @@ window.addEventListener('message', function(ev) {
   }
 
   if (d.type === 'SCRAPE_RESULT') {
-    handleScrapeResult(d);
+    // legacy — no longer used in human-mode but kept for compat
     return;
   }
 
-  if (d.type === 'SCRAPE_RESULTS') {
-    handleBulkResults(d);
+  if (d.type === 'QUEUE_PROGRESS') {
+    handleQueueProgress(d);
     return;
   }
 
-  if (d.type === 'SCRAPE_PROGRESS') {
-    updateProgress(d.current, d.total);
+  if (d.type === 'QUEUE_FINISHED') {
+    handleQueueFinished();
     return;
   }
 });
@@ -969,12 +969,12 @@ function syncSellerConfig() {
 }
 
 // ============================================================
-// SCRAPER
+// SCRAPER — Human-mode queue (bot-free)
+// Opens each URL as a real foreground tab, content.js auto-scrapes,
+// background.js advances the queue. No background/hidden tabs.
 // ============================================================
 let scrapeQueue = [];
-let scrapeIdx = 0;
-let requestIdCounter = 0;
-let pendingRequests = {};
+let scrapeIdx   = 0;
 
 function parseUrls() {
   const raw = document.getElementById('urlInput').value;
@@ -993,141 +993,102 @@ function clearUrlInput() {
   document.getElementById('urlCount').textContent = '0 URLs detected';
 }
 
-function loadSampleUrls() {
-  document.getElementById('urlInput').value =
-    'https://www.makro.co.za/electronics/televisions/43-uhd-4k-smart-tv/p/itmSAMSUNG43TV\n' +
-    'https://www.makro.co.za/appliances/refrigerators/side-by-side-fridge/p/itmLG600LSBS\n' +
-    'https://www.makro.co.za/computing/laptops/15-6-laptop/p/itmDELL15LAPTOP';
-  document.getElementById('urlCount').textContent = '3 URLs detected (samples)';
-}
-
 function startScraping() {
   if (!state.extReady) { alert('Extension not connected. Please install the Makro Pro Scraper extension.'); return; }
   const urls = parseUrls();
-  if (urls.length === 0) { alert('No valid Makro URLs found. Please paste at least one makro.co.za product URL.'); return; }
+  if (urls.length === 0) { alert('No valid Makro URLs found. Paste at least one makro.co.za product URL.'); return; }
 
-  // Update seller from config
   const configSeller = document.getElementById('sellerNameConfig').value.trim();
   if (configSeller) document.getElementById('sellerNameInput').value = configSeller;
 
+  scrapeQueue = [...urls];
+  scrapeIdx   = 0;
   state.scraping = true;
   state.stopRequested = false;
-  scrapeQueue = [...urls];
-  scrapeIdx = 0;
 
   document.getElementById('startBtn').style.display = 'none';
-  document.getElementById('stopBtn').style.display = 'flex';
+  document.getElementById('stopBtn').style.display  = 'flex';
   document.getElementById('progressSection').style.display = 'block';
   clearLog();
-  log('info', 'Starting scrape of ' + urls.length + ' URLs...');
+  log('info', '🚀 Human-mode queue started: ' + urls.length + ' URLs');
+  log('info', 'Each product page will open in a foreground tab — fully bot-free.');
   log('info', 'Seller: ' + getMySellerName());
 
-  scrapeNext();
+  updateProgress(0, urls.length);
+
+  // Send queue to background service worker
+  window.postMessage({ type: 'START_QUEUE', urls: urls }, '*');
 }
 
 function stopScraping() {
   state.stopRequested = true;
-  log('info', 'Stop requested — finishing current item...');
+  state.scraping = false;
+  window.postMessage({ type: 'STOP_QUEUE' }, '*');
+  finishScraping();
+  log('info', '⏹ Scraping stopped.');
 }
 
-function scrapeNext() {
-  if (state.stopRequested || scrapeIdx >= scrapeQueue.length) {
-    finishScraping();
-    return;
-  }
-
-  const url = scrapeQueue[scrapeIdx];
-  const reqId = 'req_' + (++requestIdCounter);
+// Called by bridge when background reports a page was scraped
+function handleQueueProgress(d) {
+  scrapeIdx++;
   updateProgress(scrapeIdx, scrapeQueue.length);
-  log('info', '[' + (scrapeIdx+1) + '/' + scrapeQueue.length + '] Scraping: ' + shortUrl(url));
 
-  pendingRequests[reqId] = { url, idx: scrapeIdx };
-
-  // Send to extension via postMessage
-  window.postMessage({
-    type: 'DASHBOARD_SCRAPE_URL',
-    url: url,
-    requestId: reqId
-  }, '*');
-
-  // Timeout per URL
-  setTimeout(function() {
-    if (pendingRequests[reqId]) {
-      delete pendingRequests[reqId];
-      log('err', 'Timeout for: ' + shortUrl(url));
-      scrapeIdx++;
-      scrapeNext();
-    }
-  }, 40000);
-}
-
-function handleScrapeResult(d) {
-  const req = pendingRequests[d.requestId];
-  if (!req) return;
-  delete pendingRequests[d.requestId];
-
-  const url = req.url;
-  const result = d.result || {};
-
-  if (d.success && result.success) {
-    const seller = result.seller_name || result.seller || 'Unknown';
-    const price = parseFloat(result.buybox_price || result.currentPrice || 0);
+  if (d && d.data) {
+    const p  = d.data;
+    const seller = p.buyBoxSeller || 'Unknown Seller';
+    const price  = parseFloat(p.buyBoxPrice) || 0;
     const myName = getMySellerName().toLowerCase().trim();
-    const isWin = seller.toLowerCase().includes(myName) || myName.includes(seller.toLowerCase().replace(/\s+/g,'').substring(0,6));
+    const isWin  = seller !== 'Unknown Seller' &&
+                   (seller.toLowerCase().includes(myName) || myName.includes(seller.toLowerCase().substring(0,6)));
     const status = seller === 'Unknown Seller' ? 'unknown' : (isWin ? 'win' : 'lose');
 
-    const existing = state.products.find(p => p.url === url || p.fsn === result.fsn);
-
+    const existing = state.products.find(function(x) {
+      return x.url === p.url || (p.fsn && x.fsn === p.fsn);
+    });
     if (existing) {
       existing.buybox_price = price;
-      existing.seller = seller;
-      existing.status = status;
-      existing.lastChecked = new Date().toISOString();
-      existing.title = result.title || existing.title;
-      existing.history = existing.history || [];
+      existing.seller       = seller;
+      existing.status       = status;
+      existing.lastChecked  = new Date().toISOString();
+      existing.title        = p.title || existing.title;
+      existing.fsn          = p.fsn || existing.fsn || '';
+      existing.history      = existing.history || [];
       existing.history.push({ price, seller, status, ts: new Date().toISOString() });
       if (existing.history.length > 30) existing.history.shift();
     } else {
       state.products.push({
-        url,
-        fsn: result.fsn || '',
-        title: result.title || url,
-        buybox_price: price,
-        seller,
-        status,
-        lastChecked: new Date().toISOString(),
+        url: p.url, fsn: p.fsn || '', sku: p.sku || '',
+        title: p.title || p.url, buybox_price: price,
+        seller, status, lastChecked: new Date().toISOString(),
         history: [{ price, seller, status, ts: new Date().toISOString() }]
       });
     }
-
     saveProducts();
-    log('ok', (isWin ? '✓ WIN ' : '✗ LOSE') + ' | R' + price.toFixed(2) + ' | ' + seller + ' | ' + (result.title || '').slice(0,40));
-  } else {
-    log('err', 'Failed: ' + shortUrl(url) + ' — ' + (d.error || result.error || 'unknown error'));
+    log(isWin ? 'ok' : 'err',
+      (isWin ? '✓ WIN ' : '✗ LOSE') + ' | R' + price.toFixed(2) + ' | ' + seller.slice(0,30) +
+      ' | ' + (p.title||'').slice(0,35));
   }
 
-  scrapeIdx++;
-  updateProgress(scrapeIdx, scrapeQueue.length);
-
-  // Small delay between scrapes
-  setTimeout(scrapeNext, 800);
+  if (scrapeIdx >= scrapeQueue.length) finishScraping();
 }
 
-function handleBulkResults(d) {
-  // Not used in sequential mode but keep for compat
+function handleQueueFinished() {
+  finishScraping();
+  log('ok', '✅ Queue complete — all products scraped.');
 }
 
 function finishScraping() {
-  state.scraping = false;
+  state.scraping      = false;
   state.stopRequested = false;
   document.getElementById('startBtn').style.display = 'flex';
-  document.getElementById('stopBtn').style.display = 'none';
+  document.getElementById('stopBtn').style.display  = 'none';
   updateProgress(scrapeQueue.length, scrapeQueue.length);
-  log('info', '✓ Done. ' + state.products.length + ' total products in database.');
-  updateProductCount();
   renderDashboard();
-  localStorage.setItem('makro_last_scrape', new Date().toISOString());
+  renderProducts();
+  updateProductCount();
 }
+
+function handleBulkResults(d) { /* legacy compat */ }
 
 // ============================================================
 // PROGRESS + LOG
