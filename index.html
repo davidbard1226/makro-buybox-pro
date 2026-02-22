@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Makro BuyBox Pro</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   :root {
     --bg: #0a0c10;
@@ -12,12 +13,12 @@
     --surface2: #181c22;
     --border: #1e2530;
     --accent: #00e5a0;
-    --accent2: #ff4d6d;
+    --accent2: #ff9500;
     --accent3: #ffd60a;
     --text: #e8eaf0;
     --muted: #6b7280;
     --win: #00e5a0;
-    --lose: #ff4d6d;
+    --lose: #ff9500;
     --warn: #ffd60a;
   }
 
@@ -634,6 +635,12 @@
           <option value="unknown">Unknown</option>
         </select>
         <div class="toolbar-right">
+          <label class="btn-secondary" style="width:auto;padding:8px 16px;cursor:pointer" title="Import your Makro S_listing XLS file">
+            📂 Import Listings
+            <input type="file" id="listingsFileInput" accept=".xls,.xlsx,.csv" style="display:none" onchange="importListings(this)">
+          </label>
+          <button class="btn-secondary" style="width:auto;padding:8px 16px" onclick="refreshSelected()">↻ Refresh Selected</button>
+          <button class="btn-secondary danger" style="width:auto;padding:8px 16px;color:#ff9500;border-color:#ff950044" onclick="deleteSelected()">🗑 Delete Selected</button>
           <button class="btn-secondary" style="width:auto;padding:8px 16px" onclick="exportCSV()">⬇ Export CSV</button>
           <button class="btn-secondary" style="width:auto;padding:8px 16px" onclick="clearAllConfirm()">🗑 Clear All</button>
         </div>
@@ -643,7 +650,11 @@
         <table class="product-table">
           <thead>
             <tr>
+              <th style="width:32px"><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)" title="Select all"></th>
               <th>Product</th>
+              <th>FSN</th>
+              <th>My Price</th>
+              <th>Stock</th>
               <th>Buy Box Price</th>
               <th>Seller</th>
               <th>Status</th>
@@ -652,7 +663,7 @@
             </tr>
           </thead>
           <tbody id="productsBody">
-            <tr><td colspan="6">
+            <tr><td colspan="10">
               <div class="empty-state">
                 <div class="empty-icon">📦</div>
                 <div class="empty-title">No Products Yet</div>
@@ -1260,17 +1271,28 @@ function renderProducts() {
   const search = (document.getElementById('prodSearch').value || '').toLowerCase();
   const filter = document.getElementById('prodFilter').value;
 
+  // Load listings cross-reference map
+  const listingsMap = {};
+  try {
+    const raw = localStorage.getItem('makro_listings');
+    if (raw) JSON.parse(raw).forEach(l => { listingsMap[l.fsn] = l; });
+  } catch(e) {}
+
   let prods = state.products.filter(p => {
     if (filter === 'win' && p.status !== 'win') return false;
     if (filter === 'lose' && p.status !== 'lose') return false;
     if (filter === 'unknown' && p.status !== 'unknown' && p.status) return false;
-    if (search && !p.title.toLowerCase().includes(search) && !p.seller.toLowerCase().includes(search)) return false;
+    const titleOk = (p.title||'').toLowerCase().includes(search);
+    const sellerOk = (p.seller||'').toLowerCase().includes(search);
+    const fsnOk = (p.fsn||'').toLowerCase().includes(search);
+    const skuOk = (p.sku||'').toLowerCase().includes(search);
+    if (search && !titleOk && !sellerOk && !fsnOk && !skuOk) return false;
     return true;
   });
 
   const tbody = document.getElementById('productsBody');
   if (prods.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state">
+    tbody.innerHTML = `<tr><td colspan="10"><div class="empty-state">
       <div class="empty-icon">📦</div>
       <div class="empty-title">${state.products.length === 0 ? 'No Products Yet' : 'No Matches'}</div>
       <div class="empty-text">${state.products.length === 0 ? 'Use the Scraper tab to add products.' : 'Try changing your filters.'}</div>
@@ -1281,24 +1303,93 @@ function renderProducts() {
   tbody.innerHTML = prods.map((p, i) => {
     const statusClass = p.status === 'win' ? 'win' : p.status === 'lose' ? 'lose' : 'unknown';
     const statusLabel = p.status === 'win' ? '✓ WIN' : p.status === 'lose' ? '✗ LOSE' : '? UNKNOWN';
-    const priceClass = p.status === 'win' ? 'win' : 'lose';
     const t = p.lastChecked ? new Date(p.lastChecked).toLocaleString() : '—';
     const realIdx = state.products.indexOf(p);
+    const listing = listingsMap[p.fsn] || null;
+    const myPrice = listing ? `<span style="color:var(--accent3);font-family:'Space Mono',monospace;font-size:12px">R ${listing.myPrice.toFixed(2)}</span>` : '<span style="color:var(--muted);font-size:11px">—</span>';
+    const myStock = listing ? `<span style="color:${listing.myStock > 0 ? 'var(--accent)' : '#ff9500'};font-size:12px">${listing.myStock}</span>` : '<span style="color:var(--muted);font-size:11px">—</span>';
+    let priceIndicator = '';
+    if (listing && p.buybox_price > 0) {
+      if (listing.myPrice > p.buybox_price) priceIndicator = ' <span style="color:#ff9500;font-size:10px">▲above</span>';
+      else if (listing.myPrice < p.buybox_price) priceIndicator = ' <span style="color:var(--accent);font-size:10px">▼below</span>';
+      else priceIndicator = ' <span style="color:var(--muted);font-size:10px">=match</span>';
+    }
     return `<tr>
+      <td><input type="checkbox" class="row-check" data-idx="${realIdx}"></td>
       <td>
-        <div class="prod-title">${escHtml((p.title||'Unknown').slice(0,60))}</div>
-        <a class="prod-url" href="${escHtml(p.url)}" target="_blank" rel="noopener">${escHtml(shortUrl(p.url))}</a>
+        <div class="prod-title">${escHtml((p.title||'Unknown').slice(0,55))}</div>
+        <a class="prod-url" href="${escHtml(p.url)}" target="_blank" rel="noopener">${escHtml(p.sku || shortUrl(p.url))}</a>
       </td>
-      <td><span class="price-cell ${priceClass}">R ${(p.buybox_price||0).toFixed(2)}</span></td>
-      <td style="font-size:13px">${escHtml(p.seller||'Unknown')}</td>
+      <td><span style="font-family:'Space Mono',monospace;font-size:11px;color:var(--muted)">${escHtml(p.fsn||'—')}</span></td>
+      <td>${myPrice}${priceIndicator}</td>
+      <td>${myStock}</td>
+      <td><span class="price-cell ${p.status==='win'?'win':'lose'}">R ${(p.buybox_price||0).toFixed(2)}</span></td>
+      <td style="font-size:12px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(p.seller||'')}">${escHtml((p.seller||'Unknown').slice(0,20))}</td>
       <td><span class="status-pill ${statusClass}">${statusLabel}</span></td>
-      <td style="font-size:11px;color:var(--muted)">${t}</td>
-      <td style="display:flex;gap:6px">
+      <td style="font-size:11px;color:var(--muted);white-space:nowrap">${t}</td>
+      <td style="display:flex;gap:4px">
         <button class="action-btn" onclick="rescrapeOne(${realIdx})" title="Re-scrape">↻</button>
         <button class="action-btn danger" onclick="deleteProduct(${realIdx})" title="Delete">✕</button>
       </td>
     </tr>`;
   }).join('');
+}
+
+function toggleSelectAll(cb) {
+  document.querySelectorAll('.row-check').forEach(c => c.checked = cb.checked);
+}
+
+function refreshSelected() {
+  const idxs = Array.from(document.querySelectorAll('.row-check:checked')).map(c => parseInt(c.dataset.idx));
+  if (idxs.length === 0) { alert('Tick at least one product to refresh.'); return; }
+  if (!state.extReady) { alert('Extension not connected.'); return; }
+  const urls = idxs.map(i => state.products[i].url).join('\n');
+  switchTab('scraper');
+  document.getElementById('urlInput').value = urls;
+  document.getElementById('urlCount').textContent = idxs.length + ' URL(s) detected';
+  setTimeout(startScraping, 200);
+}
+
+function deleteSelected() {
+  const idxs = Array.from(document.querySelectorAll('.row-check:checked')).map(c => parseInt(c.dataset.idx));
+  if (idxs.length === 0) { alert('Tick at least one product to delete.'); return; }
+  if (!confirm('Delete ' + idxs.length + ' selected product(s)?')) return;
+  idxs.sort((a,b) => b-a).forEach(i => state.products.splice(i, 1));
+  saveProducts(); renderProducts(); updateProductCount();
+  document.getElementById('selectAll').checked = false;
+}
+
+function importListings(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const wb = XLSX.read(data, { type: 'array' });
+      const sh = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sh, { header: 1 });
+      const listings = [];
+      for (let r = 2; r < rows.length; r++) {
+        const row = rows[r];
+        if (!row || !row[4]) continue;
+        const fsn = String(row[4]||'').trim();
+        const sku = String(row[1]||'').trim();
+        const title = String(row[0]||'').trim();
+        const myPrice = parseFloat(row[9]) || 0;
+        const myStock = parseInt(row[12]) || 0;
+        const status = String(row[6]||'').trim();
+        if (fsn) listings.push({ fsn, sku, title, myPrice, myStock, status });
+      }
+      localStorage.setItem('makro_listings', JSON.stringify(listings));
+      alert('✅ Imported ' + listings.length + ' listings! Your prices & stock now show in the Products table.');
+      renderProducts();
+    } catch(err) {
+      alert('❌ Error: ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+  input.value = '';
 }
 
 function deleteProduct(idx) {
