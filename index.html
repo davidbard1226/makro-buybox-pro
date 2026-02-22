@@ -861,6 +861,17 @@ function reEvaluateStatuses() {
       const s = p.seller.toLowerCase();
       p.status = (s.includes(myName) || myName.includes(s.substring(0,6))) ? 'win' : 'lose';
     }
+    // ── MIGRATE FSN from URL if missing ─────────────────────────────────────
+    // Products scraped before FSN fix: try to extract FSN from stored URL now
+    if (!p.fsn && p.url) {
+      // Try pid= param
+      const m1 = p.url.match(/[?&]pid=([A-Z0-9]{8,})/i);
+      if (m1) { p.fsn = m1[1].toUpperCase(); return; }
+      // Try to match SKU-like path segment that looks like a Makro FSN (uppercase alpha+numeric, 12-20 chars)
+      // Makro FSNs look like: INTH5YY5BCERERBG, PRNH5FQYEF7HS9SE
+      const m2 = p.url.match(/\/([A-Z]{2,4}[A-Z0-9]{8,16})(?:[/?#]|$)/);
+      if (m2 && /^[A-Z]{2,4}[A-Z0-9]+$/.test(m2[1])) p.fsn = m2[1];
+    }
   });
 }
 
