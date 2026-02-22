@@ -885,13 +885,13 @@ window.addEventListener('message', function(ev) {
   }
 
   if (d.type === 'PRODUCTS_UPDATED') {
-    // Bridge wrote new products to localStorage — reload state and re-render
     loadProducts();
     reEvaluateStatuses();
     saveProducts();
     updateProductCount();
     renderDashboard();
-    renderProducts();
+    const anyChecked = document.querySelectorAll('.row-check:checked').length > 0;
+    if (!anyChecked) renderProducts();
     return;
   }
 
@@ -1271,6 +1271,10 @@ function renderProducts() {
   const search = (document.getElementById('prodSearch').value || '').toLowerCase();
   const filter = document.getElementById('prodFilter').value;
 
+  // ── PRESERVE checked state before re-render ───────────────────────────────
+  const prevChecked = new Set();
+  document.querySelectorAll('.row-check:checked').forEach(c => prevChecked.add(parseInt(c.dataset.idx)));
+
   // Load listings cross-reference map
   const listingsMap = {};
   try {
@@ -1333,6 +1337,13 @@ function renderProducts() {
       </td>
     </tr>`;
   }).join('');
+
+  // ── RESTORE checked state after re-render ─────────────────────────────────
+  if (prevChecked.size > 0) {
+    document.querySelectorAll('.row-check').forEach(c => {
+      if (prevChecked.has(parseInt(c.dataset.idx))) c.checked = true;
+    });
+  }
 }
 
 function toggleSelectAll(cb) {
@@ -1716,7 +1727,9 @@ document.getElementById('sellerNameConfig').addEventListener('change', function(
         saveProducts();
         updateProductCount();
         renderDashboard();
-        renderProducts();
+        // Only re-render products table if no checkboxes are currently selected
+        const anyChecked = document.querySelectorAll('.row-check:checked').length > 0;
+        if (!anyChecked) renderProducts();
       }
     } catch(e) {}
   }, 3000);
