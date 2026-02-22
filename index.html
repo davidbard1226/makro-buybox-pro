@@ -576,17 +576,8 @@
         </div>
 
         <div class="chart-row">
-          <!-- WIN/LOSE BAR CHART -->
-          <div class="card">
-            <div class="card-title">Buy Box Status — All Products</div>
-            <div id="statusBarChart" class="bar-chart"></div>
-            <div id="emptyBarChart" class="empty-state" style="padding:20px">
-              <div class="empty-text">No products scraped yet. Use the Scraper tab to add products.</div>
-            </div>
-          </div>
-
-          <!-- DONUT -->
-          <div class="card">
+          <!-- DONUT only on dashboard now — status bar moved to Analytics -->
+          <div class="card" style="grid-column:1/-1">
             <div class="card-title">Win Rate</div>
             <div class="donut-wrap">
               <canvas class="donut-canvas" id="donutCanvas" width="120" height="120"></canvas>
@@ -840,9 +831,15 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
 
     <!-- ========== ANALYTICS TAB ========== -->
     <div class="tab-content" id="tab-analytics">
-
       <div class="analytics-grid">
 
+        <!-- ROW 1: Status + Competitor full width -->
+        <div class="card analytics-full">
+          <div class="card-title" style="margin-bottom:14px">📊 BuyBox Status — All Products</div>
+          <div id="statusBarChartAnalytics" class="bar-chart"></div>
+        </div>
+
+        <!-- ROW 2: Price dist + Trend -->
         <div class="card">
           <div class="card-title">Price Distribution</div>
           <canvas id="priceChart" height="180"></canvas>
@@ -859,22 +856,49 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
           </div>
         </div>
 
+        <!-- ROW 3: My price vs buybox full width -->
         <div class="card analytics-full">
-          <div class="card-title">Price Comparison — My Price vs Buybox Price</div>
+          <div class="card-title">💰 My Price vs BuyBox Price — Products with Listings Imported</div>
           <div id="priceCompBar" class="bar-chart"></div>
           <div id="emptyPriceComp" class="empty-state" style="padding:20px; display:none">
-            <div class="empty-text">No products with price data yet</div>
+            <div class="empty-text">Import your S_listing file in the Products tab to see this chart</div>
           </div>
         </div>
 
+        <!-- ROW 4: Competitor full breakdown + price gap analysis -->
         <div class="card">
-          <div class="card-title">Competitor Breakdown</div>
+          <div class="card-title" style="margin-bottom:14px">🏆 Competitor Breakdown</div>
           <div id="compBreakdown"></div>
         </div>
 
         <div class="card">
-          <div class="card-title">Summary Stats</div>
-          <div id="summaryStats" style="display:flex; flex-direction:column; gap:12px; padding-top:4px"></div>
+          <div class="card-title" style="margin-bottom:14px">📉 Price Gap Analysis</div>
+          <div id="priceGapAnalysis"></div>
+        </div>
+
+        <!-- ROW 5: Opportunity table + Summary -->
+        <div class="card analytics-full">
+          <div class="card-title" style="margin-bottom:14px">🎯 Top Opportunities — Closest to Winning BuyBox</div>
+          <div id="opportunityTable" style="overflow-x:auto"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title" style="margin-bottom:14px">📋 Summary Stats</div>
+          <div id="summaryStats" style="display:flex; flex-direction:column; gap:4px; padding-top:4px"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title" style="margin-bottom:14px">🔄 Data & Sync</div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <button class="btn-secondary" style="width:100%;padding:10px" onclick="exportAllData()">⬇ Export All Data (JSON)</button>
+            <label class="btn-secondary" style="width:100%;padding:10px;text-align:center;cursor:pointer">
+              ⬆ Import Data (JSON) — sync from another PC
+              <input type="file" accept=".json" style="display:none" onchange="importAllData(this)">
+            </label>
+            <div style="font-size:11px;color:var(--muted);line-height:1.7;padding:8px;background:var(--surface2);border-radius:6px">
+              Export on this PC → copy JSON file to your work PC → Import there. All products, history and listings transfer instantly.
+            </div>
+          </div>
         </div>
 
       </div>
@@ -1236,28 +1260,6 @@ function renderDashboard() {
   document.getElementById('leg-lose').textContent = loses;
   document.getElementById('leg-unk').textContent = unk;
 
-  // Bar chart (product statuses)
-  const barWrap = document.getElementById('statusBarChart');
-  const emptyBar = document.getElementById('emptyBarChart');
-  if (total === 0) {
-    barWrap.style.display = 'none';
-    emptyBar.style.display = 'flex';
-  } else {
-    barWrap.style.display = 'flex';
-    emptyBar.style.display = 'none';
-    barWrap.innerHTML = prods.slice(0,10).map(p => {
-      const color = p.status === 'win' ? 'var(--accent)' : p.status === 'lose' ? 'var(--accent2)' : 'var(--muted)';
-      const maxPrice = Math.max(...prods.map(x => x.buybox_price || 0), 1);
-      const pct = ((p.buybox_price || 0) / maxPrice * 100).toFixed(1);
-      return `<div class="bar-row">
-        <div class="bar-label" title="${escHtml(p.title)}">${escHtml((p.title||'Unknown').slice(0,18))}</div>
-        <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${color}">
-          <span class="bar-fill-val" style="color:#000;font-size:9px">R${(p.buybox_price||0).toFixed(0)}</span>
-        </div></div>
-      </div>`;
-    }).join('');
-  }
-
   // Recent activity
   const recents = [...prods]
     .filter(p => p.lastChecked)
@@ -1512,20 +1514,13 @@ function exportCSV() {
 // ============================================================
 function renderAnalytics() {
   const prods = state.products;
-
-  // Price distribution (bar chart using canvas)
+  renderStatusBars(prods);
   renderPriceChart(prods);
-
-  // Trend chart
   renderTrendChart(prods);
-
-  // Price comp bars
   renderPriceComp(prods);
-
-  // Competitor breakdown
   renderCompetitors(prods);
-
-  // Summary stats
+  renderPriceGap(prods);
+  renderOpportunities(prods);
   renderSummary(prods);
 }
 
@@ -1669,60 +1664,254 @@ function renderPriceComp(prods) {
   }).join('');
 }
 
-function renderCompetitors(prods) {
-  const el = document.getElementById('compBreakdown');
-  const sellerCounts = {};
-  prods.forEach(p => {
-    if (p.seller && p.seller !== 'Unknown Seller') {
-      sellerCounts[p.seller] = (sellerCounts[p.seller] || 0) + 1;
-    }
-  });
-  const sorted = Object.entries(sellerCounts).sort((a,b) => b[1]-a[1]).slice(0,8);
-  if (sorted.length === 0) {
-    el.innerHTML = '<div class="empty-state" style="padding:20px"><div class="empty-text">No competitor data yet</div></div>';
-    return;
-  }
-  const myName = getMySellerName().toLowerCase();
-  const max = sorted[0][1] || 1;
-  el.innerHTML = '<div class="bar-chart">' + sorted.map(([name, count]) => {
-    const isMe = name.toLowerCase().includes(myName) || myName.includes(name.toLowerCase().slice(0,6));
-    const color = isMe ? 'var(--accent)' : 'var(--accent2)';
-    const pct = (count / max * 100).toFixed(1);
+// ── Status bar chart (now in Analytics tab) ──────────────────────────────
+function renderStatusBars(prods) {
+  const el = document.getElementById('statusBarChartAnalytics');
+  if (!el) return;
+  if (!prods.length) { el.innerHTML = '<div style="color:var(--muted);padding:20px;font-size:13px">No products scraped yet.</div>'; return; }
+  const maxPrice = Math.max(...prods.map(p => p.buybox_price || 0), 1);
+  el.innerHTML = '<div class="bar-chart">' + prods.map(p => {
+    const color = p.status === 'win' ? 'var(--accent)' : p.status === 'lose' ? 'var(--accent2)' : 'var(--muted)';
+    const pct = ((p.buybox_price || 0) / maxPrice * 100).toFixed(1);
+    const label = (p.title || p.url || 'Unknown').slice(0, 32);
     return `<div class="bar-row">
-      <div class="bar-label">${escHtml(name.slice(0,16))}</div>
+      <div class="bar-label" title="${escHtml(p.title)}">${escHtml(label)}</div>
       <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${color}">
-        <span class="bar-fill-val" style="color:#000">${count}</span>
+        <span class="bar-fill-val" style="color:#000;font-size:10px">R${(p.buybox_price||0).toFixed(0)} · ${escHtml((p.seller||'').slice(0,20))}</span>
       </div></div>
     </div>`;
   }).join('') + '</div>';
 }
 
+// ── Competitor breakdown — FULL names, show % share, avg price ────────────
+function renderCompetitors(prods) {
+  const el = document.getElementById('compBreakdown');
+  const sellerData = {};
+  prods.forEach(function(p) {
+    if (!p.seller || p.seller === 'Unknown Seller') return;
+    if (!sellerData[p.seller]) sellerData[p.seller] = { count: 0, prices: [] };
+    sellerData[p.seller].count++;
+    if (p.buybox_price > 0) sellerData[p.seller].prices.push(p.buybox_price);
+  });
+
+  const myName = getMySellerName().toLowerCase();
+  const sorted = Object.entries(sellerData).sort((a, b) => b[1].count - a[1].count);
+  const total  = sorted.reduce((s, [, d]) => s + d.count, 0) || 1;
+  const max    = sorted.length ? sorted[0][1].count : 1;
+
+  if (!sorted.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:13px">No competitor data yet.</div>';
+    return;
+  }
+
+  el.innerHTML = sorted.map(function([name, d]) {
+    const isMe  = name.toLowerCase().includes(myName) || myName.includes(name.toLowerCase().slice(0, 6));
+    const color = isMe ? 'var(--accent)' : 'var(--accent2)';
+    const pct   = (d.count / max * 100).toFixed(0);
+    const share = (d.count / total * 100).toFixed(1);
+    const avg   = d.prices.length ? 'R' + (d.prices.reduce((a,b)=>a+b,0)/d.prices.length).toFixed(0) : '—';
+    return `<div class="bar-row" style="margin-bottom:6px">
+      <div class="bar-label" title="${escHtml(name)}" style="width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(name)}</div>
+      <div class="bar-track" style="flex:1">
+        <div class="bar-fill" style="width:${pct}%;background:${color};min-width:2px">
+          <span class="bar-fill-val" style="color:#000">${d.count}</span>
+        </div>
+      </div>
+      <div style="font-size:10px;color:var(--muted);white-space:nowrap;margin-left:8px;width:100px;text-align:right">${share}% · avg ${avg}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── Price Gap Analysis — how far are you from winning ────────────────────
+function renderPriceGap(prods) {
+  const el = document.getElementById('priceGapAnalysis');
+  if (!el) return;
+  const listings = getListings();
+  const listMap  = {};
+  listings.forEach(function(l) { if (l.fsn) listMap[l.fsn] = l; });
+
+  // Only products where we have both my price and buybox price
+  const gaps = [];
+  prods.forEach(function(p) {
+    if (p.status !== 'lose' && p.status !== 'unknown') return;
+    const l = listMap[p.fsn];
+    if (!l || !l.myPrice || !p.buybox_price) return;
+    const gap = l.myPrice - p.buybox_price;
+    gaps.push({ title: p.title, myPrice: l.myPrice, buybox: p.buybox_price, gap, seller: p.seller });
+  });
+
+  if (!gaps.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:12px;line-height:1.6">Import your S_listing file to see how far your prices are from winning the BuyBox.<br><br>This shows whether you\'re R5 away or R500 away.</div>';
+    return;
+  }
+
+  gaps.sort((a, b) => Math.abs(a.gap) - Math.abs(b.gap));
+
+  const buckets = { '<R10':0, 'R10–50':0, 'R50–200':0, 'R200–500':0, '>R500':0 };
+  gaps.forEach(function(g) {
+    const a = Math.abs(g.gap);
+    if (a < 10)       buckets['<R10']++;
+    else if (a < 50)  buckets['R10–50']++;
+    else if (a < 200) buckets['R50–200']++;
+    else if (a < 500) buckets['R200–500']++;
+    else              buckets['>R500']++;
+  });
+
+  const maxB = Math.max(...Object.values(buckets), 1);
+  const colors = ['#00e5a0','#7ee8c8','#ffd60a','#ff9500','#ff4d6d'];
+  el.innerHTML = '<div style="margin-bottom:10px;font-size:11px;color:var(--muted)">' + gaps.length + ' losing products with price data</div>' +
+    Object.entries(buckets).map(function([label, count], i) {
+      const pct = (count / maxB * 100).toFixed(0);
+      return `<div class="bar-row" style="margin-bottom:5px">
+        <div class="bar-label" style="width:70px">${label}</div>
+        <div class="bar-track" style="flex:1"><div class="bar-fill" style="width:${pct}%;background:${colors[i]};min-width:2px">
+          <span class="bar-fill-val" style="color:#000">${count}</span>
+        </div></div>
+      </div>`;
+    }).join('');
+}
+
+// ── Top Opportunities — products closest to winning buybox ────────────────
+function renderOpportunities(prods) {
+  const el = document.getElementById('opportunityTable');
+  if (!el) return;
+  const listings = getListings();
+  const listMap  = {};
+  listings.forEach(function(l) { if (l.fsn) listMap[l.fsn] = l; });
+
+  const opps = [];
+  prods.forEach(function(p) {
+    if (p.status === 'win') return;
+    if (!p.buybox_price) return;
+    const l = listMap[p.fsn];
+    const myPrice = l ? l.myPrice : null;
+    const gap = myPrice ? myPrice - p.buybox_price : null;
+    opps.push({ p, myPrice, gap, absGap: gap !== null ? Math.abs(gap) : 999999 });
+  });
+
+  opps.sort((a, b) => a.absGap - b.absGap);
+  const top = opps.slice(0, 20);
+
+  if (!top.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:12px">No losing products found. Either everything is winning or no products scraped yet.</div>';
+    return;
+  }
+
+  el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12px">
+    <thead><tr style="color:var(--muted);border-bottom:1px solid var(--border)">
+      <th style="text-align:left;padding:8px 6px">Product</th>
+      <th style="text-align:right;padding:8px 6px">BuyBox</th>
+      <th style="text-align:right;padding:8px 6px">My Price</th>
+      <th style="text-align:right;padding:8px 6px">Gap</th>
+      <th style="text-align:left;padding:8px 6px">BuyBox Owner</th>
+      <th style="text-align:center;padding:8px 6px">Action</th>
+    </tr></thead>
+    <tbody>` +
+    top.map(function({ p, myPrice, gap }) {
+      const gapStr  = gap !== null ? (gap > 0 ? '<span style="color:#ff9500">▲R'+gap.toFixed(2)+'</span>' : '<span style="color:#00e5a0">▼R'+Math.abs(gap).toFixed(2)+'</span>') : '<span style="color:var(--muted)">—</span>';
+      const myPriceStr = myPrice ? 'R'+myPrice.toFixed(2) : '<span style="color:var(--muted)">—</span>';
+      const closeEnough = gap !== null && Math.abs(gap) < 50;
+      return `<tr style="border-bottom:1px solid var(--border)${closeEnough ? ';background:rgba(0,229,160,0.04)' : ''}">
+        <td style="padding:8px 6px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(p.title)}">${escHtml((p.title||p.url||'').slice(0,40))}</td>
+        <td style="text-align:right;padding:8px 6px;font-family:monospace;color:var(--accent)">R${p.buybox_price.toFixed(2)}</td>
+        <td style="text-align:right;padding:8px 6px;font-family:monospace">${myPriceStr}</td>
+        <td style="text-align:right;padding:8px 6px;font-family:monospace">${gapStr}</td>
+        <td style="padding:8px 6px;color:var(--muted);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(p.seller||'Unknown')}</td>
+        <td style="text-align:center;padding:8px 6px"><a href="${escHtml(p.url)}" target="_blank" style="color:var(--accent);font-size:11px;text-decoration:none">Open ↗</a></td>
+      </tr>`;
+    }).join('') +
+    '</tbody></table>';
+}
+
+// ── Summary Stats — enriched ──────────────────────────────────────────────
 function renderSummary(prods) {
   const el = document.getElementById('summaryStats');
-  if (prods.length === 0) { el.innerHTML = '<div style="color:var(--muted);font-size:13px">No data yet</div>'; return; }
+  if (!el) return;
+  if (!prods.length) { el.innerHTML = '<div style="color:var(--muted);font-size:13px">No data yet</div>'; return; }
 
+  const wins   = prods.filter(p => p.status === 'win').length;
+  const loses  = prods.filter(p => p.status === 'lose').length;
+  const unk    = prods.filter(p => !p.status || p.status === 'unknown').length;
+  const total  = prods.length;
   const prices = prods.map(p => p.buybox_price).filter(v => v > 0);
-  const avg = prices.length > 0 ? prices.reduce((a,b) => a+b, 0) / prices.length : 0;
-  const min = prices.length > 0 ? Math.min(...prices) : 0;
-  const max = prices.length > 0 ? Math.max(...prices) : 0;
-  const wins = prods.filter(p => p.status === 'win').length;
-  const total = prods.length;
+  const avg    = prices.length ? prices.reduce((a,b)=>a+b,0)/prices.length : 0;
+  const min    = prices.length ? Math.min(...prices) : 0;
+  const max    = prices.length ? Math.max(...prices) : 0;
+
+  const sellers = {};
+  prods.forEach(p => { if (p.seller && p.seller !== 'Unknown Seller') sellers[p.seller] = (sellers[p.seller]||0)+1; });
+  const topSeller = Object.entries(sellers).sort((a,b)=>b[1]-a[1])[0];
+  const listings  = getListings();
 
   const rows = [
-    ['Total Products', total],
-    ['Win Rate', Math.round((wins/total)*100) + '%'],
-    ['Avg BuyBox Price', 'R ' + avg.toFixed(2)],
-    ['Min Price', 'R ' + min.toFixed(2)],
-    ['Max Price', 'R ' + max.toFixed(2)],
-    ['Products Losing', total - wins],
+    ['Total Products',       total,                             ''],
+    ['Winning BuyBox',       wins,                              'color:var(--accent)'],
+    ['Losing BuyBox',        loses,                             'color:var(--accent2)'],
+    ['Unknown / Unscraped',  unk,                               'color:var(--muted)'],
+    ['Win Rate',             Math.round(wins/total*100) + '%',  wins > loses ? 'color:var(--accent)' : 'color:var(--accent2)'],
+    ['Avg BuyBox Price',     'R ' + avg.toFixed(2),             ''],
+    ['Lowest BuyBox Price',  'R ' + min.toFixed(2),             ''],
+    ['Highest BuyBox Price', 'R ' + max.toFixed(2),             ''],
+    ['Unique Competitors',   Object.keys(sellers).length,       ''],
+    ['Top Competitor',       topSeller ? topSeller[0] : '—',    'color:var(--accent2);font-size:11px'],
+    ['Listings Imported',    listings.length,                   listings.length ? 'color:var(--accent)' : 'color:var(--muted)'],
   ];
 
-  el.innerHTML = rows.map(([label, val]) => `
-    <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
-      <span style="font-size:12px;color:var(--muted)">${label}</span>
-      <span style="font-family:'Space Mono',monospace;font-size:13px;font-weight:700">${val}</span>
-    </div>
-  `).join('');
+  el.innerHTML = rows.map(([label, val, style]) => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:11px;color:var(--muted)">${label}</span>
+      <span style="font-family:'Space Mono',monospace;font-size:12px;font-weight:700;${style}">${escHtml(String(val))}</span>
+    </div>`).join('');
+}
+
+// ── Export / Import all data ──────────────────────────────────────────────
+function exportAllData() {
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    version:    2,
+    products:   state.products,
+    listings:   getListings()
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = 'makro_buybox_export_' + new Date().toISOString().slice(0,10) + '.json';
+  a.click();
+}
+
+function importAllData(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (!data.products) { alert('Invalid export file.'); return; }
+      const existing = state.products;
+      let added = 0, updated = 0;
+
+      data.products.forEach(function(p) {
+        const idx = existing.findIndex(x => x.url === p.url);
+        if (idx >= 0) { existing[idx] = Object.assign({}, existing[idx], p); updated++; }
+        else          { existing.push(p); added++; }
+      });
+
+      if (data.listings && data.listings.length) {
+        localStorage.setItem('makro_listings', JSON.stringify(data.listings));
+      }
+
+      saveProducts();
+      renderDashboard();
+      renderProducts();
+      renderAnalytics();
+      alert('✅ Import complete!\n' + added + ' new products added\n' + updated + ' products updated' +
+        (data.listings ? '\n' + data.listings.length + ' listings imported' : ''));
+    } catch(err) {
+      alert('Failed to parse file: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+  input.value = '';
 }
 
 // ============================================================
