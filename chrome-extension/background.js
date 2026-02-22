@@ -1,4 +1,6 @@
-// background.js v5 — human-mode queue with natural timing
+// background.js v6
+// - Separate Chrome window for scraping (isolated, bot-free)
+// - Portal upload automation support
 
 chrome.runtime.onInstalled.addListener(function() {
   chrome.storage.local.get(['buybox_products'], function(r) {
@@ -6,36 +8,43 @@ chrome.runtime.onInstalled.addListener(function() {
   });
 });
 
-let queue       = [];
-let active      = false;
-let currentTab  = null;
-let totalUrls   = 0;
-let doneCount   = 0;
+// ── STATE ─────────────────────────────────────────────────────────────────
+let queue        = [];
+let active       = false;
+let scrapeWinId  = null;   // the dedicated scrape window
+let scrapeTabId  = null;   // the tab inside it
+let totalUrls    = 0;
+let doneCount    = 0;
+let waitingForLoad = false;
 
-// Natural human-like delay: 3-8 seconds between pages
+// ── HUMAN-LIKE DELAY: 4-9 seconds ────────────────────────────────────────
 function humanDelay() {
-  return 3000 + Math.floor(Math.random() * 5000);
+  return 4000 + Math.floor(Math.random() * 5000);
 }
 
+// ── MESSAGE HANDLER ───────────────────────────────────────────────────────
 chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
 
   if (msg.action === 'queue_scrape') {
-    queue      = [...(msg.urls || [])];
-    totalUrls  = queue.length;
-    doneCount  = 0;
-    active     = true;
-    currentTab = null;
+    if (active) { sendResponse({ error: 'Already running' }); return true; }
+    queue       = [...(msg.urls || [])];
+    totalUrls   = queue.length;
+    doneCount   = 0;
+    active      = true;
+    scrapeWinId = null;
+    scrapeTabId = null;
     sendResponse({ started: true, total: totalUrls });
-    setTimeout(openNext, 800);
+    openScrapeWindow();
     return true;
   }
 
   if (msg.action === 'stop_queue') {
-    queue  = [];
     active = false;
-    if (currentTab) {
-      try { chrome.tabs.remove(currentTab); } catch(e) {}
-      currentTab = null;
+    queue  = [];
+    if (scrapeWinId) {
+      chrome.windows.remove(scrapeWinId, function() {});
+      scrapeWinId = null;
+      scrapeTabId = null;
     }
     sendResponse({ stopped: true });
     return true;
@@ -47,62 +56,112 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
   }
 
   if (msg.action === 'page_scraped') {
+    if (!active) { sendResponse({ ok: true }); return true; }
     doneCount++;
-    // Broadcast progress to all dashboard tabs
+    waitingForLoad = false;
     notifyDashboard({ action: 'scrape_done', data: msg.data, done: doneCount, total: totalUrls });
     sendResponse({ ok: true });
 
     if (active && queue.length > 0) {
-      setTimeout(openNext, humanDelay());
+      setTimeout(loadNextUrl, humanDelay());
     } else {
       active = false;
       setTimeout(function() {
         notifyDashboard({ action: 'queue_finished', done: doneCount, total: totalUrls });
-        // Close the scrape tab when done
-        if (currentTab) {
-          try { chrome.tabs.remove(currentTab); } catch(e) {}
-          currentTab = null;
-        }
-      }, 1500);
+        // Close scrape window after short delay
+        setTimeout(function() {
+          if (scrapeWinId) chrome.windows.remove(scrapeWinId, function() {});
+          scrapeWinId = null; scrapeTabId = null;
+        }, 2000);
+      }, 1000);
     }
+    return true;
+  }
+
+  // Portal automation: trigger file upload on seller portal
+  if (msg.action === 'portal_upload_ready') {
+    notifyDashboard({ action: 'portal_upload_ready' });
+    sendResponse({ ok: true });
     return true;
   }
 });
 
-function openNext() {
+// ── OPEN DEDICATED SCRAPE WINDOW ──────────────────────────────────────────
+function openScrapeWindow() {
+  if (queue.length === 0) return;
+  const firstUrl = queue.shift();
+
+  chrome.windows.create({
+    url: firstUrl,
+    type: 'normal',
+    width: 1280,
+    height: 900,
+    left: 100,
+    top: 50,
+    focused: true
+  }, function(win) {
+    scrapeWinId = win.id;
+    scrapeTabId = win.tabs[0].id;
+    waitingForLoad = true;
+    // Safety timeout: if content.js doesn't respond in 12s, move on
+    setTimeout(function() {
+      if (waitingForLoad && active) {
+        waitingForLoad = false;
+        doneCount++;
+        notifyDashboard({ action: 'scrape_done', data: null, done: doneCount, total: totalUrls });
+        if (queue.length > 0) setTimeout(loadNextUrl, humanDelay());
+        else { active = false; notifyDashboard({ action: 'queue_finished', done: doneCount, total: totalUrls }); }
+      }
+    }, 12000);
+  });
+}
+
+// ── NAVIGATE SCRAPE TAB TO NEXT URL ──────────────────────────────────────
+function loadNextUrl() {
   if (!active || queue.length === 0) return;
   const url = queue.shift();
 
-  if (currentTab) {
-    chrome.tabs.get(currentTab, function(tab) {
-      if (chrome.runtime.lastError || !tab) {
-        // Tab was closed by user — open fresh
-        chrome.tabs.create({ url: url, active: true }, function(t) { currentTab = t.id; });
-      } else {
-        // Reuse same tab — navigate to next URL
-        chrome.tabs.update(currentTab, { url: url, active: true });
+  if (scrapeTabId) {
+    chrome.tabs.get(scrapeTabId, function(tab) {
+      if (chrome.runtime.lastError || !tab || tab.windowId !== scrapeWinId) {
+        // Tab or window gone — open fresh window
+        openScrapeWindow();
+        return;
       }
+      chrome.tabs.update(scrapeTabId, { url: url, active: true });
+      waitingForLoad = true;
+      // Safety timeout
+      setTimeout(function() {
+        if (waitingForLoad && active) {
+          waitingForLoad = false;
+          doneCount++;
+          notifyDashboard({ action: 'scrape_done', data: null, done: doneCount, total: totalUrls });
+          if (queue.length > 0) setTimeout(loadNextUrl, humanDelay());
+          else { active = false; notifyDashboard({ action: 'queue_finished', done: doneCount, total: totalUrls }); }
+        }
+      }, 12000);
     });
   } else {
-    chrome.tabs.create({ url: url, active: true }, function(t) { currentTab = t.id; });
+    openScrapeWindow();
   }
 }
 
+// ── NOTIFY DASHBOARD TABS ─────────────────────────────────────────────────
 function notifyDashboard(msg) {
   chrome.tabs.query({ url: 'https://davidbard1226.github.io/makro-buybox-pro/*' }, function(tabs) {
     tabs.forEach(function(t) {
       chrome.tabs.sendMessage(t.id, msg, function() {
-        // Swallow errors if dashboard tab is not listening
-        if (chrome.runtime.lastError) {}
+        if (chrome.runtime.lastError) {} // swallow
       });
     });
   });
 }
 
-// If user closes the scrape tab manually, stop the queue
-chrome.tabs.onRemoved.addListener(function(tabId) {
-  if (tabId === currentTab) {
-    currentTab = null;
+// ── CLEAN UP if scrape window is closed manually ──────────────────────────
+chrome.windows.onRemoved.addListener(function(winId) {
+  if (winId === scrapeWinId) {
+    scrapeWinId = null;
+    scrapeTabId = null;
     if (active) {
       active = false;
       queue  = [];

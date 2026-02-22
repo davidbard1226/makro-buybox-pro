@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "Makro BuyBox Pro Bridge",
+  "version": "4.0",
+  "description": "Scrapes Makro buy box data, syncs to dashboard, automates portal price uploads",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "tabs",
+    "windows"
+  ],
+  "host_permissions": [
+    "https://www.makro.co.za/*",
+    "https://davidbard1226.github.io/*",
+    "https://seller.makro.co.za/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://www.makro.co.za/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://davidbard1226.github.io/makro-buybox-pro/*"],
+      "js": ["bridge.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://seller.makro.co.za/*"],
+      "js": ["portal.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon16.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    }
+  }
+}

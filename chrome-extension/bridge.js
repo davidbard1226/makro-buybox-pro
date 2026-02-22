@@ -109,6 +109,17 @@
   window.addEventListener('message', function(ev) {
     if (!ev.data || !ev.data.type || dead) return;
 
+    if (ev.data.type === 'SAVE_PORTAL_FILE') {
+      safe(function() {
+        chrome.storage.local.set({
+          portal_upload_file: ev.data.base64,
+          portal_upload_filename: ev.data.filename
+        }, function() {
+          console.log('[Bridge] Portal file saved to chrome.storage:', ev.data.filename);
+        });
+      });
+    }
+
     if (ev.data.type === 'START_QUEUE') {
       safe(function() {
         chrome.runtime.sendMessage({ action: 'queue_scrape', urls: ev.data.urls }, function(resp) {

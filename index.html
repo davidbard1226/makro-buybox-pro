@@ -749,12 +749,14 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
             </button>
 
             <div style="font-size:11px; color:var(--muted); line-height:1.8; padding:12px; background:var(--surface2); border-radius:8px; border:1px solid var(--border)">
-              <strong style="color:var(--text)">How it works:</strong><br>
-              1. Paste Makro product URLs<br>
-              2. Extension opens each page in background<br>
-              3. Scrapes price + seller info<br>
-              4. Detects if you own the BuyBox<br>
-              5. Saves results to browser storage
+              <strong style="color:var(--accent)">✅ Separate window mode — bot-free</strong><br>
+              1. Paste Makro product URLs (one per line)<br>
+              2. A dedicated Chrome window opens automatically<br>
+              3. Each page loads as a real foreground tab<br>
+              4. Content script scrapes price + seller + FSN<br>
+              5. 4–9 second human delay between pages<br>
+              6. Results sync live to your dashboard<br>
+              7. Window closes automatically when done
             </div>
           </div>
         </div>
@@ -799,7 +801,8 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
             <div class="card-title" style="margin-bottom:14px">📋 LISTINGS FILE REQUIRED</div>
             <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Import your S_listing XLS first (Products tab → Import Listings). The price updater uses your current prices and FSN codes to generate the upload file.</p>
             <div id="pricerListingsStatus" style="font-size:13px;color:var(--muted);margin-bottom:16px">⏳ Checking listings...</div>
-            <button class="btn-primary" onclick="generatePriceUpdate()" id="generateBtn" style="width:100%">⬇ Generate Price Update File</button>
+          <button class="btn-primary" onclick="generatePriceUpdate()" id="generateBtn" style="width:100%;margin-bottom:8px">⬇ Generate & Download Price Update File</button>
+          <button class="btn-secondary" onclick="openPortalUpload()" id="portalUploadBtn" style="width:100%;display:none">🚀 Open Seller Portal — Auto Upload</button>
             <div id="pricerResult" style="margin-top:14px;font-size:12px;color:var(--muted)"></div>
           </div>
         </div>
@@ -1964,13 +1967,39 @@ function generatePriceUpdate() {
 
   const dateStr = new Date().toISOString().slice(0,10).replace(/-/g,'');
   const filename = 'S_listing_price_update_' + dateStr + '.xls';
+
+  // Write file as ArrayBuffer, convert to base64, save in chrome.storage for portal.js
+  const wbout = XLSX.write(wb, { bookType: 'xls', type: 'array' });
+  const base64 = btoa(String.fromCharCode.apply(null, new Uint8Array(wbout)));
+
+  // Save to localStorage so portal.js (via bridge storage) can access it
+  localStorage.setItem('portal_upload_file', base64);
+  localStorage.setItem('portal_upload_filename', filename);
+
+  // Also download for manual fallback
   XLSX.writeFile(wb, filename);
 
   document.getElementById('pricerResult').innerHTML =
-    '✅ <span style="color:var(--accent)">Downloaded <b>' + filename + '</b> — ' + updateRows.length + ' products updated.</span><br>' +
-    '<span style="color:var(--muted)">Upload this file in the seller portal under Products → Bulk Upload.</span>';
+    '✅ <span style="color:var(--accent)">Downloaded <b>' + filename + '</b> — ' + updateRows.length + ' products.</span><br>' +
+    '<span style="color:var(--muted)">Click <b>🚀 Open Seller Portal</b> to auto-upload, or upload manually in the portal.</span>';
 
+  document.getElementById('portalUploadBtn').style.display = 'block';
   buildPricerPreview();
+}
+
+function openPortalUpload() {
+  // Store file in chrome.storage.local so portal.js content script can read it
+  const base64 = localStorage.getItem('portal_upload_file');
+  const filename = localStorage.getItem('portal_upload_filename');
+  if (!base64) { alert('Generate a price update file first.'); return; }
+
+  // Bridge will forward this to chrome.storage via postMessage
+  window.postMessage({ type: 'SAVE_PORTAL_FILE', base64, filename }, '*');
+
+  // Open the portal My Listings page
+  setTimeout(function() {
+    window.open('https://seller.makro.co.za/listings/my-listings', '_blank');
+  }, 500);
 }
 </script>
 </body>
