@@ -1,0 +1,1642 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Makro BuyBox Pro</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10;
+    --surface: #111418;
+    --surface2: #181c22;
+    --border: #1e2530;
+    --accent: #00e5a0;
+    --accent2: #ff4d6d;
+    --accent3: #ffd60a;
+    --text: #e8eaf0;
+    --muted: #6b7280;
+    --win: #00e5a0;
+    --lose: #ff4d6d;
+    --warn: #ffd60a;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* GRID BACKGROUND */
+  body::before {
+    content:'';
+    position:fixed;
+    inset:0;
+    background-image:
+      linear-gradient(rgba(0,229,160,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,229,160,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events:none;
+    z-index:0;
+  }
+
+  #app { position:relative; z-index:1; display:flex; flex-direction:column; height:100vh; }
+
+  /* HEADER */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    display:flex;
+    align-items:center;
+    gap:24px;
+    height: 60px;
+    flex-shrink:0;
+  }
+
+  .logo {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 26px;
+    letter-spacing: 2px;
+    color: var(--accent);
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+
+  .logo-dot { width:8px; height:8px; background:var(--accent); border-radius:50%; box-shadow:0 0 10px var(--accent); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(1.3)} }
+
+  .ext-status {
+    margin-left:auto;
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-family:'Space Mono', monospace;
+    font-size:11px;
+    padding: 6px 14px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+  }
+
+  .ext-dot { width:7px; height:7px; border-radius:50%; background:var(--muted); }
+  .ext-dot.green { background:var(--accent); box-shadow:0 0 8px var(--accent); }
+  .ext-dot.red { background:var(--accent2); }
+
+  .seller-badge {
+    font-family:'Space Mono',monospace;
+    font-size:11px;
+    color:var(--accent3);
+    padding:5px 12px;
+    border:1px solid rgba(255,214,10,.3);
+    border-radius:20px;
+    background: rgba(255,214,10,.05);
+  }
+
+  /* NAV TABS */
+  nav {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    display:flex;
+    gap:4px;
+    flex-shrink:0;
+  }
+
+  .tab-btn {
+    background:none;
+    border:none;
+    color:var(--muted);
+    font-family:'DM Sans',sans-serif;
+    font-size:13px;
+    font-weight:500;
+    padding:14px 18px;
+    cursor:pointer;
+    position:relative;
+    transition: color .2s;
+  }
+
+  .tab-btn::after {
+    content:'';
+    position:absolute;
+    bottom:0; left:0; right:0;
+    height:2px;
+    background:var(--accent);
+    transform:scaleX(0);
+    transition: transform .2s;
+  }
+
+  .tab-btn.active { color:var(--text); }
+  .tab-btn.active::after { transform:scaleX(1); }
+  .tab-btn:hover { color:var(--text); }
+
+  .tab-badge {
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    background:var(--accent);
+    color:#000;
+    font-size:9px;
+    font-weight:700;
+    width:16px; height:16px;
+    border-radius:50%;
+    margin-left:6px;
+  }
+
+  /* CONTENT */
+  main { flex:1; overflow-y:auto; padding:24px; }
+
+  .tab-content { display:none; }
+  .tab-content.active { display:block; animation: fadeIn .3s ease; }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+
+  /* STAT CARDS */
+  .stats-grid {
+    display:grid;
+    grid-template-columns: repeat(4,1fr);
+    gap:16px;
+    margin-bottom:24px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius:12px;
+    padding:20px;
+    position:relative;
+    overflow:hidden;
+  }
+
+  .stat-card::before {
+    content:'';
+    position:absolute;
+    top:0; left:0; right:0;
+    height:2px;
+    background: linear-gradient(90deg, var(--accent), transparent);
+  }
+
+  .stat-card.red::before { background: linear-gradient(90deg, var(--accent2), transparent); }
+  .stat-card.yellow::before { background: linear-gradient(90deg, var(--accent3), transparent); }
+  .stat-card.blue::before { background: linear-gradient(90deg, #60a5fa, transparent); }
+
+  .stat-label { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px; }
+  .stat-value { font-family:'Bebas Neue',sans-serif; font-size:42px; line-height:1; color:var(--text); }
+  .stat-value.accent { color:var(--accent); }
+  .stat-value.red { color:var(--accent2); }
+  .stat-value.yellow { color:var(--accent3); }
+  .stat-sub { font-size:11px; color:var(--muted); margin-top:6px; }
+
+  /* CHART */
+  .chart-row { display:grid; grid-template-columns:1fr 320px; gap:16px; margin-bottom:24px; }
+
+  .card {
+    background: var(--surface);
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:20px;
+  }
+
+  .card-title {
+    font-family:'Space Mono',monospace;
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:2px;
+    color:var(--muted);
+    margin-bottom:16px;
+  }
+
+  /* WIN/LOSE DONUT */
+  .donut-wrap { display:flex; align-items:center; gap:24px; }
+  .donut-canvas { width:120px; height:120px; }
+  .donut-legend { flex:1; }
+  .legend-item { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+  .legend-dot { width:10px; height:10px; border-radius:2px; flex-shrink:0; }
+  .legend-label { font-size:13px; color:var(--text); }
+  .legend-val { margin-left:auto; font-family:'Space Mono',monospace; font-size:12px; font-weight:700; }
+
+  /* BAR CHART */
+  .bar-chart { display:flex; flex-direction:column; gap:8px; }
+  .bar-row { display:flex; align-items:center; gap:10px; }
+  .bar-label { font-size:12px; color:var(--muted); width:100px; text-align:right; flex-shrink:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .bar-track { flex:1; height:22px; background:var(--surface2); border-radius:4px; overflow:hidden; }
+  .bar-fill { height:100%; border-radius:4px; transition:width .8s ease; display:flex; align-items:center; justify-content:flex-end; padding-right:6px; }
+  .bar-fill-val { font-size:10px; font-family:'Space Mono',monospace; }
+
+  /* PRODUCT TABLE */
+  .product-table { width:100%; border-collapse:collapse; }
+  .product-table th {
+    font-family:'Space Mono',monospace;
+    font-size:10px;
+    text-transform:uppercase;
+    letter-spacing:1px;
+    color:var(--muted);
+    padding:10px 12px;
+    text-align:left;
+    border-bottom:1px solid var(--border);
+  }
+  .product-table td { padding:12px 12px; border-bottom:1px solid rgba(30,37,48,.5); vertical-align:middle; }
+  .product-table tr:hover td { background:rgba(0,229,160,.03); }
+  .product-table tr:last-child td { border:none; }
+
+  .prod-title { font-size:13px; font-weight:500; line-height:1.4; max-width:280px; }
+  .prod-url { font-size:11px; color:var(--accent); text-decoration:none; display:block; font-family:'Space Mono',monospace; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:200px; }
+  .prod-url:hover { text-decoration:underline; }
+
+  .price-cell { font-family:'Space Mono',monospace; font-size:14px; font-weight:700; }
+  .price-cell.win { color:var(--accent); }
+  .price-cell.lose { color:var(--accent2); }
+
+  .status-pill {
+    display:inline-flex;
+    align-items:center;
+    gap:5px;
+    padding:3px 10px;
+    border-radius:20px;
+    font-size:11px;
+    font-weight:600;
+    font-family:'Space Mono',monospace;
+  }
+
+  .status-pill.win { background:rgba(0,229,160,.1); color:var(--accent); border:1px solid rgba(0,229,160,.2); }
+  .status-pill.lose { background:rgba(255,77,109,.1); color:var(--accent2); border:1px solid rgba(255,77,109,.2); }
+  .status-pill.unknown { background:rgba(107,114,128,.1); color:var(--muted); border:1px solid rgba(107,114,128,.2); }
+
+  .action-btn {
+    background: none;
+    border:1px solid var(--border);
+    color:var(--muted);
+    padding:4px 10px;
+    border-radius:6px;
+    font-size:11px;
+    cursor:pointer;
+    transition: all .2s;
+  }
+  .action-btn:hover { border-color:var(--accent); color:var(--accent); }
+  .action-btn.danger:hover { border-color:var(--accent2); color:var(--accent2); }
+
+  /* SCRAPER TAB */
+  .scraper-layout { display:grid; grid-template-columns:1fr 360px; gap:20px; }
+
+  .url-input-area {
+    background:var(--surface2);
+    border:1px solid var(--border);
+    border-radius:8px;
+    width:100%;
+    height:220px;
+    color:var(--text);
+    font-family:'Space Mono',monospace;
+    font-size:12px;
+    padding:14px;
+    resize:vertical;
+    outline:none;
+    line-height:1.8;
+  }
+  .url-input-area:focus { border-color:var(--accent); }
+  .url-input-area::placeholder { color:var(--muted); }
+
+  .scraper-config { display:flex; flex-direction:column; gap:14px; }
+  
+  .config-field label { display:block; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:6px; }
+  
+  .config-input {
+    background:var(--surface2);
+    border:1px solid var(--border);
+    border-radius:6px;
+    color:var(--text);
+    font-family:'DM Sans',sans-serif;
+    font-size:13px;
+    padding:9px 12px;
+    width:100%;
+    outline:none;
+  }
+  .config-input:focus { border-color:var(--accent); }
+
+  .btn-primary {
+    background: var(--accent);
+    color:#000;
+    border:none;
+    border-radius:8px;
+    padding:12px 24px;
+    font-family:'DM Sans',sans-serif;
+    font-size:14px;
+    font-weight:600;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    transition: all .2s;
+    width:100%;
+  }
+  .btn-primary:hover { background:#00ffb0; transform:translateY(-1px); }
+  .btn-primary:disabled { background:var(--muted); cursor:not-allowed; transform:none; }
+
+  .btn-secondary {
+    background: none;
+    color:var(--text);
+    border:1px solid var(--border);
+    border-radius:8px;
+    padding:10px 20px;
+    font-family:'DM Sans',sans-serif;
+    font-size:13px;
+    font-weight:500;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    gap:8px;
+    transition: all .2s;
+    width:100%;
+    justify-content:center;
+  }
+  .btn-secondary:hover { border-color:var(--accent); color:var(--accent); }
+
+  /* PROGRESS */
+  .progress-section { margin-top:16px; }
+  .progress-track { background:var(--surface2); border-radius:4px; height:6px; overflow:hidden; }
+  .progress-fill { height:100%; background:var(--accent); border-radius:4px; transition:width .3s; box-shadow:0 0 10px var(--accent); }
+  .progress-label { font-family:'Space Mono',monospace; font-size:11px; color:var(--muted); margin-bottom:6px; display:flex; justify-content:space-between; }
+
+  /* SCRAPE LOG */
+  .scrape-log {
+    margin-top:16px;
+    background:var(--bg);
+    border:1px solid var(--border);
+    border-radius:8px;
+    padding:12px 14px;
+    height:200px;
+    overflow-y:auto;
+    font-family:'Space Mono',monospace;
+    font-size:11px;
+    line-height:1.9;
+  }
+
+  .log-line { display:flex; gap:10px; }
+  .log-time { color:var(--muted); flex-shrink:0; }
+  .log-ok { color:var(--accent); }
+  .log-err { color:var(--accent2); }
+  .log-info { color:var(--accent3); }
+
+  /* ANALYTICS */
+  .analytics-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .analytics-full { grid-column:1/-1; }
+
+  .timeline-wrap { overflow-x:auto; }
+  .timeline-chart { min-width:600px; }
+
+  /* EMPTY STATE */
+  .empty-state {
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    padding:60px 20px;
+    text-align:center;
+    gap:12px;
+  }
+  .empty-icon { font-size:48px; opacity:.3; }
+  .empty-title { font-family:'Bebas Neue',sans-serif; font-size:28px; color:var(--muted); }
+  .empty-text { font-size:13px; color:var(--muted); max-width:300px; }
+
+  /* IMPORT/EXPORT ROW */
+  .toolbar {
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-bottom:20px;
+  }
+
+  .toolbar-right { margin-left:auto; display:flex; gap:8px; }
+
+  .filter-input {
+    background:var(--surface2);
+    border:1px solid var(--border);
+    border-radius:6px;
+    color:var(--text);
+    font-size:13px;
+    padding:8px 14px;
+    outline:none;
+    width:220px;
+  }
+  .filter-input:focus { border-color:var(--accent); }
+
+  .filter-select {
+    background:var(--surface2);
+    border:1px solid var(--border);
+    border-radius:6px;
+    color:var(--text);
+    font-size:13px;
+    padding:8px 12px;
+    outline:none;
+    cursor:pointer;
+  }
+
+  /* EXT OFFLINE BANNER */
+  #ext-banner {
+    background: rgba(255,77,109,.08);
+    border:1px solid rgba(255,77,109,.2);
+    border-radius:8px;
+    padding:12px 16px;
+    margin-bottom:20px;
+    font-size:13px;
+    color:var(--accent2);
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+
+  /* RESPONSIVE TABLE WRAPPER */
+  .table-wrap { overflow-x:auto; }
+
+  /* MODAL */
+  .modal-backdrop {
+    position:fixed; inset:0;
+    background:rgba(0,0,0,.7);
+    backdrop-filter:blur(4px);
+    z-index:100;
+    display:none;
+    align-items:center;
+    justify-content:center;
+  }
+  .modal-backdrop.show { display:flex; }
+  .modal {
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:16px;
+    padding:28px;
+    width:480px;
+    max-width:90vw;
+  }
+  .modal h3 { font-family:'Bebas Neue',sans-serif; font-size:24px; margin-bottom:8px; }
+  .modal p { font-size:13px; color:var(--muted); margin-bottom:20px; line-height:1.6; }
+  .modal-actions { display:flex; gap:10px; justify-content:flex-end; }
+
+  /* TOOLTIPS */
+  [data-tip] { position:relative; cursor:help; }
+  [data-tip]::after {
+    content: attr(data-tip);
+    position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%);
+    background:#1e2530;
+    border:1px solid var(--border);
+    color:var(--text);
+    font-size:11px;
+    padding:5px 10px;
+    border-radius:6px;
+    white-space:nowrap;
+    opacity:0;
+    pointer-events:none;
+    transition:opacity .15s;
+    z-index:50;
+  }
+  [data-tip]:hover::after { opacity:1; }
+
+  /* SELLER NAME EDIT */
+  .seller-edit-wrap { display:flex; align-items:center; gap:8px; }
+  .seller-name-input { background:transparent; border:none; color:var(--accent3); font-family:'Space Mono',monospace; font-size:11px; width:120px; outline:none; cursor:pointer; }
+  .seller-name-input:focus { border-bottom:1px solid var(--accent3); cursor:text; }
+
+  /* CANVAS WRAPPER */
+  canvas { display:block; }
+
+  /* SCROLLBAR */
+  ::-webkit-scrollbar { width:6px; height:6px; }
+  ::-webkit-scrollbar-track { background:var(--bg); }
+  ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+  ::-webkit-scrollbar-thumb:hover { background:var(--muted); }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <!-- HEADER -->
+  <header>
+    <div class="logo">
+      <div class="logo-dot"></div>
+      MAKRO BUYBOX PRO
+    </div>
+
+    <div class="seller-badge">
+      MY SELLER: <input id="sellerNameInput" class="seller-name-input" value="BonoloOnline" title="Click to edit your seller name">
+    </div>
+
+    <div class="ext-status" id="extStatus">
+      <div class="ext-dot" id="extDot"></div>
+      <span id="extLabel">Extension offline</span>
+    </div>
+  </header>
+
+  <!-- NAV -->
+  <nav>
+    <button class="tab-btn active" onclick="switchTab('dashboard')">📊 Dashboard</button>
+    <button class="tab-btn" onclick="switchTab('products')">📦 Products <span class="tab-badge" id="prodCount">0</span></button>
+    <button class="tab-btn" onclick="switchTab('scraper')">⚡ Scraper</button>
+    <button class="tab-btn" onclick="switchTab('analytics')">📈 Analytics</button>
+  </nav>
+
+  <!-- MAIN -->
+  <main>
+
+    <!-- ========== DASHBOARD TAB ========== -->
+    <div class="tab-content active" id="tab-dashboard">
+
+      <div id="extBannerDash" class="empty-state" style="display:none">
+        <div class="empty-icon">🔌</div>
+        <div class="empty-title">Extension Not Detected</div>
+        <div class="empty-text">Install the Makro Pro Scraper Chrome extension to use this dashboard. Waiting for connection...</div>
+      </div>
+
+      <div id="dashContent">
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-label">Total Products</div>
+            <div class="stat-value accent" id="s-total">0</div>
+            <div class="stat-sub">tracked products</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">BuyBox Wins</div>
+            <div class="stat-value accent" id="s-wins">0</div>
+            <div class="stat-sub" id="s-win-pct">—% win rate</div>
+          </div>
+          <div class="stat-card red">
+            <div class="stat-label">BuyBox Losses</div>
+            <div class="stat-value red" id="s-losses">0</div>
+            <div class="stat-sub" id="s-loss-pct">—% loss rate</div>
+          </div>
+          <div class="stat-card yellow">
+            <div class="stat-label">Last Scraped</div>
+            <div class="stat-value yellow" id="s-lastscrape" style="font-size:22px;padding-top:8px">Never</div>
+            <div class="stat-sub" id="s-lastscrape-sub"></div>
+          </div>
+        </div>
+
+        <div class="chart-row">
+          <!-- WIN/LOSE BAR CHART -->
+          <div class="card">
+            <div class="card-title">Buy Box Status — All Products</div>
+            <div id="statusBarChart" class="bar-chart"></div>
+            <div id="emptyBarChart" class="empty-state" style="padding:20px">
+              <div class="empty-text">No products scraped yet. Use the Scraper tab to add products.</div>
+            </div>
+          </div>
+
+          <!-- DONUT -->
+          <div class="card">
+            <div class="card-title">Win Rate</div>
+            <div class="donut-wrap">
+              <canvas class="donut-canvas" id="donutCanvas" width="120" height="120"></canvas>
+              <div class="donut-legend">
+                <div class="legend-item">
+                  <div class="legend-dot" style="background:var(--accent)"></div>
+                  <span class="legend-label">Winning</span>
+                  <span class="legend-val accent" id="leg-win" style="color:var(--accent)">0</span>
+                </div>
+                <div class="legend-item">
+                  <div class="legend-dot" style="background:var(--accent2)"></div>
+                  <span class="legend-label">Losing</span>
+                  <span class="legend-val" id="leg-lose" style="color:var(--accent2)">0</span>
+                </div>
+                <div class="legend-item">
+                  <div class="legend-dot" style="background:var(--muted)"></div>
+                  <span class="legend-label">Unknown</span>
+                  <span class="legend-val" id="leg-unk" style="color:var(--muted)">0</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- RECENT ACTIVITY -->
+        <div class="card">
+          <div class="card-title">Recent Activity</div>
+          <div id="recentList">
+            <div class="empty-state" style="padding:20px">
+              <div class="empty-text">No activity yet.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /dashboard -->
+
+    <!-- ========== PRODUCTS TAB ========== -->
+    <div class="tab-content" id="tab-products">
+
+      <div class="toolbar">
+        <input class="filter-input" id="prodSearch" placeholder="🔍 Search products..." oninput="renderProducts()">
+        <select class="filter-select" id="prodFilter" onchange="renderProducts()">
+          <option value="all">All Status</option>
+          <option value="win">Winning</option>
+          <option value="lose">Losing</option>
+          <option value="unknown">Unknown</option>
+        </select>
+        <div class="toolbar-right">
+          <button class="btn-secondary" style="width:auto;padding:8px 16px" onclick="exportCSV()">⬇ Export CSV</button>
+          <button class="btn-secondary" style="width:auto;padding:8px 16px" onclick="clearAllConfirm()">🗑 Clear All</button>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table class="product-table">
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th>Buy Box Price</th>
+              <th>Seller</th>
+              <th>Status</th>
+              <th>Last Checked</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="productsBody">
+            <tr><td colspan="6">
+              <div class="empty-state">
+                <div class="empty-icon">📦</div>
+                <div class="empty-title">No Products Yet</div>
+                <div class="empty-text">Paste Makro product URLs in the Scraper tab to get started.</div>
+              </div>
+            </td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div><!-- /products -->
+
+    <!-- ========== SCRAPER TAB ========== -->
+    <div class="tab-content" id="tab-scraper">
+
+      <div id="scraperExtBanner" style="display:none" class="empty-state">
+        <div class="empty-icon">🔌</div>
+        <div class="empty-title">Extension Offline</div>
+        <div class="empty-text">The Makro Pro Scraper extension must be installed and enabled. Waiting for connection...</div>
+      </div>
+
+      <div id="scraperReady">
+        <div class="scraper-layout">
+          <div>
+            <div class="card-title" style="margin-bottom:10px">PASTE MAKRO PRODUCT URLs</div>
+            <textarea id="urlInput" class="url-input-area" placeholder="https://www.makro.co.za/electronics/televisions/p/itmxxxxxxxx
+https://www.makro.co.za/appliances/p/itmxxxxxxxx
+https://www.makro.co.za/...
+
+One URL per line. Minimum: makro.co.za product pages."></textarea>
+            <div style="margin-top:8px; display:flex; justify-content:space-between; align-items:center">
+              <span id="urlCount" style="font-size:12px;color:var(--muted)">0 URLs detected</span>
+              <button class="action-btn" onclick="clearUrlInput()">Clear</button>
+            </div>
+
+            <div class="progress-section" id="progressSection" style="display:none">
+              <div class="progress-label">
+                <span id="progressText">Scraping...</span>
+                <span id="progressPct">0%</span>
+              </div>
+              <div class="progress-track">
+                <div class="progress-fill" id="progressFill" style="width:0%"></div>
+              </div>
+            </div>
+
+            <div class="scrape-log" id="scrapeLog">
+              <div class="log-line"><span class="log-time">&nbsp;</span><span class="log-info">Ready. Paste URLs and click Start Scraping.</span></div>
+            </div>
+          </div>
+
+          <div class="scraper-config">
+            <div class="config-field">
+              <label>My Seller Name (for BuyBox detection)</label>
+              <input class="config-input" id="sellerNameConfig" placeholder="e.g. BonoloOnline">
+            </div>
+
+            <div class="config-field">
+              <label>Mode</label>
+              <select class="config-input" id="scrapeMode">
+                <option value="add">Add / update products</option>
+                <option value="replace">Replace all data</option>
+              </select>
+            </div>
+
+            <div style="padding:14px; background:var(--surface2); border-radius:8px; border:1px solid var(--border)">
+              <div style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px">Extension Status</div>
+              <div style="display:flex; align-items:center; gap:8px; font-size:13px" id="scraperExtStatus">
+                <div style="width:8px;height:8px;border-radius:50%;background:var(--muted)" id="scraperDot"></div>
+                <span id="scraperExtLabel">Waiting for extension...</span>
+              </div>
+            </div>
+
+            <button class="btn-primary" id="startBtn" onclick="startScraping()" disabled>
+              ⚡ Start Scraping
+            </button>
+
+            <button class="btn-secondary" id="stopBtn" onclick="stopScraping()" style="display:none">
+              ⏹ Stop
+            </button>
+
+            <button class="btn-secondary" onclick="loadSampleUrls()">
+              📋 Load Sample URLs
+            </button>
+
+            <div style="font-size:11px; color:var(--muted); line-height:1.8; padding:12px; background:var(--surface2); border-radius:8px; border:1px solid var(--border)">
+              <strong style="color:var(--text)">How it works:</strong><br>
+              1. Paste Makro product URLs<br>
+              2. Extension opens each page in background<br>
+              3. Scrapes price + seller info<br>
+              4. Detects if you own the BuyBox<br>
+              5. Saves results to browser storage
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /scraper -->
+
+    <!-- ========== ANALYTICS TAB ========== -->
+    <div class="tab-content" id="tab-analytics">
+
+      <div class="analytics-grid">
+
+        <div class="card">
+          <div class="card-title">Price Distribution</div>
+          <canvas id="priceChart" height="180"></canvas>
+          <div id="emptyPriceChart" class="empty-state" style="padding:20px; display:none">
+            <div class="empty-text">No data yet</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Win/Loss Over Time</div>
+          <canvas id="trendChart" height="180"></canvas>
+          <div id="emptyTrendChart" class="empty-state" style="padding:20px; display:none">
+            <div class="empty-text">Scrape products to see trends</div>
+          </div>
+        </div>
+
+        <div class="card analytics-full">
+          <div class="card-title">Price Comparison — My Price vs Buybox Price</div>
+          <div id="priceCompBar" class="bar-chart"></div>
+          <div id="emptyPriceComp" class="empty-state" style="padding:20px; display:none">
+            <div class="empty-text">No products with price data yet</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Competitor Breakdown</div>
+          <div id="compBreakdown"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Summary Stats</div>
+          <div id="summaryStats" style="display:flex; flex-direction:column; gap:12px; padding-top:4px"></div>
+        </div>
+
+      </div>
+    </div><!-- /analytics -->
+
+  </main>
+</div>
+
+<!-- CLEAR CONFIRM MODAL -->
+<div class="modal-backdrop" id="clearModal">
+  <div class="modal">
+    <h3>⚠️ Clear All Products?</h3>
+    <p>This will permanently delete all <span id="clearCount">0</span> scraped products from local storage. This cannot be undone.</p>
+    <div class="modal-actions">
+      <button class="btn-secondary" style="width:auto" onclick="document.getElementById('clearModal').classList.remove('show')">Cancel</button>
+      <button class="btn-primary" style="width:auto;background:var(--accent2)" onclick="clearAll()">Delete All</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// STATE
+// ============================================================
+const STORAGE_KEY = 'makro_buybox_v2';
+const SELLER_KEY  = 'makro_seller_name';
+
+let state = {
+  products: [],     // [{url, fsn, title, buybox_price, seller, status, lastChecked, history:[]}]
+  scraping: false,
+  extReady: false,
+  stopRequested: false,
+};
+
+let extensionId = null;
+
+// ============================================================
+// STORAGE
+// ============================================================
+function saveProducts() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state.products)); } catch(e) {}
+}
+
+function loadProducts() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) state.products = JSON.parse(raw);
+  } catch(e) { state.products = []; }
+}
+
+function getMySellerName() {
+  return document.getElementById('sellerNameInput').value.trim() || 'BonoloOnline';
+}
+
+function reEvaluateStatuses() {
+  const myName = getMySellerName().toLowerCase().trim();
+  state.products.forEach(function(p) {
+    if (!p.seller || p.seller === 'Unknown Seller') {
+      p.status = 'unknown';
+    } else {
+      const s = p.seller.toLowerCase();
+      p.status = (s.includes(myName) || myName.includes(s.substring(0,6))) ? 'win' : 'lose';
+    }
+  });
+}
+
+// ============================================================
+// EXTENSION BRIDGE
+// ============================================================
+// This page is loaded directly (not inside an iframe!)
+// So the extension-bridge.js injects and postMessages directly to window.
+
+window.addEventListener('message', function(ev) {
+  var d = ev.data;
+  if (!d || !d.type) return;
+
+  if (d.type === 'MAKRO_EXTENSION_READY') {
+    if (!state.extReady) {
+      state.extReady = true;
+      extensionId = d.extensionId || null;
+      log('info', 'Extension connected' + (extensionId ? ' (id: ' + extensionId.slice(0,8) + '...)' : ''));
+    }
+    setExtStatus(true);
+    return;
+  }
+
+  if (d.type === 'PRODUCTS_UPDATED') {
+    // Bridge wrote new products to localStorage — reload state and re-render
+    loadProducts();
+    reEvaluateStatuses();
+    saveProducts();
+    updateProductCount();
+    renderDashboard();
+    renderProducts();
+    return;
+  }
+
+  if (d.type === 'SCRAPE_RESULT') {
+    handleScrapeResult(d);
+    return;
+  }
+
+  if (d.type === 'SCRAPE_RESULTS') {
+    handleBulkResults(d);
+    return;
+  }
+
+  if (d.type === 'SCRAPE_PROGRESS') {
+    updateProgress(d.current, d.total);
+    return;
+  }
+});
+
+// Also check via chrome.runtime if available (same page)
+function pingExtension() {
+  // We rely on extension-bridge.js announcing via postMessage
+  // but also request on load
+  try {
+    window.postMessage({ type: 'REQUEST_EXTENSION' }, '*');
+  } catch(e) {}
+}
+
+// ============================================================
+// EXT STATUS UI
+// ============================================================
+function setExtStatus(online) {
+  state.extReady = online;
+  document.getElementById('extDot').className = 'ext-dot ' + (online ? 'green' : 'red');
+  document.getElementById('extLabel').textContent = online ? 'Extension connected' : 'Extension offline';
+  document.getElementById('scraperDot').style.background = online ? 'var(--accent)' : 'var(--muted)';
+  document.getElementById('scraperExtLabel').textContent = online ? '✓ Connected — ready to scrape' : 'Waiting for extension...';
+  document.getElementById('startBtn').disabled = !online;
+  document.getElementById('scraperExtBanner').style.display = online ? 'none' : 'block';
+  document.getElementById('scraperReady').style.display = 'flex';
+  document.getElementById('scraperReady').style.flexDirection = online ? '' : 'none';
+  // Show scraper layout regardless; just disable the button
+  document.getElementById('scraperReady').style.display = 'block';
+}
+
+// ============================================================
+// TABS
+// ============================================================
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach((b,i) => {
+    const names = ['dashboard','products','scraper','analytics'];
+    b.classList.toggle('active', names[i] === name);
+  });
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  if (name === 'dashboard') renderDashboard();
+  if (name === 'products') renderProducts();
+  if (name === 'analytics') renderAnalytics();
+  if (name === 'scraper') syncSellerConfig();
+}
+
+function syncSellerConfig() {
+  document.getElementById('sellerNameConfig').value = getMySellerName();
+}
+
+// ============================================================
+// SCRAPER
+// ============================================================
+let scrapeQueue = [];
+let scrapeIdx = 0;
+let requestIdCounter = 0;
+let pendingRequests = {};
+
+function parseUrls() {
+  const raw = document.getElementById('urlInput').value;
+  return raw.split('\n')
+    .map(l => l.trim())
+    .filter(l => l.startsWith('http') && l.includes('makro.co.za'));
+}
+
+document.getElementById('urlInput').addEventListener('input', function() {
+  const urls = parseUrls();
+  document.getElementById('urlCount').textContent = urls.length + ' URL' + (urls.length !== 1 ? 's' : '') + ' detected';
+});
+
+function clearUrlInput() {
+  document.getElementById('urlInput').value = '';
+  document.getElementById('urlCount').textContent = '0 URLs detected';
+}
+
+function loadSampleUrls() {
+  document.getElementById('urlInput').value =
+    'https://www.makro.co.za/electronics/televisions/43-uhd-4k-smart-tv/p/itmSAMSUNG43TV\n' +
+    'https://www.makro.co.za/appliances/refrigerators/side-by-side-fridge/p/itmLG600LSBS\n' +
+    'https://www.makro.co.za/computing/laptops/15-6-laptop/p/itmDELL15LAPTOP';
+  document.getElementById('urlCount').textContent = '3 URLs detected (samples)';
+}
+
+function startScraping() {
+  if (!state.extReady) { alert('Extension not connected. Please install the Makro Pro Scraper extension.'); return; }
+  const urls = parseUrls();
+  if (urls.length === 0) { alert('No valid Makro URLs found. Please paste at least one makro.co.za product URL.'); return; }
+
+  // Update seller from config
+  const configSeller = document.getElementById('sellerNameConfig').value.trim();
+  if (configSeller) document.getElementById('sellerNameInput').value = configSeller;
+
+  state.scraping = true;
+  state.stopRequested = false;
+  scrapeQueue = [...urls];
+  scrapeIdx = 0;
+
+  document.getElementById('startBtn').style.display = 'none';
+  document.getElementById('stopBtn').style.display = 'flex';
+  document.getElementById('progressSection').style.display = 'block';
+  clearLog();
+  log('info', 'Starting scrape of ' + urls.length + ' URLs...');
+  log('info', 'Seller: ' + getMySellerName());
+
+  scrapeNext();
+}
+
+function stopScraping() {
+  state.stopRequested = true;
+  log('info', 'Stop requested — finishing current item...');
+}
+
+function scrapeNext() {
+  if (state.stopRequested || scrapeIdx >= scrapeQueue.length) {
+    finishScraping();
+    return;
+  }
+
+  const url = scrapeQueue[scrapeIdx];
+  const reqId = 'req_' + (++requestIdCounter);
+  updateProgress(scrapeIdx, scrapeQueue.length);
+  log('info', '[' + (scrapeIdx+1) + '/' + scrapeQueue.length + '] Scraping: ' + shortUrl(url));
+
+  pendingRequests[reqId] = { url, idx: scrapeIdx };
+
+  // Send to extension via postMessage
+  window.postMessage({
+    type: 'DASHBOARD_SCRAPE_URL',
+    url: url,
+    requestId: reqId
+  }, '*');
+
+  // Timeout per URL
+  setTimeout(function() {
+    if (pendingRequests[reqId]) {
+      delete pendingRequests[reqId];
+      log('err', 'Timeout for: ' + shortUrl(url));
+      scrapeIdx++;
+      scrapeNext();
+    }
+  }, 40000);
+}
+
+function handleScrapeResult(d) {
+  const req = pendingRequests[d.requestId];
+  if (!req) return;
+  delete pendingRequests[d.requestId];
+
+  const url = req.url;
+  const result = d.result || {};
+
+  if (d.success && result.success) {
+    const seller = result.seller_name || result.seller || 'Unknown';
+    const price = parseFloat(result.buybox_price || result.currentPrice || 0);
+    const myName = getMySellerName().toLowerCase().trim();
+    const isWin = seller.toLowerCase().includes(myName) || myName.includes(seller.toLowerCase().replace(/\s+/g,'').substring(0,6));
+    const status = seller === 'Unknown Seller' ? 'unknown' : (isWin ? 'win' : 'lose');
+
+    const existing = state.products.find(p => p.url === url || p.fsn === result.fsn);
+
+    if (existing) {
+      existing.buybox_price = price;
+      existing.seller = seller;
+      existing.status = status;
+      existing.lastChecked = new Date().toISOString();
+      existing.title = result.title || existing.title;
+      existing.history = existing.history || [];
+      existing.history.push({ price, seller, status, ts: new Date().toISOString() });
+      if (existing.history.length > 30) existing.history.shift();
+    } else {
+      state.products.push({
+        url,
+        fsn: result.fsn || '',
+        title: result.title || url,
+        buybox_price: price,
+        seller,
+        status,
+        lastChecked: new Date().toISOString(),
+        history: [{ price, seller, status, ts: new Date().toISOString() }]
+      });
+    }
+
+    saveProducts();
+    log('ok', (isWin ? '✓ WIN ' : '✗ LOSE') + ' | R' + price.toFixed(2) + ' | ' + seller + ' | ' + (result.title || '').slice(0,40));
+  } else {
+    log('err', 'Failed: ' + shortUrl(url) + ' — ' + (d.error || result.error || 'unknown error'));
+  }
+
+  scrapeIdx++;
+  updateProgress(scrapeIdx, scrapeQueue.length);
+
+  // Small delay between scrapes
+  setTimeout(scrapeNext, 800);
+}
+
+function handleBulkResults(d) {
+  // Not used in sequential mode but keep for compat
+}
+
+function finishScraping() {
+  state.scraping = false;
+  state.stopRequested = false;
+  document.getElementById('startBtn').style.display = 'flex';
+  document.getElementById('stopBtn').style.display = 'none';
+  updateProgress(scrapeQueue.length, scrapeQueue.length);
+  log('info', '✓ Done. ' + state.products.length + ' total products in database.');
+  updateProductCount();
+  renderDashboard();
+  localStorage.setItem('makro_last_scrape', new Date().toISOString());
+}
+
+// ============================================================
+// PROGRESS + LOG
+// ============================================================
+function updateProgress(current, total) {
+  const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressPct').textContent = pct + '%';
+  document.getElementById('progressText').textContent = 'Scraping ' + current + ' / ' + total;
+}
+
+function log(type, msg) {
+  const el = document.getElementById('scrapeLog');
+  const now = new Date().toTimeString().slice(0,8);
+  const line = document.createElement('div');
+  line.className = 'log-line';
+  line.innerHTML = '<span class="log-time">' + now + '</span><span class="log-' + type + '">' + escHtml(msg) + '</span>';
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+function clearLog() {
+  document.getElementById('scrapeLog').innerHTML = '';
+}
+
+function shortUrl(url) {
+  try { return new URL(url).pathname.split('/').filter(Boolean).pop() || url; } catch(e) { return url; }
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ============================================================
+// DASHBOARD
+// ============================================================
+function renderDashboard() {
+  const prods = state.products;
+  const wins = prods.filter(p => p.status === 'win').length;
+  const loses = prods.filter(p => p.status === 'lose').length;
+  const unk = prods.filter(p => p.status === 'unknown' || !p.status).length;
+  const total = prods.length;
+  const winPct = total > 0 ? Math.round((wins/total)*100) : 0;
+
+  document.getElementById('s-total').textContent = total;
+  document.getElementById('s-wins').textContent = wins;
+  document.getElementById('s-losses').textContent = loses;
+  document.getElementById('s-win-pct').textContent = winPct + '% win rate';
+  document.getElementById('s-loss-pct').textContent = total > 0 ? Math.round((loses/total)*100) + '% loss rate' : '—% loss rate';
+
+  const lastScrape = localStorage.getItem('makro_last_scrape');
+  if (lastScrape) {
+    const d = new Date(lastScrape);
+    document.getElementById('s-lastscrape').textContent = d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+    document.getElementById('s-lastscrape-sub').textContent = d.toLocaleDateString();
+  }
+
+  // Donut
+  drawDonut(wins, loses, unk);
+  document.getElementById('leg-win').textContent = wins;
+  document.getElementById('leg-lose').textContent = loses;
+  document.getElementById('leg-unk').textContent = unk;
+
+  // Bar chart (product statuses)
+  const barWrap = document.getElementById('statusBarChart');
+  const emptyBar = document.getElementById('emptyBarChart');
+  if (total === 0) {
+    barWrap.style.display = 'none';
+    emptyBar.style.display = 'flex';
+  } else {
+    barWrap.style.display = 'flex';
+    emptyBar.style.display = 'none';
+    barWrap.innerHTML = prods.slice(0,10).map(p => {
+      const color = p.status === 'win' ? 'var(--accent)' : p.status === 'lose' ? 'var(--accent2)' : 'var(--muted)';
+      const maxPrice = Math.max(...prods.map(x => x.buybox_price || 0), 1);
+      const pct = ((p.buybox_price || 0) / maxPrice * 100).toFixed(1);
+      return `<div class="bar-row">
+        <div class="bar-label" title="${escHtml(p.title)}">${escHtml((p.title||'Unknown').slice(0,18))}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${color}">
+          <span class="bar-fill-val" style="color:#000;font-size:9px">R${(p.buybox_price||0).toFixed(0)}</span>
+        </div></div>
+      </div>`;
+    }).join('');
+  }
+
+  // Recent activity
+  const recents = [...prods]
+    .filter(p => p.lastChecked)
+    .sort((a,b) => new Date(b.lastChecked) - new Date(a.lastChecked))
+    .slice(0, 8);
+
+  const recentEl = document.getElementById('recentList');
+  if (recents.length === 0) {
+    recentEl.innerHTML = '<div class="empty-state" style="padding:20px"><div class="empty-text">No activity yet.</div></div>';
+  } else {
+    recentEl.innerHTML = recents.map(p => {
+      const color = p.status === 'win' ? 'var(--accent)' : p.status === 'lose' ? 'var(--accent2)' : 'var(--muted)';
+      const icon = p.status === 'win' ? '✓' : p.status === 'lose' ? '✗' : '?';
+      const t = new Date(p.lastChecked).toLocaleString();
+      return `<div style="display:flex;align-items:center;gap:14px;padding:10px 0;border-bottom:1px solid var(--border)">
+        <div style="width:26px;height:26px;border-radius:50%;background:${color};color:#000;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex-shrink:0">${icon}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(p.title||p.url)}</div>
+          <div style="font-size:11px;color:var(--muted)">${escHtml(p.seller||'?')} · ${t}</div>
+        </div>
+        <div style="font-family:'Space Mono',monospace;font-size:13px;font-weight:700;color:${color}">R${(p.buybox_price||0).toFixed(2)}</div>
+      </div>`;
+    }).join('');
+  }
+}
+
+function drawDonut(wins, loses, unk) {
+  const canvas = document.getElementById('donutCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = 120, H = 120, cx = 60, cy = 60, r = 44, stroke = 16;
+  ctx.clearRect(0,0,W,H);
+
+  const total = wins + loses + unk || 1;
+  const slices = [
+    { val: wins, color: '#00e5a0' },
+    { val: loses, color: '#ff4d6d' },
+    { val: unk, color: '#6b7280' },
+  ];
+
+  let start = -Math.PI / 2;
+  slices.forEach(s => {
+    if (s.val === 0) return;
+    const angle = (s.val / total) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, start, start + angle);
+    ctx.strokeStyle = s.color;
+    ctx.lineWidth = stroke;
+    ctx.stroke();
+    start += angle;
+  });
+
+  // Center text
+  ctx.fillStyle = '#e8eaf0';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = 'bold 18px "Bebas Neue", sans-serif';
+  ctx.fillText(Math.round((wins/total)*100) + '%', cx, cy - 6);
+  ctx.font = '10px "DM Sans", sans-serif';
+  ctx.fillStyle = '#6b7280';
+  ctx.fillText('win rate', cx, cy + 10);
+}
+
+// ============================================================
+// PRODUCTS
+// ============================================================
+function renderProducts() {
+  const search = (document.getElementById('prodSearch').value || '').toLowerCase();
+  const filter = document.getElementById('prodFilter').value;
+
+  let prods = state.products.filter(p => {
+    if (filter === 'win' && p.status !== 'win') return false;
+    if (filter === 'lose' && p.status !== 'lose') return false;
+    if (filter === 'unknown' && p.status !== 'unknown' && p.status) return false;
+    if (search && !p.title.toLowerCase().includes(search) && !p.seller.toLowerCase().includes(search)) return false;
+    return true;
+  });
+
+  const tbody = document.getElementById('productsBody');
+  if (prods.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state">
+      <div class="empty-icon">📦</div>
+      <div class="empty-title">${state.products.length === 0 ? 'No Products Yet' : 'No Matches'}</div>
+      <div class="empty-text">${state.products.length === 0 ? 'Use the Scraper tab to add products.' : 'Try changing your filters.'}</div>
+    </div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = prods.map((p, i) => {
+    const statusClass = p.status === 'win' ? 'win' : p.status === 'lose' ? 'lose' : 'unknown';
+    const statusLabel = p.status === 'win' ? '✓ WIN' : p.status === 'lose' ? '✗ LOSE' : '? UNKNOWN';
+    const priceClass = p.status === 'win' ? 'win' : 'lose';
+    const t = p.lastChecked ? new Date(p.lastChecked).toLocaleString() : '—';
+    const realIdx = state.products.indexOf(p);
+    return `<tr>
+      <td>
+        <div class="prod-title">${escHtml((p.title||'Unknown').slice(0,60))}</div>
+        <a class="prod-url" href="${escHtml(p.url)}" target="_blank" rel="noopener">${escHtml(shortUrl(p.url))}</a>
+      </td>
+      <td><span class="price-cell ${priceClass}">R ${(p.buybox_price||0).toFixed(2)}</span></td>
+      <td style="font-size:13px">${escHtml(p.seller||'Unknown')}</td>
+      <td><span class="status-pill ${statusClass}">${statusLabel}</span></td>
+      <td style="font-size:11px;color:var(--muted)">${t}</td>
+      <td style="display:flex;gap:6px">
+        <button class="action-btn" onclick="rescrapeOne(${realIdx})" title="Re-scrape">↻</button>
+        <button class="action-btn danger" onclick="deleteProduct(${realIdx})" title="Delete">✕</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function deleteProduct(idx) {
+  state.products.splice(idx, 1);
+  saveProducts();
+  renderProducts();
+  updateProductCount();
+}
+
+function rescrapeOne(idx) {
+  if (!state.extReady) { alert('Extension not connected.'); return; }
+  const p = state.products[idx];
+  switchTab('scraper');
+  document.getElementById('urlInput').value = p.url;
+  document.getElementById('urlCount').textContent = '1 URL detected';
+  setTimeout(startScraping, 100);
+}
+
+function clearAllConfirm() {
+  document.getElementById('clearCount').textContent = state.products.length;
+  document.getElementById('clearModal').classList.add('show');
+}
+
+function clearAll() {
+  state.products = [];
+  saveProducts();
+  document.getElementById('clearModal').classList.remove('show');
+  renderProducts();
+  updateProductCount();
+  renderDashboard();
+}
+
+function updateProductCount() {
+  document.getElementById('prodCount').textContent = state.products.length;
+}
+
+function exportCSV() {
+  if (state.products.length === 0) { alert('No products to export.'); return; }
+  const headers = ['Title', 'URL', 'FSN', 'BuyBox Price', 'Seller', 'Status', 'Last Checked'];
+  const rows = state.products.map(p => [
+    p.title, p.url, p.fsn, p.buybox_price, p.seller, p.status, p.lastChecked
+  ].map(v => '"' + String(v||'').replace(/"/g,'""') + '"'));
+  const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'makro-buybox-' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+}
+
+// ============================================================
+// ANALYTICS
+// ============================================================
+function renderAnalytics() {
+  const prods = state.products;
+
+  // Price distribution (bar chart using canvas)
+  renderPriceChart(prods);
+
+  // Trend chart
+  renderTrendChart(prods);
+
+  // Price comp bars
+  renderPriceComp(prods);
+
+  // Competitor breakdown
+  renderCompetitors(prods);
+
+  // Summary stats
+  renderSummary(prods);
+}
+
+function renderPriceChart(prods) {
+  const canvas = document.getElementById('priceChart');
+  const empty = document.getElementById('emptyPriceChart');
+  if (prods.length === 0) {
+    canvas.style.display = 'none'; empty.style.display = 'flex'; return;
+  }
+  canvas.style.display = 'block'; empty.style.display = 'none';
+
+  const ctx = canvas.getContext('2d');
+  const W = canvas.parentElement.offsetWidth - 40;
+  canvas.width = W; canvas.height = 180;
+  ctx.clearRect(0,0,W,180);
+
+  const prices = prods.map(p => p.buybox_price || 0).filter(v => v > 0);
+  if (prices.length === 0) return;
+
+  // Buckets
+  const min = Math.min(...prices), max = Math.max(...prices);
+  const buckets = 8;
+  const bSize = (max - min) / buckets || 1;
+  const counts = Array(buckets).fill(0);
+  prices.forEach(p => {
+    const b = Math.min(Math.floor((p - min) / bSize), buckets - 1);
+    counts[b]++;
+  });
+
+  const maxCount = Math.max(...counts, 1);
+  const barW = (W - 40) / buckets - 4;
+  const barAreaH = 140;
+
+  counts.forEach((c, i) => {
+    const h = (c / maxCount) * barAreaH;
+    const x = 20 + i * ((W - 40) / buckets);
+    const y = barAreaH - h + 20;
+    ctx.fillStyle = '#00e5a0';
+    ctx.globalAlpha = 0.7;
+    ctx.fillRect(x, y, barW, h);
+    ctx.globalAlpha = 1;
+
+    // X label
+    ctx.fillStyle = '#6b7280';
+    ctx.font = '9px DM Sans';
+    ctx.textAlign = 'center';
+    ctx.fillText('R' + Math.round(min + i * bSize), x + barW/2, 170);
+  });
+}
+
+function renderTrendChart(prods) {
+  const canvas = document.getElementById('trendChart');
+  const empty = document.getElementById('emptyTrendChart');
+
+  // Gather all history points
+  const timeline = [];
+  prods.forEach(p => {
+    (p.history || []).forEach(h => timeline.push(h));
+  });
+  timeline.sort((a,b) => new Date(a.ts) - new Date(b.ts));
+
+  if (timeline.length < 2) {
+    canvas.style.display = 'none'; empty.style.display = 'flex'; return;
+  }
+
+  canvas.style.display = 'block'; empty.style.display = 'none';
+  const ctx = canvas.getContext('2d');
+  const W = canvas.parentElement.offsetWidth - 40;
+  canvas.width = W; canvas.height = 180;
+  ctx.clearRect(0,0,W,180);
+
+  // Group by day, count wins/loses
+  const days = {};
+  timeline.forEach(h => {
+    const day = h.ts.slice(0,10);
+    if (!days[day]) days[day] = { wins:0, loses:0 };
+    if (h.status === 'win') days[day].wins++;
+    else days[day].loses++;
+  });
+
+  const dayKeys = Object.keys(days).sort().slice(-14);
+  if (dayKeys.length < 2) { canvas.style.display = 'none'; empty.style.display = 'flex'; return; }
+
+  const maxVal = Math.max(...dayKeys.map(d => days[d].wins + days[d].loses), 1);
+  const step = (W - 40) / (dayKeys.length - 1);
+  const H = 160;
+  const padT = 10, padB = 30;
+
+  function toY(val) { return padT + (1 - val/maxVal) * (H - padT - padB); }
+
+  // Win line
+  ctx.beginPath();
+  dayKeys.forEach((d, i) => {
+    const x = 20 + i * step, y = toY(days[d].wins);
+    i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  });
+  ctx.strokeStyle = '#00e5a0'; ctx.lineWidth = 2; ctx.stroke();
+
+  // Lose line
+  ctx.beginPath();
+  dayKeys.forEach((d, i) => {
+    const x = 20 + i * step, y = toY(days[d].loses);
+    i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  });
+  ctx.strokeStyle = '#ff4d6d'; ctx.lineWidth = 2; ctx.stroke();
+
+  // Labels
+  ctx.fillStyle = '#6b7280'; ctx.font = '9px DM Sans'; ctx.textAlign = 'center';
+  dayKeys.forEach((d, i) => {
+    if (i % Math.ceil(dayKeys.length / 6) === 0) {
+      ctx.fillText(d.slice(5), 20 + i * step, H - 5);
+    }
+  });
+
+  // Legend
+  ctx.fillStyle = '#00e5a0'; ctx.fillRect(W - 80, 15, 10, 2);
+  ctx.fillStyle = '#e8eaf0'; ctx.font = '10px DM Sans'; ctx.textAlign = 'left';
+  ctx.fillText('Wins', W - 66, 18);
+  ctx.fillStyle = '#ff4d6d'; ctx.fillRect(W - 80, 28, 10, 2);
+  ctx.fillStyle = '#e8eaf0';
+  ctx.fillText('Losses', W - 66, 31);
+}
+
+function renderPriceComp(prods) {
+  const el = document.getElementById('priceCompBar');
+  const empty = document.getElementById('emptyPriceComp');
+  const p2 = prods.filter(p => p.buybox_price > 0);
+  if (p2.length === 0) { el.style.display='none'; empty.style.display='flex'; return; }
+  el.style.display = 'flex'; empty.style.display = 'none';
+
+  const maxPrice = Math.max(...p2.map(p => p.buybox_price), 1);
+  el.innerHTML = p2.slice(0,12).map(p => {
+    const pct = (p.buybox_price / maxPrice * 100).toFixed(1);
+    const color = p.status === 'win' ? 'var(--accent)' : p.status === 'lose' ? 'var(--accent2)' : 'var(--muted)';
+    return `<div class="bar-row">
+      <div class="bar-label" title="${escHtml(p.title)}">${escHtml((p.title||'?').slice(0,18))}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${color}">
+        <span class="bar-fill-val" style="color:#000;font-size:10px">R${p.buybox_price.toFixed(0)}</span>
+      </div></div>
+    </div>`;
+  }).join('');
+}
+
+function renderCompetitors(prods) {
+  const el = document.getElementById('compBreakdown');
+  const sellerCounts = {};
+  prods.forEach(p => {
+    if (p.seller && p.seller !== 'Unknown Seller') {
+      sellerCounts[p.seller] = (sellerCounts[p.seller] || 0) + 1;
+    }
+  });
+  const sorted = Object.entries(sellerCounts).sort((a,b) => b[1]-a[1]).slice(0,8);
+  if (sorted.length === 0) {
+    el.innerHTML = '<div class="empty-state" style="padding:20px"><div class="empty-text">No competitor data yet</div></div>';
+    return;
+  }
+  const myName = getMySellerName().toLowerCase();
+  const max = sorted[0][1] || 1;
+  el.innerHTML = '<div class="bar-chart">' + sorted.map(([name, count]) => {
+    const isMe = name.toLowerCase().includes(myName) || myName.includes(name.toLowerCase().slice(0,6));
+    const color = isMe ? 'var(--accent)' : 'var(--accent2)';
+    const pct = (count / max * 100).toFixed(1);
+    return `<div class="bar-row">
+      <div class="bar-label">${escHtml(name.slice(0,16))}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${color}">
+        <span class="bar-fill-val" style="color:#000">${count}</span>
+      </div></div>
+    </div>`;
+  }).join('') + '</div>';
+}
+
+function renderSummary(prods) {
+  const el = document.getElementById('summaryStats');
+  if (prods.length === 0) { el.innerHTML = '<div style="color:var(--muted);font-size:13px">No data yet</div>'; return; }
+
+  const prices = prods.map(p => p.buybox_price).filter(v => v > 0);
+  const avg = prices.length > 0 ? prices.reduce((a,b) => a+b, 0) / prices.length : 0;
+  const min = prices.length > 0 ? Math.min(...prices) : 0;
+  const max = prices.length > 0 ? Math.max(...prices) : 0;
+  const wins = prods.filter(p => p.status === 'win').length;
+  const total = prods.length;
+
+  const rows = [
+    ['Total Products', total],
+    ['Win Rate', Math.round((wins/total)*100) + '%'],
+    ['Avg BuyBox Price', 'R ' + avg.toFixed(2)],
+    ['Min Price', 'R ' + min.toFixed(2)],
+    ['Max Price', 'R ' + max.toFixed(2)],
+    ['Products Losing', total - wins],
+  ];
+
+  el.innerHTML = rows.map(([label, val]) => `
+    <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:12px;color:var(--muted)">${label}</span>
+      <span style="font-family:'Space Mono',monospace;font-size:13px;font-weight:700">${val}</span>
+    </div>
+  `).join('');
+}
+
+// ============================================================
+// SELLER NAME SYNC
+// ============================================================
+document.getElementById('sellerNameInput').addEventListener('change', function() {
+  const v = this.value.trim();
+  if (v) localStorage.setItem(SELLER_KEY, v);
+  syncSellerConfig();
+  // Re-evaluate all product statuses
+  const myName = v.toLowerCase();
+  state.products.forEach(p => {
+    if (p.seller && p.seller !== 'Unknown Seller') {
+      p.status = p.seller.toLowerCase().includes(myName) || myName.includes(p.seller.toLowerCase().slice(0,6)) ? 'win' : 'lose';
+    }
+  });
+  saveProducts();
+  renderDashboard();
+});
+
+document.getElementById('sellerNameConfig').addEventListener('change', function() {
+  document.getElementById('sellerNameInput').value = this.value;
+  document.getElementById('sellerNameInput').dispatchEvent(new Event('change'));
+});
+
+// ============================================================
+// INIT
+// ============================================================
+(function init() {
+  loadProducts();
+
+  // Load saved seller name
+  const savedSeller = localStorage.getItem(SELLER_KEY);
+  if (savedSeller) document.getElementById('sellerNameInput').value = savedSeller;
+  syncSellerConfig();
+
+  updateProductCount();
+  renderDashboard();
+
+  // Ping extension
+  pingExtension();
+  setInterval(pingExtension, 3000);
+
+  // Auto-poll localStorage for new products written by bridge.js
+  let lastProductCount = state.products.length;
+  let lastScrapeTime = localStorage.getItem('makro_last_scrape') || '';
+  setInterval(function() {
+    const currentScrape = localStorage.getItem('makro_last_scrape') || '';
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    try {
+      const fresh = JSON.parse(raw);
+      if (fresh.length !== lastProductCount || currentScrape !== lastScrapeTime) {
+        lastProductCount = fresh.length;
+        lastScrapeTime = currentScrape;
+        state.products = fresh;
+        reEvaluateStatuses();
+        saveProducts();
+        updateProductCount();
+        renderDashboard();
+        renderProducts();
+      }
+    } catch(e) {}
+  }, 3000);
+
+  // Check if ext still alive
+  setInterval(function() {
+    // If we got a READY message in last 10s, still online (handled by message handler)
+  }, 10000);
+
+  console.log('[MakroBuyboxV2] Dashboard loaded. Products:', state.products.length);
+})();
+</script>
+</body>
+</html>
