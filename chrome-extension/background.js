@@ -1,5 +1,4 @@
-// background.js v4 — no background tab scraping (triggers bot detection)
-// Instead: manages a queue of URLs to open as foreground tabs
+// background.js v5 — human-mode queue with natural timing
 
 chrome.runtime.onInstalled.addListener(function() {
   chrome.storage.local.get(['buybox_products'], function(r) {
@@ -7,69 +6,81 @@ chrome.runtime.onInstalled.addListener(function() {
   });
 });
 
-// ── QUEUE STATE ───────────────────────────────────────────────────────────
-let scrapeQueue  = [];
-let scrapeActive = false;
-let currentTab   = null;
+let queue       = [];
+let active      = false;
+let currentTab  = null;
+let totalUrls   = 0;
+let doneCount   = 0;
+
+// Natural human-like delay: 3-8 seconds between pages
+function humanDelay() {
+  return 3000 + Math.floor(Math.random() * 5000);
+}
 
 chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
 
-  // Dashboard sends this to start a human-mode queue scrape
   if (msg.action === 'queue_scrape') {
-    scrapeQueue  = msg.urls || [];
-    scrapeActive = true;
-    sendResponse({ started: true, total: scrapeQueue.length });
-    openNextInQueue();
+    queue      = [...(msg.urls || [])];
+    totalUrls  = queue.length;
+    doneCount  = 0;
+    active     = true;
+    currentTab = null;
+    sendResponse({ started: true, total: totalUrls });
+    setTimeout(openNext, 800);
     return true;
   }
 
   if (msg.action === 'stop_queue') {
-    scrapeQueue  = [];
-    scrapeActive = false;
+    queue  = [];
+    active = false;
+    if (currentTab) {
+      try { chrome.tabs.remove(currentTab); } catch(e) {}
+      currentTab = null;
+    }
     sendResponse({ stopped: true });
     return true;
   }
 
   if (msg.action === 'queue_status') {
-    sendResponse({ active: scrapeActive, remaining: scrapeQueue.length });
+    sendResponse({ active, remaining: queue.length, done: doneCount, total: totalUrls });
     return true;
   }
 
-  // content.js tells us it finished scraping a product page
   if (msg.action === 'page_scraped') {
-    // Notify dashboard
-    chrome.tabs.query({ url: 'https://davidbard1226.github.io/makro-buybox-pro/*' }, function(tabs) {
-      tabs.forEach(function(t) {
-        chrome.tabs.sendMessage(t.id, { action: 'scrape_done', data: msg.data }).catch(function(){});
-      });
-    });
-    // Move to next after a natural delay
-    if (scrapeActive && scrapeQueue.length > 0) {
-      setTimeout(openNextInQueue, 1200);
-    } else {
-      scrapeActive = false;
-      // Notify dashboard queue finished
-      chrome.tabs.query({ url: 'https://davidbard1226.github.io/makro-buybox-pro/*' }, function(tabs) {
-        tabs.forEach(function(t) {
-          chrome.tabs.sendMessage(t.id, { action: 'queue_finished' }).catch(function(){});
-        });
-      });
-    }
+    doneCount++;
+    // Broadcast progress to all dashboard tabs
+    notifyDashboard({ action: 'scrape_done', data: msg.data, done: doneCount, total: totalUrls });
     sendResponse({ ok: true });
+
+    if (active && queue.length > 0) {
+      setTimeout(openNext, humanDelay());
+    } else {
+      active = false;
+      setTimeout(function() {
+        notifyDashboard({ action: 'queue_finished', done: doneCount, total: totalUrls });
+        // Close the scrape tab when done
+        if (currentTab) {
+          try { chrome.tabs.remove(currentTab); } catch(e) {}
+          currentTab = null;
+        }
+      }, 1500);
+    }
     return true;
   }
 });
 
-function openNextInQueue() {
-  if (!scrapeActive || scrapeQueue.length === 0) return;
-  const url = scrapeQueue.shift();
+function openNext() {
+  if (!active || queue.length === 0) return;
+  const url = queue.shift();
 
   if (currentTab) {
-    // Reuse the same tab — navigate it to next URL
-    chrome.tabs.update(currentTab, { url: url, active: true }, function(tab) {
+    chrome.tabs.get(currentTab, function(tab) {
       if (chrome.runtime.lastError || !tab) {
-        // Tab was closed — open a new one
+        // Tab was closed by user — open fresh
         chrome.tabs.create({ url: url, active: true }, function(t) { currentTab = t.id; });
+      } else {
+        // Reuse same tab — navigate to next URL
+        chrome.tabs.update(currentTab, { url: url, active: true });
       }
     });
   } else {
@@ -77,11 +88,25 @@ function openNextInQueue() {
   }
 }
 
-// Clean up if the scrape tab gets closed manually
+function notifyDashboard(msg) {
+  chrome.tabs.query({ url: 'https://davidbard1226.github.io/makro-buybox-pro/*' }, function(tabs) {
+    tabs.forEach(function(t) {
+      chrome.tabs.sendMessage(t.id, msg, function() {
+        // Swallow errors if dashboard tab is not listening
+        if (chrome.runtime.lastError) {}
+      });
+    });
+  });
+}
+
+// If user closes the scrape tab manually, stop the queue
 chrome.tabs.onRemoved.addListener(function(tabId) {
   if (tabId === currentTab) {
     currentTab = null;
-    scrapeActive = false;
-    scrapeQueue = [];
+    if (active) {
+      active = false;
+      queue  = [];
+      notifyDashboard({ action: 'queue_aborted', done: doneCount, total: totalUrls });
+    }
   }
 });

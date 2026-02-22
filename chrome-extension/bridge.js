@@ -127,14 +127,17 @@
     if (ev.data.type === 'REQUEST_EXTENSION') announce();
   });
 
-  // Forward scrape_done and queue_finished from background → dashboard
+  // Forward scrape_done, queue_finished, queue_aborted from background → dashboard
   safe(function() {
     chrome.runtime.onMessage.addListener(function(msg) {
       if (msg.action === 'scrape_done') {
-        window.postMessage({ type: 'QUEUE_PROGRESS', data: msg.data }, '*');
+        window.postMessage({ type: 'QUEUE_PROGRESS', data: msg.data, done: msg.done, total: msg.total }, '*');
       }
       if (msg.action === 'queue_finished') {
-        window.postMessage({ type: 'QUEUE_FINISHED' }, '*');
+        window.postMessage({ type: 'QUEUE_FINISHED', done: msg.done, total: msg.total }, '*');
+      }
+      if (msg.action === 'queue_aborted') {
+        window.postMessage({ type: 'QUEUE_ABORTED', done: msg.done, total: msg.total }, '*');
       }
     });
   });

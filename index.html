@@ -535,6 +535,7 @@
     <button class="tab-btn active" onclick="switchTab('dashboard')">📊 Dashboard</button>
     <button class="tab-btn" onclick="switchTab('products')">📦 Products <span class="tab-badge" id="prodCount">0</span></button>
     <button class="tab-btn" onclick="switchTab('scraper')">⚡ Scraper</button>
+    <button class="tab-btn" onclick="switchTab('pricer')">💰 Price Updater</button>
     <button class="tab-btn" onclick="switchTab('analytics')">📈 Analytics</button>
   </nav>
 
@@ -761,6 +762,79 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
 
     </div><!-- /scraper -->
 
+    <!-- ========== PRICE UPDATER TAB ========== -->
+    <div class="tab-content" id="tab-pricer">
+      <div class="scraper-layout">
+        <!-- LEFT: Settings & Generate -->
+        <div>
+          <div class="card" style="margin-bottom:16px">
+            <div class="card-title" style="margin-bottom:14px">⚙️ REPRICING STRATEGY</div>
+            <div style="display:grid;gap:12px">
+              <label style="font-size:13px;color:var(--muted)">Strategy
+                <select id="pricerStrategy" style="width:100%;margin-top:6px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:6px;font-size:13px">
+                  <option value="beat">Beat BuyBox by fixed amount</option>
+                  <option value="match">Match BuyBox exactly</option>
+                  <option value="pct">Beat BuyBox by percentage</option>
+                  <option value="floor">Beat BuyBox but never below my floor price</option>
+                </select>
+              </label>
+              <label style="font-size:13px;color:var(--muted)">Beat by (R amount or %)
+                <input id="pricerBeatBy" type="number" value="1" min="0" step="0.50" style="width:100%;margin-top:6px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:6px;font-size:13px">
+              </label>
+              <label style="font-size:13px;color:var(--muted)">Floor price margin (% above cost — only used in floor strategy)
+                <input id="pricerFloor" type="number" value="10" min="0" step="1" style="width:100%;margin-top:6px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:6px;font-size:13px">
+              </label>
+              <label style="font-size:13px;display:flex;align-items:center;gap:8px;color:var(--muted);cursor:pointer">
+                <input type="checkbox" id="pricerWinsOnly" checked style="width:16px;height:16px">
+                Only update products where I'm losing the BuyBox
+              </label>
+              <label style="font-size:13px;display:flex;align-items:center;gap:8px;color:var(--muted);cursor:pointer">
+                <input type="checkbox" id="pricerSkipUnknown" checked style="width:16px;height:16px">
+                Skip products with no BuyBox price scraped yet
+              </label>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title" style="margin-bottom:14px">📋 LISTINGS FILE REQUIRED</div>
+            <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Import your S_listing XLS first (Products tab → Import Listings). The price updater uses your current prices and FSN codes to generate the upload file.</p>
+            <div id="pricerListingsStatus" style="font-size:13px;color:var(--muted);margin-bottom:16px">⏳ Checking listings...</div>
+            <button class="btn-primary" onclick="generatePriceUpdate()" id="generateBtn" style="width:100%">⬇ Generate Price Update File</button>
+            <div id="pricerResult" style="margin-top:14px;font-size:12px;color:var(--muted)"></div>
+          </div>
+        </div>
+
+        <!-- RIGHT: Preview table -->
+        <div class="card" style="overflow:auto">
+          <div class="card-title" style="margin-bottom:14px">👁 PREVIEW — Products to Update</div>
+          <div id="pricerPreview" style="font-size:12px;color:var(--muted)">Generate a file to see preview here.</div>
+        </div>
+      </div>
+
+      <!-- How to upload instructions -->
+      <div class="card" style="margin-top:16px">
+        <div class="card-title" style="margin-bottom:10px">📤 HOW TO UPLOAD TO SELLER PORTAL</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px">
+          <div style="text-align:center;padding:12px">
+            <div style="font-size:24px;margin-bottom:8px">1️⃣</div>
+            <div style="font-size:12px;color:var(--muted)">Click <b style="color:var(--text)">Generate Price Update File</b> above to download your updated XLS</div>
+          </div>
+          <div style="text-align:center;padding:12px">
+            <div style="font-size:24px;margin-bottom:8px">2️⃣</div>
+            <div style="font-size:12px;color:var(--muted)">Go to <b style="color:var(--accent)">seller.makro.co.za</b> → <b style="color:var(--text)">Products</b> → <b style="color:var(--text)">Update Products</b></div>
+          </div>
+          <div style="text-align:center;padding:12px">
+            <div style="font-size:24px;margin-bottom:8px">3️⃣</div>
+            <div style="font-size:12px;color:var(--muted)">Upload the generated XLS file using <b style="color:var(--text)">Bulk Upload</b></div>
+          </div>
+          <div style="text-align:center;padding:12px">
+            <div style="font-size:24px;margin-bottom:8px">4️⃣</div>
+            <div style="font-size:12px;color:var(--muted)">Prices update within <b style="color:var(--text)">15–30 minutes</b> on Makro marketplace</div>
+          </div>
+        </div>
+      </div>
+    </div><!-- /pricer -->
+
     <!-- ========== ANALYTICS TAB ========== -->
     <div class="tab-content" id="tab-analytics">
 
@@ -920,6 +994,12 @@ window.addEventListener('message', function(ev) {
     handleQueueFinished();
     return;
   }
+
+  if (d.type === 'QUEUE_ABORTED') {
+    log('info', '⚠ Queue stopped — tab was closed. ' + (d.done||0) + '/' + (d.total||0) + ' done.');
+    finishScraping();
+    return;
+  }
 });
 
 // Also check via chrome.runtime if available (same page)
@@ -952,16 +1032,17 @@ function setExtStatus(online) {
 // TABS
 // ============================================================
 function switchTab(name) {
+  const names = ['dashboard','products','scraper','pricer','analytics'];
   document.querySelectorAll('.tab-btn').forEach((b,i) => {
-    const names = ['dashboard','products','scraper','analytics'];
     b.classList.toggle('active', names[i] === name);
   });
   document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
   if (name === 'dashboard') renderDashboard();
-  if (name === 'products') renderProducts();
+  if (name === 'products')  renderProducts();
   if (name === 'analytics') renderAnalytics();
-  if (name === 'scraper') syncSellerConfig();
+  if (name === 'scraper')   syncSellerConfig();
+  if (name === 'pricer')    initPricer();
 }
 
 function syncSellerConfig() {
@@ -1713,6 +1794,184 @@ document.getElementById('sellerNameConfig').addEventListener('change', function(
 
   console.log('[MakroBuyboxV2] Dashboard loaded. Products:', state.products.length);
 })();
+
+// ============================================================
+// PRICE UPDATER
+// ============================================================
+function initPricer() {
+  const listings = getListings();
+  const el = document.getElementById('pricerListingsStatus');
+  if (listings.length === 0) {
+    el.innerHTML = '⚠️ <span style="color:#ff9500">No listings imported yet.</span> Go to <b>Products tab → 📂 Import Listings</b> first.';
+    document.getElementById('generateBtn').disabled = true;
+  } else {
+    el.innerHTML = '✅ <span style="color:var(--accent)">' + listings.length + ' listings loaded.</span> Ready to generate.';
+    document.getElementById('generateBtn').disabled = false;
+    buildPricerPreview();
+  }
+}
+
+function getListings() {
+  try {
+    const raw = localStorage.getItem('makro_listings');
+    return raw ? JSON.parse(raw) : [];
+  } catch(e) { return []; }
+}
+
+function calcNewPrice(myPrice, buyboxPrice, strategy, beatBy, floorPct) {
+  if (!buyboxPrice || buyboxPrice <= 0) return null;
+  let newPrice;
+  if (strategy === 'match') {
+    newPrice = buyboxPrice;
+  } else if (strategy === 'beat') {
+    newPrice = buyboxPrice - parseFloat(beatBy);
+  } else if (strategy === 'pct') {
+    newPrice = buyboxPrice * (1 - parseFloat(beatBy) / 100);
+  } else if (strategy === 'floor') {
+    const floor = myPrice * (1 - parseFloat(floorPct) / 100);
+    newPrice = Math.max(buyboxPrice - parseFloat(beatBy), floor);
+  }
+  return Math.max(newPrice, 0.01);
+}
+
+function buildPricerPreview() {
+  const listings    = getListings();
+  const strategy    = document.getElementById('pricerStrategy').value;
+  const beatBy      = document.getElementById('pricerBeatBy').value;
+  const floorPct    = document.getElementById('pricerFloor').value;
+  const winsOnly    = document.getElementById('pricerWinsOnly').checked;
+  const skipUnknown = document.getElementById('pricerSkipUnknown').checked;
+
+  // Build FSN lookup from scraped products
+  const scrapedMap = {};
+  state.products.forEach(function(p) {
+    if (p.fsn) scrapedMap[p.fsn] = p;
+  });
+
+  const rows = [];
+  listings.forEach(function(l) {
+    const scraped = scrapedMap[l.fsn];
+    if (!scraped) return;
+    if (skipUnknown && (!scraped.buybox_price || scraped.buybox_price <= 0)) return;
+    if (winsOnly && scraped.status === 'win') return;
+    const newPrice = calcNewPrice(l.myPrice, scraped.buybox_price, strategy, beatBy, floorPct);
+    if (!newPrice) return;
+    rows.push({
+      fsn:       l.fsn,
+      sku:       l.sku,
+      title:     l.title,
+      myPrice:   l.myPrice,
+      buybox:    scraped.buybox_price,
+      newPrice:  Math.round(newPrice * 100) / 100,
+      status:    scraped.status,
+      seller:    scraped.seller
+    });
+  });
+
+  const el = document.getElementById('pricerPreview');
+  if (rows.length === 0) {
+    el.innerHTML = '<div style="color:var(--muted);padding:20px">No products match the current strategy settings.</div>';
+    return;
+  }
+
+  el.innerHTML = '<div style="margin-bottom:8px;color:var(--accent);font-size:12px">' + rows.length + ' products will be updated</div>' +
+    '<table style="width:100%;border-collapse:collapse;font-size:11px">' +
+    '<thead><tr style="color:var(--muted);border-bottom:1px solid var(--border)">' +
+    '<th style="text-align:left;padding:6px 4px">Product</th>' +
+    '<th style="text-align:right;padding:6px 4px">My Price</th>' +
+    '<th style="text-align:right;padding:6px 4px">BuyBox</th>' +
+    '<th style="text-align:right;padding:6px 4px">New Price</th>' +
+    '<th style="text-align:right;padding:6px 4px">Change</th>' +
+    '</tr></thead><tbody>' +
+    rows.slice(0, 50).map(function(r) {
+      const change = r.newPrice - r.myPrice;
+      const changeColor = change < 0 ? '#ff9500' : 'var(--accent)';
+      const changeStr = (change >= 0 ? '+' : '') + 'R' + change.toFixed(2);
+      return '<tr style="border-bottom:1px solid var(--border)">' +
+        '<td style="padding:5px 4px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml(r.title) + '">' + escHtml(r.title.slice(0,30)) + '</td>' +
+        '<td style="text-align:right;padding:5px 4px;color:var(--accent3)">R' + r.myPrice.toFixed(2) + '</td>' +
+        '<td style="text-align:right;padding:5px 4px;color:var(--muted)">R' + r.buybox.toFixed(2) + '</td>' +
+        '<td style="text-align:right;padding:5px 4px;color:var(--accent);font-weight:700">R' + r.newPrice.toFixed(2) + '</td>' +
+        '<td style="text-align:right;padding:5px 4px;color:' + changeColor + '">' + changeStr + '</td>' +
+        '</tr>';
+    }).join('') +
+    (rows.length > 50 ? '<tr><td colspan="5" style="color:var(--muted);padding:8px">...and ' + (rows.length-50) + ' more</td></tr>' : '') +
+    '</tbody></table>';
+}
+
+// Recalculate preview when settings change
+['pricerStrategy','pricerBeatBy','pricerFloor','pricerWinsOnly','pricerSkipUnknown'].forEach(function(id) {
+  document.getElementById(id) && document.getElementById(id).addEventListener('change', function() {
+    if (document.getElementById('tab-pricer').classList.contains('active')) buildPricerPreview();
+  });
+});
+
+function generatePriceUpdate() {
+  const listings    = getListings();
+  const strategy    = document.getElementById('pricerStrategy').value;
+  const beatBy      = document.getElementById('pricerBeatBy').value;
+  const floorPct    = document.getElementById('pricerFloor').value;
+  const winsOnly    = document.getElementById('pricerWinsOnly').checked;
+  const skipUnknown = document.getElementById('pricerSkipUnknown').checked;
+
+  const scrapedMap = {};
+  state.products.forEach(function(p) { if (p.fsn) scrapedMap[p.fsn] = p; });
+
+  // Load the original listings to preserve all columns
+  // We'll reconstruct the S_listing format: rows with all original columns, only price (col J index 9) updated
+  const updateRows = [];
+  listings.forEach(function(l) {
+    const scraped = scrapedMap[l.fsn];
+    if (!scraped) return;
+    if (skipUnknown && (!scraped.buybox_price || scraped.buybox_price <= 0)) return;
+    if (winsOnly && scraped.status === 'win') return;
+    const newPrice = calcNewPrice(l.myPrice, scraped.buybox_price, strategy, beatBy, floorPct);
+    if (!newPrice) return;
+    updateRows.push([
+      l.title,          // col A: Product Title
+      l.sku,            // col B: Seller SKU Id
+      '',               // col C: Processing errors
+      '',               // col D: Sub-category
+      l.fsn,            // col E: FSN
+      '',               // col F: Listing ID
+      l.status || 'ACTIVE', // col G: Listing Status
+      '',               // col H: Inactive Reason
+      '',               // col I: Base Price (leave blank — portal ignores)
+      Math.round(newPrice * 100) / 100, // col J: Your Selling Price ← THIS IS WHAT UPDATES
+      '',               // col K: Benchmark Price
+      '',               // col L: Fulfillment By
+      l.myStock,        // col M: Your Stock Count
+    ]);
+  });
+
+  if (updateRows.length === 0) {
+    document.getElementById('pricerResult').innerHTML = '⚠️ No products to update with current settings.';
+    return;
+  }
+
+  // Build workbook using SheetJS
+  const headers1 = ['Product Title','Seller SKU Id','Processing errors (if any)','Sub-category','FSN','Listing ID','Listing Status','Inactive Reason','Base Price','Your Selling Price','Benchmark Price (Ignore)','Fulfillment By','Your Stock Count (Ignore)'];
+  const headers2 = ['Title of your product','Your Identifier','Errors here','Category','Makro FSN','Listing ID','Status','Inactive Reason','Base Price','Selling Price — UPDATED BY BUYBOX PRO','Ignore','Fulfillment mode','Stock'];
+
+  const wsData = [headers1, headers2, ...updateRows];
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'S_listing_price_update');
+
+  // Style col J header bright green so portal operator knows what changed
+  const colWidths = [40,20,5,15,20,25,12,12,12,18,12,15,12].map(w => ({ wch: w }));
+  ws['!cols'] = colWidths;
+
+  const dateStr = new Date().toISOString().slice(0,10).replace(/-/g,'');
+  const filename = 'S_listing_price_update_' + dateStr + '.xls';
+  XLSX.writeFile(wb, filename);
+
+  document.getElementById('pricerResult').innerHTML =
+    '✅ <span style="color:var(--accent)">Downloaded <b>' + filename + '</b> — ' + updateRows.length + ' products updated.</span><br>' +
+    '<span style="color:var(--muted)">Upload this file in the seller portal under Products → Bulk Upload.</span>';
+
+  buildPricerPreview();
+}
 </script>
 </body>
 </html>
