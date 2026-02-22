@@ -238,12 +238,20 @@
     const run = function() {
       const d = scrapeProduct();
       saveProduct(d);
-      // Notify background so queue can advance to next URL
-      try {
-        chrome.runtime.sendMessage({ action: 'page_scraped', data: d });
-      } catch(e) {}
+      // Notify background — with retry in case service worker is waking up
+      function notifyBG(attempt) {
+        try {
+          chrome.runtime.sendMessage({ action: 'page_scraped', data: d }, function(resp) {
+            if (chrome.runtime.lastError) {
+              // SW may have been sleeping — retry once after 1.5s
+              if (attempt < 3) setTimeout(function() { notifyBG(attempt + 1); }, 1500);
+            }
+          });
+        } catch(e) {}
+      }
+      notifyBG(1);
     };
-    if (document.readyState === 'complete') setTimeout(run, 1500);
+    if (document.readyState === 'complete') setTimeout(run, 1800);
     else window.addEventListener('load', function() { setTimeout(run, 2000); });
   }
 

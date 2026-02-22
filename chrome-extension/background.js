@@ -1,6 +1,7 @@
-// background.js v6
-// - Separate Chrome window for scraping (isolated, bot-free)
-// - Portal upload automation support
+// background.js v7 — reliable service worker queue
+// Stores all state in chrome.storage.session so it survives SW sleep cycles
+
+const STATE_KEY = 'bbp_queue_state';
 
 chrome.runtime.onInstalled.addListener(function() {
   chrome.storage.local.get(['buybox_products'], function(r) {
@@ -8,164 +9,194 @@ chrome.runtime.onInstalled.addListener(function() {
   });
 });
 
-// ── STATE ─────────────────────────────────────────────────────────────────
-let queue        = [];
-let active       = false;
-let scrapeWinId  = null;   // the dedicated scrape window
-let scrapeTabId  = null;   // the tab inside it
-let totalUrls    = 0;
-let doneCount    = 0;
-let waitingForLoad = false;
-
-// ── HUMAN-LIKE DELAY: 4-9 seconds ────────────────────────────────────────
-function humanDelay() {
-  return 4000 + Math.floor(Math.random() * 5000);
+// ── KEEP SERVICE WORKER ALIVE during active scrape ────────────────────────
+let keepAliveInterval = null;
+function keepAlive() {
+  keepAliveInterval = setInterval(function() {
+    chrome.storage.local.get(['bbp_active'], function() {}); // just poke storage
+  }, 20000);
+}
+function stopKeepAlive() {
+  if (keepAliveInterval) { clearInterval(keepAliveInterval); keepAliveInterval = null; }
 }
 
 // ── MESSAGE HANDLER ───────────────────────────────────────────────────────
 chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
 
   if (msg.action === 'queue_scrape') {
-    if (active) { sendResponse({ error: 'Already running' }); return true; }
-    queue       = [...(msg.urls || [])];
-    totalUrls   = queue.length;
-    doneCount   = 0;
-    active      = true;
-    scrapeWinId = null;
-    scrapeTabId = null;
-    sendResponse({ started: true, total: totalUrls });
-    openScrapeWindow();
+    const urls = msg.urls || [];
+    if (!urls.length) { sendResponse({ error: 'No URLs' }); return true; }
+
+    // Save queue state to storage (survives SW sleep)
+    const state = {
+      queue:      urls,
+      total:      urls.length,
+      done:       0,
+      active:     true,
+      winId:      null,
+      tabId:      null,
+      waiting:    false,
+      startedAt:  Date.now()
+    };
+    chrome.storage.local.set({ bbp_queue_state: state }, function() {
+      sendResponse({ started: true, total: urls.length });
+      keepAlive();
+      openNext(state);
+    });
     return true;
   }
 
   if (msg.action === 'stop_queue') {
-    active = false;
-    queue  = [];
-    if (scrapeWinId) {
-      chrome.windows.remove(scrapeWinId, function() {});
-      scrapeWinId = null;
-      scrapeTabId = null;
-    }
+    stopKeepAlive();
+    chrome.storage.local.get(['bbp_queue_state'], function(r) {
+      const s = r.bbp_queue_state || {};
+      if (s.winId) chrome.windows.remove(s.winId, function() {});
+      chrome.storage.local.set({ bbp_queue_state: { active: false, queue: [], done: s.done || 0, total: s.total || 0 } });
+    });
     sendResponse({ stopped: true });
     return true;
   }
 
-  if (msg.action === 'queue_status') {
-    sendResponse({ active, remaining: queue.length, done: doneCount, total: totalUrls });
+  if (msg.action === 'get_queue_status') {
+    chrome.storage.local.get(['bbp_queue_state'], function(r) {
+      sendResponse(r.bbp_queue_state || { active: false, queue: [], done: 0, total: 0 });
+    });
     return true;
   }
 
   if (msg.action === 'page_scraped') {
-    if (!active) { sendResponse({ ok: true }); return true; }
-    doneCount++;
-    waitingForLoad = false;
-    notifyDashboard({ action: 'scrape_done', data: msg.data, done: doneCount, total: totalUrls });
-    sendResponse({ ok: true });
+    chrome.storage.local.get(['bbp_queue_state'], function(r) {
+      const s = r.bbp_queue_state;
+      if (!s || !s.active) { sendResponse({ ok: true }); return; }
 
-    if (active && queue.length > 0) {
-      setTimeout(loadNextUrl, humanDelay());
-    } else {
-      active = false;
-      setTimeout(function() {
-        notifyDashboard({ action: 'queue_finished', done: doneCount, total: totalUrls });
-        // Close scrape window after short delay
-        setTimeout(function() {
-          if (scrapeWinId) chrome.windows.remove(scrapeWinId, function() {});
-          scrapeWinId = null; scrapeTabId = null;
-        }, 2000);
-      }, 1000);
-    }
-    return true;
-  }
+      s.done++;
+      s.waiting = false;
 
-  // Portal automation: trigger file upload on seller portal
-  if (msg.action === 'portal_upload_ready') {
-    notifyDashboard({ action: 'portal_upload_ready' });
-    sendResponse({ ok: true });
+      if (s.queue.length > 0) {
+        // Natural delay 4-9s then next
+        const delay = 4000 + Math.floor(Math.random() * 5000);
+        s.nextAt = Date.now() + delay;
+        chrome.storage.local.set({ bbp_queue_state: s }, function() {
+          setTimeout(function() { loadNext(s); }, delay);
+        });
+      } else {
+        // Done!
+        s.active = false;
+        chrome.storage.local.set({ bbp_queue_state: s }, function() {
+          stopKeepAlive();
+          // Close scrape window
+          if (s.winId) setTimeout(function() {
+            chrome.windows.remove(s.winId, function() {});
+          }, 2500);
+        });
+      }
+      sendResponse({ ok: true });
+    });
     return true;
   }
 });
 
-// ── OPEN DEDICATED SCRAPE WINDOW ──────────────────────────────────────────
-function openScrapeWindow() {
-  if (queue.length === 0) return;
-  const firstUrl = queue.shift();
+function openNext(state) {
+  if (!state.active || !state.queue.length) return;
+  const url = state.queue.shift();
+  state.waiting = true;
 
   chrome.windows.create({
-    url: firstUrl,
-    type: 'normal',
-    width: 1280,
-    height: 900,
-    left: 100,
-    top: 50,
+    url:     url,
+    type:    'normal',
+    width:   1280,
+    height:  900,
+    left:    80,
+    top:     40,
     focused: true
   }, function(win) {
-    scrapeWinId = win.id;
-    scrapeTabId = win.tabs[0].id;
-    waitingForLoad = true;
-    // Safety timeout: if content.js doesn't respond in 12s, move on
-    setTimeout(function() {
-      if (waitingForLoad && active) {
-        waitingForLoad = false;
-        doneCount++;
-        notifyDashboard({ action: 'scrape_done', data: null, done: doneCount, total: totalUrls });
-        if (queue.length > 0) setTimeout(loadNextUrl, humanDelay());
-        else { active = false; notifyDashboard({ action: 'queue_finished', done: doneCount, total: totalUrls }); }
-      }
-    }, 12000);
-  });
-}
-
-// ── NAVIGATE SCRAPE TAB TO NEXT URL ──────────────────────────────────────
-function loadNextUrl() {
-  if (!active || queue.length === 0) return;
-  const url = queue.shift();
-
-  if (scrapeTabId) {
-    chrome.tabs.get(scrapeTabId, function(tab) {
-      if (chrome.runtime.lastError || !tab || tab.windowId !== scrapeWinId) {
-        // Tab or window gone — open fresh window
-        openScrapeWindow();
-        return;
-      }
-      chrome.tabs.update(scrapeTabId, { url: url, active: true });
-      waitingForLoad = true;
-      // Safety timeout
-      setTimeout(function() {
-        if (waitingForLoad && active) {
-          waitingForLoad = false;
-          doneCount++;
-          notifyDashboard({ action: 'scrape_done', data: null, done: doneCount, total: totalUrls });
-          if (queue.length > 0) setTimeout(loadNextUrl, humanDelay());
-          else { active = false; notifyDashboard({ action: 'queue_finished', done: doneCount, total: totalUrls }); }
-        }
-      }, 12000);
-    });
-  } else {
-    openScrapeWindow();
-  }
-}
-
-// ── NOTIFY DASHBOARD TABS ─────────────────────────────────────────────────
-function notifyDashboard(msg) {
-  chrome.tabs.query({ url: 'https://davidbard1226.github.io/makro-buybox-pro/*' }, function(tabs) {
-    tabs.forEach(function(t) {
-      chrome.tabs.sendMessage(t.id, msg, function() {
-        if (chrome.runtime.lastError) {} // swallow
-      });
-    });
-  });
-}
-
-// ── CLEAN UP if scrape window is closed manually ──────────────────────────
-chrome.windows.onRemoved.addListener(function(winId) {
-  if (winId === scrapeWinId) {
-    scrapeWinId = null;
-    scrapeTabId = null;
-    if (active) {
-      active = false;
-      queue  = [];
-      notifyDashboard({ action: 'queue_aborted', done: doneCount, total: totalUrls });
+    if (chrome.runtime.lastError || !win) {
+      console.error('[BBP] Window create failed:', chrome.runtime.lastError);
+      return;
     }
-  }
+    state.winId = win.id;
+    state.tabId = win.tabs[0].id;
+    chrome.storage.local.set({ bbp_queue_state: state });
+
+    // Safety timeout — if content.js never reports back in 15s, advance anyway
+    setTimeout(function() {
+      chrome.storage.local.get(['bbp_queue_state'], function(r) {
+        const s = r.bbp_queue_state;
+        if (s && s.active && s.waiting && s.tabId === state.tabId) {
+          s.done++;
+          s.waiting = false;
+          if (s.queue.length > 0) {
+            s.nextAt = Date.now() + 4000;
+            chrome.storage.local.set({ bbp_queue_state: s }, function() {
+              setTimeout(function() { loadNext(s); }, 4000);
+            });
+          } else {
+            s.active = false;
+            chrome.storage.local.set({ bbp_queue_state: s });
+            stopKeepAlive();
+          }
+        }
+      });
+    }, 15000);
+  });
+}
+
+function loadNext(state) {
+  chrome.storage.local.get(['bbp_queue_state'], function(r) {
+    const s = r.bbp_queue_state;
+    if (!s || !s.active || !s.queue.length) return;
+
+    const url = s.queue.shift();
+    s.waiting = true;
+
+    if (s.tabId) {
+      chrome.tabs.get(s.tabId, function(tab) {
+        if (chrome.runtime.lastError || !tab) {
+          // Tab gone — open new window
+          chrome.storage.local.set({ bbp_queue_state: s }, function() { openNext(s); });
+          return;
+        }
+        chrome.tabs.update(s.tabId, { url: url, active: true }, function() {
+          chrome.storage.local.set({ bbp_queue_state: s });
+        });
+
+        // Safety timeout
+        setTimeout(function() {
+          chrome.storage.local.get(['bbp_queue_state'], function(r2) {
+            const s2 = r2.bbp_queue_state;
+            if (s2 && s2.active && s2.waiting && s2.tabId === s.tabId) {
+              s2.done++;
+              s2.waiting = false;
+              if (s2.queue.length > 0) {
+                s2.nextAt = Date.now() + 4000;
+                chrome.storage.local.set({ bbp_queue_state: s2 }, function() {
+                  setTimeout(function() { loadNext(s2); }, 4000);
+                });
+              } else {
+                s2.active = false;
+                chrome.storage.local.set({ bbp_queue_state: s2 });
+                stopKeepAlive();
+              }
+            }
+          });
+        }, 15000);
+      });
+    } else {
+      chrome.storage.local.set({ bbp_queue_state: s }, function() { openNext(s); });
+    }
+  });
+}
+
+// Clean up if scrape window closed manually
+chrome.windows.onRemoved.addListener(function(winId) {
+  chrome.storage.local.get(['bbp_queue_state'], function(r) {
+    const s = r.bbp_queue_state;
+    if (s && s.winId === winId && s.active) {
+      s.active  = false;
+      s.queue   = [];
+      s.aborted = true;
+      chrome.storage.local.set({ bbp_queue_state: s });
+      stopKeepAlive();
+    }
+  });
 });

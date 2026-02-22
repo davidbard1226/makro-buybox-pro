@@ -1,43 +1,35 @@
-// bridge.js v3 — stable context handling
+// bridge.js v4 — polling-based, no push messages from background
+// Polls chrome.storage for queue state instead of relying on runtime.sendMessage
 
 (function() {
   'use strict';
 
   const STORAGE_KEY = 'makro_buybox_v2';
-  let syncInterval = null;
-  let announceInterval = null;
   let dead = false;
+  let syncInterval     = null;
+  let announceInterval = null;
+  let pollInterval     = null;
 
   // ── CONTEXT CHECK ─────────────────────────────────────────────────────────
   function isAlive() {
-    try {
-      return !!(chrome && chrome.runtime && chrome.runtime.id);
-    } catch(e) {
-      return false;
-    }
+    try { return !!(chrome && chrome.runtime && chrome.runtime.id); } catch(e) { return false; }
   }
 
-  function killIntervals() {
-    try { clearInterval(syncInterval); } catch(e) {}
+  function killAll() {
+    try { clearInterval(syncInterval); }     catch(e) {}
     try { clearInterval(announceInterval); } catch(e) {}
-    syncInterval = null;
-    announceInterval = null;
+    try { clearInterval(pollInterval); }     catch(e) {}
+    syncInterval = announceInterval = pollInterval = null;
     dead = true;
+    console.warn('[BuyBox Bridge] Extension context gone — stopped.');
   }
 
-  // Wraps any chrome API call — if context is gone, silently stops everything
   function safe(fn) {
     if (dead) return;
-    if (!isAlive()) { killIntervals(); return; }
-    try {
-      fn();
-    } catch(e) {
-      if (/context invalidated|extension context/i.test(e.message || '')) {
-        killIntervals();
-        console.warn('[BuyBox Bridge] Extension unloaded — bridge stopped.');
-      } else {
-        console.warn('[BuyBox Bridge] Error:', e.message);
-      }
+    if (!isAlive()) { killAll(); return; }
+    try { fn(); } catch(e) {
+      if (/context invalidated|extension context/i.test(e.message || '')) killAll();
+      else console.warn('[Bridge]', e.message);
     }
   }
 
@@ -48,123 +40,174 @@
     });
   }
 
-  // ── SYNC chrome.storage → dashboard localStorage ──────────────────────────
-  function syncToLocalStorage() {
+  // ── SYNC scraped products → dashboard localStorage ────────────────────────
+  function syncProducts() {
     safe(function() {
       chrome.storage.local.get(['buybox_products'], function(r) {
-        try {
-          if (chrome.runtime.lastError) return;
-          const raw = r.buybox_products || [];
-          if (raw.length === 0) return;
+        if (chrome.runtime.lastError) return;
+        const raw = r.buybox_products || [];
+        if (!raw.length) return;
 
-          let existing = [];
-          try {
-            const saved = localStorage.getItem(STORAGE_KEY);
-            if (saved) existing = JSON.parse(saved);
-          } catch(e) {}
+        let existing = [];
+        try { existing = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch(e) {}
 
-          raw.forEach(function(p) {
-            const url = p.url;
-            const idx = existing.findIndex(function(e) { return e.url === url; });
-            const seller = p.buyBoxSeller || 'Unknown Seller';
-            const price  = parseFloat(p.buyBoxPrice) || 0;
-            const fsn    = p.fsn || '';
-            const sku    = p.sku || '';
+        raw.forEach(function(p) {
+          const url    = p.url;
+          const idx    = existing.findIndex(function(e) { return e.url === url; });
+          const seller = p.buyBoxSeller || 'Unknown Seller';
+          const price  = parseFloat(p.buyBoxPrice) || 0;
 
-            const entry = {
-              url, fsn, sku,
-              title:        p.title || url,
-              buybox_price: price,
-              seller:       seller,
-              status:       'unknown',
-              lastChecked:  p.timestamp || new Date().toISOString(),
-              history:      []
-            };
+          const entry = {
+            url, fsn: p.fsn || '', sku: p.sku || '',
+            title: p.title || url, buybox_price: price,
+            seller, status: 'unknown',
+            lastChecked: p.timestamp || new Date().toISOString(),
+            history: []
+          };
 
-            if (idx >= 0) {
-              const prev = existing[idx];
-              entry.history = prev.history || [];
-              const lastPrice = entry.history.length ? entry.history[entry.history.length-1].price : null;
-              if (price > 0 && price !== lastPrice) {
-                entry.history.push({ price, seller, status: 'unknown', ts: entry.lastChecked });
-                if (entry.history.length > 30) entry.history.shift();
-              }
-              if (!entry.fsn && prev.fsn) entry.fsn = prev.fsn;
-              existing[idx] = Object.assign({}, prev, entry);
-            } else {
-              if (price > 0) entry.history = [{ price, seller, status: 'unknown', ts: entry.lastChecked }];
-              existing.push(entry);
+          if (idx >= 0) {
+            const prev = existing[idx];
+            entry.history = prev.history || [];
+            const lastPrice = entry.history.length ? entry.history[entry.history.length-1].price : null;
+            if (price > 0 && price !== lastPrice) {
+              entry.history.push({ price, seller, status: 'unknown', ts: entry.lastChecked });
+              if (entry.history.length > 30) entry.history.shift();
             }
-          });
+            if (!entry.fsn && prev.fsn) entry.fsn = prev.fsn;
+            existing[idx] = Object.assign({}, prev, entry);
+          } else {
+            if (price > 0) entry.history = [{ price, seller, status: 'unknown', ts: entry.lastChecked }];
+            existing.push(entry);
+          }
+        });
 
+        try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(existing));
           localStorage.setItem('makro_last_scrape', new Date().toISOString());
-          window.postMessage({ type: 'PRODUCTS_UPDATED', count: existing.length }, '*');
         } catch(e) {}
+
+        window.postMessage({ type: 'PRODUCTS_UPDATED', count: existing.length }, '*');
       });
     });
   }
 
-  // ── MESSAGE HANDLER ───────────────────────────────────────────────────────
+  // ── POLL QUEUE STATE → forward progress to dashboard ─────────────────────
+  // Instead of relying on background push messages (which break with SW sleep),
+  // we poll chrome.storage every 2s to check queue progress
+  let lastDone  = -1;
+  let lastActive = false;
+  let wasActive  = false;
+
+  function pollQueueState() {
+    safe(function() {
+      chrome.storage.local.get(['bbp_queue_state', 'buybox_products'], function(r) {
+        if (chrome.runtime.lastError) return;
+        const s = r.bbp_queue_state;
+        if (!s) return;
+
+        // Queue just became active
+        if (s.active && !wasActive) {
+          wasActive = true;
+          lastDone  = 0;
+        }
+
+        // Progress: done count changed
+        if (s.active && s.done !== lastDone) {
+          lastDone = s.done;
+          // Sync products to dashboard whenever we get a new scrape
+          const raw = r.buybox_products || [];
+          if (raw.length) {
+            // Find the most recently scraped product
+            const latest = raw[raw.length - 1];
+            window.postMessage({
+              type:  'QUEUE_PROGRESS',
+              data:  latest ? {
+                url:          latest.url,
+                title:        latest.title || '',
+                buyBoxPrice:  latest.buyBoxPrice || 0,
+                buyBoxSeller: latest.buyBoxSeller || '',
+                fsn:          latest.fsn || '',
+                sku:          latest.sku || ''
+              } : null,
+              done:  s.done,
+              total: s.total
+            }, '*');
+            syncProducts();
+          }
+        }
+
+        // Queue finished
+        if (!s.active && wasActive) {
+          wasActive = false;
+          if (s.aborted) {
+            window.postMessage({ type: 'QUEUE_ABORTED', done: s.done, total: s.total }, '*');
+          } else {
+            window.postMessage({ type: 'QUEUE_FINISHED', done: s.done, total: s.total }, '*');
+          }
+          syncProducts();
+        }
+      });
+    });
+  }
+
+  // ── WINDOW MESSAGE HANDLER ────────────────────────────────────────────────
   window.addEventListener('message', function(ev) {
     if (!ev.data || !ev.data.type || dead) return;
 
-    if (ev.data.type === 'SAVE_PORTAL_FILE') {
-      safe(function() {
-        chrome.storage.local.set({
-          portal_upload_file: ev.data.base64,
-          portal_upload_filename: ev.data.filename
-        }, function() {
-          console.log('[Bridge] Portal file saved to chrome.storage:', ev.data.filename);
-        });
-      });
-    }
-
     if (ev.data.type === 'START_QUEUE') {
       safe(function() {
-        chrome.runtime.sendMessage({ action: 'queue_scrape', urls: ev.data.urls }, function(resp) {
-          if (chrome.runtime.lastError) return;
-          console.log('[Bridge] Queue started:', resp);
-        });
+        lastDone  = -1;
+        wasActive = false;
+        chrome.runtime.sendMessage(
+          { action: 'queue_scrape', urls: ev.data.urls },
+          function(resp) {
+            if (chrome.runtime.lastError) {
+              console.error('[Bridge] queue_scrape error:', chrome.runtime.lastError.message);
+              // Try waking SW and retry once
+              setTimeout(function() {
+                safe(function() {
+                  chrome.runtime.sendMessage({ action: 'queue_scrape', urls: ev.data.urls }, function() {});
+                });
+              }, 1000);
+              return;
+            }
+            console.log('[Bridge] Queue started:', resp);
+          }
+        );
       });
     }
 
     if (ev.data.type === 'STOP_QUEUE') {
       safe(function() {
-        chrome.runtime.sendMessage({ action: 'stop_queue' }, function(){});
+        chrome.runtime.sendMessage({ action: 'stop_queue' }, function() {});
+      });
+    }
+
+    if (ev.data.type === 'SAVE_PORTAL_FILE') {
+      safe(function() {
+        chrome.storage.local.set({
+          portal_upload_file:     ev.data.base64,
+          portal_upload_filename: ev.data.filename
+        });
       });
     }
 
     if (ev.data.type === 'REQUEST_EXTENSION') announce();
   });
 
-  // Forward scrape_done, queue_finished, queue_aborted from background → dashboard
-  safe(function() {
-    chrome.runtime.onMessage.addListener(function(msg) {
-      if (msg.action === 'scrape_done') {
-        window.postMessage({ type: 'QUEUE_PROGRESS', data: msg.data, done: msg.done, total: msg.total }, '*');
-      }
-      if (msg.action === 'queue_finished') {
-        window.postMessage({ type: 'QUEUE_FINISHED', done: msg.done, total: msg.total }, '*');
-      }
-      if (msg.action === 'queue_aborted') {
-        window.postMessage({ type: 'QUEUE_ABORTED', done: msg.done, total: msg.total }, '*');
-      }
-    });
-  });
-
-  // ── STORAGE CHANGE LISTENER ───────────────────────────────────────────────
+  // ── STORAGE CHANGE — instant product sync ────────────────────────────────
   safe(function() {
     chrome.storage.onChanged.addListener(function(changes) {
-      if (changes.buybox_products) setTimeout(syncToLocalStorage, 300);
+      if (changes.buybox_products) setTimeout(syncProducts, 300);
     });
   });
 
   // ── START ─────────────────────────────────────────────────────────────────
   announce();
-  syncToLocalStorage();
-  announceInterval = setInterval(announce, 4000);
-  syncInterval     = setInterval(syncToLocalStorage, 5000);
+  syncProducts();
+  announceInterval = setInterval(announce,      4000);
+  syncInterval     = setInterval(syncProducts,  6000);
+  pollInterval     = setInterval(pollQueueState, 2000);
 
-  console.log('[BuyBox Bridge v3] Active');
+  console.log('[BuyBox Bridge v4] Active — polling queue every 2s');
 })();
