@@ -1988,18 +1988,22 @@ function generatePriceUpdate() {
 }
 
 function openPortalUpload() {
-  // Store file in chrome.storage.local so portal.js content script can read it
-  const base64 = localStorage.getItem('portal_upload_file');
+  const base64   = localStorage.getItem('portal_upload_file');
   const filename = localStorage.getItem('portal_upload_filename');
   if (!base64) { alert('Generate a price update file first.'); return; }
 
-  // Bridge will forward this to chrome.storage via postMessage
+  // Save into chrome.storage so portal.js can read it
   window.postMessage({ type: 'SAVE_PORTAL_FILE', base64, filename }, '*');
 
-  // Open the portal My Listings page
+  // Open the seller portal — portal.js will inject the BuyBox Pro overlay
+  // regardless of which page loads. Navigate to My Listings from there.
   setTimeout(function() {
-    window.open('https://seller.makro.co.za/listings/my-listings', '_blank');
-  }, 500);
+    window.open('https://seller.makro.co.za', '_blank');
+  }, 600);
+
+  document.getElementById('pricerResult').innerHTML +=
+    '<br><span style="color:#ffd60a">✅ File saved to extension. On the portal page, click ' +
+    '<b style="color:#00e5a0">🚀 Auto Upload Now</b> in the green overlay to replay your recorded steps.</span>';
 }
 </script>
 </body>

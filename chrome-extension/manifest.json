@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Makro BuyBox Pro Bridge",
-  "version": "4.0",
+  "version": "4.1",
   "description": "Scrapes Makro buy box data, syncs to dashboard, automates portal price uploads",
   "permissions": [
     "activeTab",
@@ -13,7 +13,8 @@
   "host_permissions": [
     "https://www.makro.co.za/*",
     "https://davidbard1226.github.io/*",
-    "https://seller.makro.co.za/*"
+    "https://seller.makro.co.za/*",
+    "https://*.makromarketplace.co.za/*"
   ],
   "content_scripts": [
     {
@@ -27,7 +28,10 @@
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://seller.makro.co.za/*"],
+      "matches": [
+        "https://seller.makro.co.za/*",
+        "https://*.makromarketplace.co.za/*"
+      ],
       "js": ["portal.js"],
       "run_at": "document_idle"
     }
