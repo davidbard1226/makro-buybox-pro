@@ -25,25 +25,50 @@
     if (document.getElementById('bbp-overlay')) return;
     const el = document.createElement('div');
     el.id = 'bbp-overlay';
-    el.style.cssText = [
-      'position:fixed','bottom:16px','right:16px','top:auto','left:auto',
-      'z-index:2147483647',
-      'background:#0a0c10','border:1px solid #00e5a0','border-radius:8px',
-      'padding:8px 12px','min-width:180px','max-width:220px',
-      'box-shadow:0 2px 12px rgba(0,229,160,0.15)',
-      'font-family:monospace','font-size:11px','color:#e8eaf0',
-      'user-select:none','opacity:0.92'
-    ].join(';');
+
+    // Set each property individually — avoids any cssText parsing issues
+    const s = el.style;
+    s.setProperty('position',   'fixed',        'important');
+    s.setProperty('bottom',     '12px',         'important');
+    s.setProperty('right',      '12px',         'important');
+    s.setProperty('top',        'auto',         'important');
+    s.setProperty('left',       'auto',         'important');
+    s.setProperty('z-index',    '2147483647',   'important');
+    s.setProperty('background', '#0a0c10',      'important');
+    s.setProperty('border',     '1px solid #00e5a0', 'important');
+    s.setProperty('border-radius', '7px',       'important');
+    s.setProperty('padding',    '7px 10px',     'important');
+    s.setProperty('width',      '190px',        'important');
+    s.setProperty('max-width',  '190px',        'important');
+    s.setProperty('min-width',  '0',            'important');
+    s.setProperty('font-family','monospace',    'important');
+    s.setProperty('font-size',  '10px',         'important');
+    s.setProperty('color',      '#e8eaf0',      'important');
+    s.setProperty('user-select','none',         'important');
+    s.setProperty('opacity',    '0.93',         'important');
+    s.setProperty('box-shadow', '0 2px 10px rgba(0,0,0,0.5)', 'important');
+
     el.innerHTML = `
-      <div style="font-size:9px;letter-spacing:1px;color:#00e5a0;margin-bottom:6px;text-transform:uppercase">
-        🛒 BuyBox Pro
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+        <span style="font-size:9px;letter-spacing:1px;color:#00e5a0;text-transform:uppercase">🛒 BuyBox Pro</span>
+        <button id="bbp-minimize" style="background:none;border:none;color:#6b7280;cursor:pointer;font-size:11px;padding:0;line-height:1" title="Minimize">−</button>
       </div>
-      <div id="bbp-status" style="color:#6b7280;margin-bottom:8px;font-size:10px;line-height:1.4">
-        Loading...
+      <div id="bbp-body">
+        <div id="bbp-status" style="color:#6b7280;margin-bottom:6px;font-size:10px;line-height:1.4">Loading...</div>
+        <div id="bbp-buttons" style="display:flex;flex-direction:column;gap:3px"></div>
       </div>
-      <div id="bbp-buttons" style="display:flex;flex-direction:column;gap:4px"></div>
     `;
     document.body.appendChild(el);
+
+    // Minimize toggle
+    let minimized = false;
+    document.getElementById('bbp-minimize').addEventListener('click', function() {
+      minimized = !minimized;
+      document.getElementById('bbp-body').style.display = minimized ? 'none' : 'block';
+      this.textContent = minimized ? '+' : '−';
+      el.style.setProperty('opacity', minimized ? '0.6' : '0.93', 'important');
+    });
+
     updateOverlay();
   }
 
@@ -88,12 +113,12 @@
     const b = document.createElement('button');
     b.textContent = label;
     b.style.cssText = [
-      `background:${color === '#00e5a0' ? '#00e5a0' : 'transparent'}`,
-      `color:${color === '#00e5a0' ? '#000' : color}`,
-      `border:1px solid ${color}`,
-      'border-radius:4px','padding:5px 8px','cursor:pointer',
+      'background:' + (color === '#00e5a0' ? '#00e5a0' : 'transparent'),
+      'color:' + (color === '#00e5a0' ? '#000' : color),
+      'border:1px solid ' + color,
+      'border-radius:4px','padding:4px 7px','cursor:pointer',
       'font-family:monospace','font-size:10px','font-weight:700',
-      'text-align:left','width:100%'
+      'text-align:left','width:100%','line-height:1.3'
     ].join(';');
     b.addEventListener('click', fn);
     container.appendChild(b);
