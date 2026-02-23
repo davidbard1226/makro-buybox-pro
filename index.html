@@ -1498,6 +1498,8 @@ function exportCSV() {
 // ANALYTICS
 // ============================================================
 function renderAnalytics() {
+  // Always re-evaluate win/lose before rendering analytics
+  try { reEvaluateStatuses(); } catch(e) {}
   const prods = state.products;
   renderStatusBars(prods);
   renderPriceChart(prods);
@@ -1716,6 +1718,37 @@ function renderPriceGap(prods) {
   const listMap  = {};
   listings.forEach(function(l) { if (l.fsn) listMap[l.fsn] = l; });
 
+  // Show buybox price distribution by competitor even without listings
+  if (!listings.length) {
+    // Show top losing competitors with their avg price instead
+    const compData = {};
+    prods.forEach(function(p) {
+      if (!p.seller || p.seller === 'Unknown Seller' || !p.buybox_price) return;
+      if (!compData[p.seller]) compData[p.seller] = { count: 0, prices: [] };
+      compData[p.seller].count++;
+      compData[p.seller].prices.push(p.buybox_price);
+    });
+    const sorted = Object.entries(compData).sort((a,b) => b[1].count - a[1].count).slice(0,6);
+    if (!sorted.length) {
+      el.innerHTML = '<div style="color:var(--muted);font-size:12px;line-height:1.6">No BuyBox price data yet. Scrape your products first, then import your S_listing file to see how far your prices are from winning.</div>';
+      return;
+    }
+    const maxCount = sorted[0][1].count;
+    el.innerHTML = '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">Import S_listing to see exact gaps. Current competitor avg prices:</div>' +
+      sorted.map(function([name, d]) {
+        const avg = (d.prices.reduce((a,b)=>a+b,0)/d.prices.length).toFixed(0);
+        const pct = (d.count / maxCount * 100).toFixed(0);
+        return `<div class="bar-row" style="margin-bottom:5px">
+          <div class="bar-label" style="width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(name)}">${escHtml(name.slice(0,18))}</div>
+          <div class="bar-track" style="flex:1"><div class="bar-fill" style="width:${pct}%;background:var(--accent2);min-width:2px">
+            <span class="bar-fill-val" style="color:#000">${d.count}</span>
+          </div></div>
+          <div style="font-size:10px;color:var(--muted);white-space:nowrap;margin-left:8px">avg R${avg}</div>
+        </div>`;
+      }).join('');
+    return;
+  }
+
   // Only products where we have both my price and buybox price
   const gaps = [];
   prods.forEach(function(p) {
@@ -1727,7 +1760,7 @@ function renderPriceGap(prods) {
   });
 
   if (!gaps.length) {
-    el.innerHTML = '<div style="color:var(--muted);font-size:12px;line-height:1.6">Import your S_listing file to see how far your prices are from winning the BuyBox.<br><br>This shows whether you\'re R5 away or R500 away.</div>';
+    el.innerHTML = '<div style="color:var(--muted);font-size:12px;line-height:1.6">No price gap data yet — make sure your S_listing FSN codes match the scraped products.</div>';
     return;
   }
 

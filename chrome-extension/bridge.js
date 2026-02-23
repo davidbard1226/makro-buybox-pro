@@ -1,18 +1,19 @@
-// bridge.js v4 — polling-based, no push messages from background
-// bridge.js v5 — grace-period context check, self-healing
+// bridge.js v6 — self-healing, never dies permanently during active scrape
 
 (function() {
   'use strict';
 
-  const STORAGE_KEY = 'makro_buybox_v2';
+  const STORAGE_KEY    = 'makro_buybox_v2';
   let dead             = false;
-  let failCount        = 0;       // consecutive isAlive failures
-  const FAIL_THRESHOLD = 5;       // only kill after 5 consecutive failures
+  let failCount        = 0;
+  const FAIL_THRESHOLD = 20;   // 20 consecutive failures = 40s before giving up
   let syncInterval     = null;
   let announceInterval = null;
   let pollInterval     = null;
+  let lastDone         = -1;
+  let wasActive        = false;
 
-  // ── CONTEXT CHECK — with grace period ────────────────────────────────────
+  // ── CONTEXT CHECK ─────────────────────────────────────────────────────────
   function isAlive() {
     try {
       const ok = !!(chrome && chrome.runtime && chrome.runtime.id);
@@ -31,25 +32,24 @@
     try { clearInterval(pollInterval); }     catch(e) {}
     syncInterval = announceInterval = pollInterval = null;
     dead = true;
-    console.warn('[BuyBox Bridge v5] Extension truly unloaded — bridge stopped.');
+    console.warn('[BuyBox Bridge v6] Extension unloaded — bridge stopped.');
   }
 
+  // safe() — skips tick if context unavailable, only permanently kills after
+  // FAIL_THRESHOLD consecutive failures (~40 seconds)
   function safe(fn) {
     if (dead) return;
     if (!isAlive()) {
-      // Only permanently kill after FAIL_THRESHOLD consecutive failures
-      if (failCount >= FAIL_THRESHOLD) {
-        killAll();
-      }
-      // Otherwise just skip this tick silently
-      return;
+      if (failCount >= FAIL_THRESHOLD) killAll();
+      return; // skip this tick silently — SW may just be sleeping
     }
     try { fn(); } catch(e) {
       if (/context invalidated|extension context/i.test(e.message || '')) {
         failCount++;
         if (failCount >= FAIL_THRESHOLD) killAll();
+        // else: silently skip, SW is waking up
       } else {
-        console.warn('[Bridge v5]', e.message);
+        console.warn('[Bridge v6]', e.message);
       }
     }
   }
@@ -112,63 +112,61 @@
     });
   }
 
-  // ── POLL QUEUE STATE → forward progress to dashboard ─────────────────────
-  // Instead of relying on background push messages (which break with SW sleep),
-  // we poll chrome.storage every 2s to check queue progress
-  let lastDone  = -1;
-  let lastActive = false;
-  let wasActive  = false;
-
+  // ── POLL QUEUE STATE ───────────────────────────────────────────────────────
+  // Polls chrome.storage every 2s for queue progress.
+  // If chrome APIs are momentarily unavailable (SW sleeping), skips silently.
   function pollQueueState() {
-    safe(function() {
+    // If context gone but scrape was active, don't kill — just skip this tick
+    if (dead) return;
+    if (!isAlive()) {
+      if (failCount >= FAIL_THRESHOLD) killAll();
+      return;
+    }
+
+    try {
       chrome.storage.local.get(['bbp_queue_state', 'buybox_products'], function(r) {
-        if (chrome.runtime.lastError) return;
+        if (chrome.runtime.lastError) return; // SW sleeping — skip silently
         const s = r.bbp_queue_state;
         if (!s) return;
 
-        // Queue just became active
         if (s.active && !wasActive) {
           wasActive = true;
           lastDone  = 0;
         }
 
-        // Progress: done count changed
         if (s.active && s.done !== lastDone) {
           lastDone = s.done;
-          // Sync products to dashboard whenever we get a new scrape
-          const raw = r.buybox_products || [];
-          if (raw.length) {
-            // Find the most recently scraped product
-            const latest = raw[raw.length - 1];
-            window.postMessage({
-              type:  'QUEUE_PROGRESS',
-              data:  latest ? {
-                url:          latest.url,
-                title:        latest.title || '',
-                buyBoxPrice:  latest.buyBoxPrice || 0,
-                buyBoxSeller: latest.buyBoxSeller || '',
-                fsn:          latest.fsn || '',
-                sku:          latest.sku || ''
-              } : null,
-              done:  s.done,
-              total: s.total
-            }, '*');
-            syncProducts();
-          }
+          const raw    = r.buybox_products || [];
+          const latest = raw.length ? raw[raw.length - 1] : null;
+          window.postMessage({
+            type:  'QUEUE_PROGRESS',
+            data:  latest ? {
+              url:          latest.url,
+              title:        latest.title || '',
+              buyBoxPrice:  latest.buyBoxPrice || 0,
+              buyBoxSeller: latest.buyBoxSeller || '',
+              fsn:          latest.fsn || '',
+              sku:          latest.sku || ''
+            } : null,
+            done:  s.done,
+            total: s.total
+          }, '*');
+          syncProducts();
         }
 
-        // Queue finished
         if (!s.active && wasActive) {
           wasActive = false;
           if (s.aborted) {
-            window.postMessage({ type: 'QUEUE_ABORTED', done: s.done, total: s.total }, '*');
+            window.postMessage({ type: 'QUEUE_ABORTED',   done: s.done, total: s.total }, '*');
           } else {
-            window.postMessage({ type: 'QUEUE_FINISHED', done: s.done, total: s.total }, '*');
+            window.postMessage({ type: 'QUEUE_FINISHED',  done: s.done, total: s.total }, '*');
           }
           syncProducts();
         }
       });
-    });
+    } catch(e) {
+      // Swallow — SW may be momentarily unavailable
+    }
   }
 
   // ── WINDOW MESSAGE HANDLER ────────────────────────────────────────────────
@@ -179,22 +177,21 @@
       safe(function() {
         lastDone  = -1;
         wasActive = false;
-        chrome.runtime.sendMessage(
-          { action: 'queue_scrape', urls: ev.data.urls },
-          function(resp) {
-            if (chrome.runtime.lastError) {
-              console.error('[Bridge] queue_scrape error:', chrome.runtime.lastError.message);
-              // Try waking SW and retry once
-              setTimeout(function() {
-                safe(function() {
-                  chrome.runtime.sendMessage({ action: 'queue_scrape', urls: ev.data.urls }, function() {});
-                });
-              }, 1000);
-              return;
+        // Retry up to 3 times in case SW is waking up
+        function tryStart(attempt) {
+          chrome.runtime.sendMessage(
+            { action: 'queue_scrape', urls: ev.data.urls },
+            function(resp) {
+              if (chrome.runtime.lastError) {
+                if (attempt < 3) setTimeout(function() { tryStart(attempt + 1); }, 1200);
+                else console.error('[Bridge v6] Could not start queue after 3 attempts');
+                return;
+              }
+              console.log('[Bridge v6] Queue started:', resp);
             }
-            console.log('[Bridge] Queue started:', resp);
-          }
-        );
+          );
+        }
+        tryStart(1);
       });
     }
 
@@ -226,9 +223,9 @@
   // ── START ─────────────────────────────────────────────────────────────────
   announce();
   syncProducts();
-  announceInterval = setInterval(announce,       5000);
-  syncInterval     = setInterval(syncProducts,   8000);
-  pollInterval     = setInterval(pollQueueState, 3000);
+  announceInterval = setInterval(announce,       4000);
+  syncInterval     = setInterval(syncProducts,   6000);
+  pollInterval     = setInterval(pollQueueState, 2000);
 
-  console.log('[BuyBox Bridge v5] Active — poll every 3s, kills only after 5 consecutive failures');
+  console.log('[BuyBox Bridge v6] Active — fail threshold:', FAIL_THRESHOLD, '(~40s grace)');
 })();
