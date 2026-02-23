@@ -1526,7 +1526,8 @@ function renderPriceChart(prods) {
   if (prices.length === 0) return;
 
   // Buckets
-  const min = Math.min(...prices), max = Math.max(...prices);
+  const min = prices.reduce((a,b)=>a<b?a:b, Infinity);
+  const max = prices.reduce((a,b)=>a>b?a:b, -Infinity);
   const buckets = 8;
   const bSize = (max - min) / buckets || 1;
   const counts = Array(buckets).fill(0);
@@ -1814,39 +1815,45 @@ function renderSummary(prods) {
   if (!el) return;
   if (!prods.length) { el.innerHTML = '<div style="color:var(--muted);font-size:13px">No data yet</div>'; return; }
 
-  const wins   = prods.filter(p => p.status === 'win').length;
-  const loses  = prods.filter(p => p.status === 'lose').length;
-  const unk    = prods.filter(p => !p.status || p.status === 'unknown').length;
-  const total  = prods.length;
-  const prices = prods.map(p => p.buybox_price).filter(v => v > 0);
-  const avg    = prices.length ? prices.reduce((a,b)=>a+b,0)/prices.length : 0;
-  const min    = prices.length ? Math.min(...prices) : 0;
-  const max    = prices.length ? Math.max(...prices) : 0;
+  try {
+    const wins   = prods.filter(p => p.status === 'win').length;
+    const loses  = prods.filter(p => p.status === 'lose').length;
+    const unk    = prods.filter(p => !p.status || p.status === 'unknown').length;
+    const total  = prods.length;
+    const prices = prods.map(p => p.buybox_price).filter(v => v > 0);
+    const avg    = prices.length ? prices.reduce((a,b)=>a+b,0)/prices.length : 0;
+    // Use reduce instead of spread to avoid stack overflow on large arrays
+    const min    = prices.length ? prices.reduce((a,b)=>a<b?a:b, Infinity) : 0;
+    const max    = prices.length ? prices.reduce((a,b)=>a>b?a:b, -Infinity) : 0;
 
-  const sellers = {};
-  prods.forEach(p => { if (p.seller && p.seller !== 'Unknown Seller') sellers[p.seller] = (sellers[p.seller]||0)+1; });
-  const topSeller = Object.entries(sellers).sort((a,b)=>b[1]-a[1])[0];
-  const listings  = getListings();
+    const sellers = {};
+    prods.forEach(p => { if (p.seller && p.seller !== 'Unknown Seller') sellers[p.seller] = (sellers[p.seller]||0)+1; });
+    const topSeller = Object.entries(sellers).sort((a,b)=>b[1]-a[1])[0];
+    const listings  = getListings();
 
-  const rows = [
-    ['Total Products',       total,                             ''],
-    ['Winning BuyBox',       wins,                              'color:var(--accent)'],
-    ['Losing BuyBox',        loses,                             'color:var(--accent2)'],
-    ['Unknown / Unscraped',  unk,                               'color:var(--muted)'],
-    ['Win Rate',             Math.round(wins/total*100) + '%',  wins > loses ? 'color:var(--accent)' : 'color:var(--accent2)'],
-    ['Avg BuyBox Price',     'R ' + avg.toFixed(2),             ''],
-    ['Lowest BuyBox Price',  'R ' + min.toFixed(2),             ''],
-    ['Highest BuyBox Price', 'R ' + max.toFixed(2),             ''],
-    ['Unique Competitors',   Object.keys(sellers).length,       ''],
-    ['Top Competitor',       topSeller ? topSeller[0] : '—',    'color:var(--accent2);font-size:11px'],
-    ['Listings Imported',    listings.length,                   listings.length ? 'color:var(--accent)' : 'color:var(--muted)'],
-  ];
+    const rows = [
+      ['Total Products',       total,                             ''],
+      ['Winning BuyBox',       wins,                              'color:var(--accent)'],
+      ['Losing BuyBox',        loses,                             'color:var(--accent2)'],
+      ['Unknown / Unscraped',  unk,                               'color:var(--muted)'],
+      ['Win Rate',             Math.round(wins/total*100) + '%',  wins > loses ? 'color:var(--accent)' : 'color:var(--accent2)'],
+      ['Avg BuyBox Price',     'R ' + avg.toFixed(2),             ''],
+      ['Lowest BuyBox Price',  min > 0 ? 'R ' + min.toFixed(2) : '—', ''],
+      ['Highest BuyBox Price', max > 0 ? 'R ' + max.toFixed(2) : '—', ''],
+      ['Unique Competitors',   Object.keys(sellers).length,       ''],
+      ['Top Competitor',       topSeller ? topSeller[0] : '—',    'color:var(--accent2);font-size:11px;text-align:right;max-width:160px'],
+      ['Listings Imported',    listings.length,                   listings.length ? 'color:var(--accent)' : 'color:var(--muted)'],
+    ];
 
-  el.innerHTML = rows.map(([label, val, style]) => `
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
-      <span style="font-size:11px;color:var(--muted)">${label}</span>
-      <span style="font-family:'Space Mono',monospace;font-size:12px;font-weight:700;${style}">${escHtml(String(val))}</span>
-    </div>`).join('');
+    el.innerHTML = rows.map(([label, val, style]) => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
+        <span style="font-size:11px;color:var(--muted);flex-shrink:0">${label}</span>
+        <span style="font-family:'Space Mono',monospace;font-size:12px;font-weight:700;${style};margin-left:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(String(val))}</span>
+      </div>`).join('');
+  } catch(err) {
+    console.error('[renderSummary error]', err);
+    el.innerHTML = '<div style="color:var(--accent2);font-size:12px">Error rendering stats: ' + err.message + '</div>';
+  }
 }
 
 // ── Export / Import all data ──────────────────────────────────────────────

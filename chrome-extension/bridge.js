@@ -1,18 +1,28 @@
 // bridge.js v4 — polling-based, no push messages from background
-// Polls chrome.storage for queue state instead of relying on runtime.sendMessage
+// bridge.js v5 — grace-period context check, self-healing
 
 (function() {
   'use strict';
 
   const STORAGE_KEY = 'makro_buybox_v2';
-  let dead = false;
+  let dead             = false;
+  let failCount        = 0;       // consecutive isAlive failures
+  const FAIL_THRESHOLD = 5;       // only kill after 5 consecutive failures
   let syncInterval     = null;
   let announceInterval = null;
   let pollInterval     = null;
 
-  // ── CONTEXT CHECK ─────────────────────────────────────────────────────────
+  // ── CONTEXT CHECK — with grace period ────────────────────────────────────
   function isAlive() {
-    try { return !!(chrome && chrome.runtime && chrome.runtime.id); } catch(e) { return false; }
+    try {
+      const ok = !!(chrome && chrome.runtime && chrome.runtime.id);
+      if (ok) { failCount = 0; return true; }
+      failCount++;
+      return false;
+    } catch(e) {
+      failCount++;
+      return false;
+    }
   }
 
   function killAll() {
@@ -21,15 +31,26 @@
     try { clearInterval(pollInterval); }     catch(e) {}
     syncInterval = announceInterval = pollInterval = null;
     dead = true;
-    console.warn('[BuyBox Bridge] Extension context gone — stopped.');
+    console.warn('[BuyBox Bridge v5] Extension truly unloaded — bridge stopped.');
   }
 
   function safe(fn) {
     if (dead) return;
-    if (!isAlive()) { killAll(); return; }
+    if (!isAlive()) {
+      // Only permanently kill after FAIL_THRESHOLD consecutive failures
+      if (failCount >= FAIL_THRESHOLD) {
+        killAll();
+      }
+      // Otherwise just skip this tick silently
+      return;
+    }
     try { fn(); } catch(e) {
-      if (/context invalidated|extension context/i.test(e.message || '')) killAll();
-      else console.warn('[Bridge]', e.message);
+      if (/context invalidated|extension context/i.test(e.message || '')) {
+        failCount++;
+        if (failCount >= FAIL_THRESHOLD) killAll();
+      } else {
+        console.warn('[Bridge v5]', e.message);
+      }
     }
   }
 
@@ -205,9 +226,9 @@
   // ── START ─────────────────────────────────────────────────────────────────
   announce();
   syncProducts();
-  announceInterval = setInterval(announce,      4000);
-  syncInterval     = setInterval(syncProducts,  6000);
-  pollInterval     = setInterval(pollQueueState, 2000);
+  announceInterval = setInterval(announce,       5000);
+  syncInterval     = setInterval(syncProducts,   8000);
+  pollInterval     = setInterval(pollQueueState, 3000);
 
-  console.log('[BuyBox Bridge v4] Active — polling queue every 2s');
+  console.log('[BuyBox Bridge v5] Active — poll every 3s, kills only after 5 consecutive failures');
 })();
