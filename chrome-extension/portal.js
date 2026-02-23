@@ -26,20 +26,22 @@
     const el = document.createElement('div');
     el.id = 'bbp-overlay';
     el.style.cssText = [
-      'position:fixed','top:16px','right:16px','z-index:2147483647',
-      'background:#0a0c10','border:2px solid #00e5a0','border-radius:12px',
-      'padding:14px 18px','min-width:260px','box-shadow:0 4px 24px rgba(0,229,160,0.2)',
-      'font-family:monospace','font-size:12px','color:#e8eaf0',
-      'user-select:none'
+      'position:fixed','bottom:16px','right:16px','top:auto','left:auto',
+      'z-index:2147483647',
+      'background:#0a0c10','border:1px solid #00e5a0','border-radius:8px',
+      'padding:8px 12px','min-width:180px','max-width:220px',
+      'box-shadow:0 2px 12px rgba(0,229,160,0.15)',
+      'font-family:monospace','font-size:11px','color:#e8eaf0',
+      'user-select:none','opacity:0.92'
     ].join(';');
     el.innerHTML = `
-      <div style="font-size:11px;letter-spacing:2px;color:#00e5a0;margin-bottom:10px;text-transform:uppercase">
-        🛒 BuyBox Pro Portal
+      <div style="font-size:9px;letter-spacing:1px;color:#00e5a0;margin-bottom:6px;text-transform:uppercase">
+        🛒 BuyBox Pro
       </div>
-      <div id="bbp-status" style="color:#6b7280;margin-bottom:12px;font-size:12px">
+      <div id="bbp-status" style="color:#6b7280;margin-bottom:8px;font-size:10px;line-height:1.4">
         Loading...
       </div>
-      <div id="bbp-buttons" style="display:flex;flex-direction:column;gap:6px"></div>
+      <div id="bbp-buttons" style="display:flex;flex-direction:column;gap:4px"></div>
     `;
     document.body.appendChild(el);
     updateOverlay();
@@ -89,9 +91,9 @@
       `background:${color === '#00e5a0' ? '#00e5a0' : 'transparent'}`,
       `color:${color === '#00e5a0' ? '#000' : color}`,
       `border:1px solid ${color}`,
-      'border-radius:6px','padding:7px 12px','cursor:pointer',
-      'font-family:monospace','font-size:12px','font-weight:700',
-      'text-align:left'
+      'border-radius:4px','padding:5px 8px','cursor:pointer',
+      'font-family:monospace','font-size:10px','font-weight:700',
+      'text-align:left','width:100%'
     ].join(';');
     b.addEventListener('click', fn);
     container.appendChild(b);
