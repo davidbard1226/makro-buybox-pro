@@ -1436,6 +1436,14 @@ function importListings(input) {
         if (fsn) listings.push({ fsn, sku, title, myPrice, myStock, status });
       }
       localStorage.setItem('makro_listings', JSON.stringify(listings));
+
+      // Save the raw workbook as base64 — used as template for price updates
+      // so the generated file is structurally identical to the original (same sheets,
+      // same columns, same header rows) with ONLY column J prices changed.
+      const base64 = btoa(String.fromCharCode.apply(null, data));
+      localStorage.setItem('makro_listings_raw', base64);
+      localStorage.setItem('makro_listings_filename', file.name);
+
       alert('✅ Imported ' + listings.length + ' listings! Your prices & stock now show in the Products table.');
       renderProducts();
     } catch(err) {
@@ -2131,12 +2139,21 @@ function generatePriceUpdate() {
   const winsOnly    = document.getElementById('pricerWinsOnly').checked;
   const skipUnknown = document.getElementById('pricerSkipUnknown').checked;
 
+  // Check we have the raw template file
+  const rawBase64  = localStorage.getItem('makro_listings_raw');
+  const rawFilename = localStorage.getItem('makro_listings_filename') || 'S_listing_price_update.xls';
+  if (!rawBase64) {
+    document.getElementById('pricerResult').innerHTML =
+      '❌ <span style="color:#ff4444">Original listing file not found.<br>Please re-import your S_listing XLS file from the Products tab — the raw file is needed as a template.</span>';
+    return;
+  }
+
+  // Build FSN → new price map
   const scrapedMap = {};
   state.products.forEach(function(p) { if (p.fsn) scrapedMap[p.fsn] = p; });
 
-  // Load the original listings to preserve all columns
-  // We'll reconstruct the S_listing format: rows with all original columns, only price (col J index 9) updated
-  const updateRows = [];
+  const priceMap = {};  // fsn → new selling price
+  let updateCount = 0;
   listings.forEach(function(l) {
     const scraped = scrapedMap[l.fsn];
     if (!scraped) return;
@@ -2144,61 +2161,73 @@ function generatePriceUpdate() {
     if (winsOnly && scraped.status === 'win') return;
     const newPrice = calcNewPrice(l.myPrice, scraped.buybox_price, strategy, beatBy, floorPct);
     if (!newPrice) return;
-    updateRows.push([
-      l.title,          // col A: Product Title
-      l.sku,            // col B: Seller SKU Id
-      '',               // col C: Processing errors
-      '',               // col D: Sub-category
-      l.fsn,            // col E: FSN
-      '',               // col F: Listing ID
-      l.status || 'ACTIVE', // col G: Listing Status
-      '',               // col H: Inactive Reason
-      '',               // col I: Base Price (leave blank — portal ignores)
-      Math.round(newPrice * 100) / 100, // col J: Your Selling Price ← THIS IS WHAT UPDATES
-      '',               // col K: Benchmark Price
-      '',               // col L: Fulfillment By
-      l.myStock,        // col M: Your Stock Count
-    ]);
+    priceMap[l.fsn] = Math.round(newPrice * 100) / 100;
+    updateCount++;
   });
 
-  if (updateRows.length === 0) {
+  if (updateCount === 0) {
     document.getElementById('pricerResult').innerHTML = '⚠️ No products to update with current settings.';
     return;
   }
 
-  // Build workbook using SheetJS
-  const headers1 = ['Product Title','Seller SKU Id','Processing errors (if any)','Sub-category','FSN','Listing ID','Listing Status','Inactive Reason','Base Price','Your Selling Price','Benchmark Price (Ignore)','Fulfillment By','Your Stock Count (Ignore)'];
-  const headers2 = ['Title of your product','Your Identifier','Errors here','Category','Makro FSN','Listing ID','Status','Inactive Reason','Base Price','Selling Price — UPDATED BY BUYBOX PRO','Ignore','Fulfillment mode','Stock'];
+  // Load the original workbook as template — keep ALL sheets, ALL columns, ALL rows intact
+  // Only modify column J (index 9 = "Your Selling Price") for matching FSNs
+  try {
+    const byteStr = atob(rawBase64);
+    const bytes   = new Uint8Array(byteStr.length);
+    for (let i = 0; i < byteStr.length; i++) bytes[i] = byteStr.charCodeAt(i);
 
-  const wsData = [headers1, headers2, ...updateRows];
-  const ws = XLSX.utils.aoa_to_sheet(wsData);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'S_listing_price_update');
+    const wb = XLSX.read(bytes, { type: 'array' });
+    const sh = wb.Sheets[wb.SheetNames[0]];
 
-  // Style col J header bright green so portal operator knows what changed
-  const colWidths = [40,20,5,15,20,25,12,12,12,18,12,15,12].map(w => ({ wch: w }));
-  ws['!cols'] = colWidths;
+    // Get all rows as array of arrays to find which rows to update
+    const rows = XLSX.utils.sheet_to_json(sh, { header: 1, defval: '' });
 
-  const dateStr = new Date().toISOString().slice(0,10).replace(/-/g,'');
-  const filename = 'S_listing_price_update_' + dateStr + '.xls';
+    // Row 0 = headers, Row 1 = descriptions, Row 2+ = data
+    // Col index 4 = FSN, Col index 9 = Your Selling Price
+    let changed = 0;
+    for (let r = 2; r < rows.length; r++) {
+      const fsn = String(rows[r][4] || '').trim();
+      if (fsn && priceMap[fsn] !== undefined) {
+        // Update the cell directly in the sheet object
+        const cellAddr = XLSX.utils.encode_cell({ r: r, c: 9 });
+        if (!sh[cellAddr]) sh[cellAddr] = {};
+        sh[cellAddr].t = 'n';
+        sh[cellAddr].v = priceMap[fsn];
+        sh[cellAddr].w = String(priceMap[fsn]);
+        changed++;
+      }
+    }
 
-  // Write file as ArrayBuffer, convert to base64, save in chrome.storage for portal.js
-  const wbout = XLSX.write(wb, { bookType: 'xls', type: 'array' });
-  const base64 = btoa(String.fromCharCode.apply(null, new Uint8Array(wbout)));
+    // Use the original filename structure but with today's date
+    const dateStr = new Date().toISOString().slice(0,10).replace(/-/g,'');
+    const timeStr = new Date().toTimeString().slice(0,5).replace(':','');
+    // Match original naming: S_listing--ui--group_XXXX_DDMM-HHMMSS_default.xls
+    const filename = rawFilename.replace(/(_\d{4}-\d{6}_default)/, '_' + dateStr.slice(4) + '-' + timeStr + '00_default');
 
-  // Save to localStorage so portal.js (via bridge storage) can access it
-  localStorage.setItem('portal_upload_file', base64);
-  localStorage.setItem('portal_upload_filename', filename);
+    // Write back as XLS (same format as original)
+    const wbout  = XLSX.write(wb, { bookType: 'xls', type: 'array' });
+    const base64 = btoa(String.fromCharCode.apply(null, new Uint8Array(wbout)));
 
-  // Also download for manual fallback
-  XLSX.writeFile(wb, filename);
+    // Save to localStorage for portal auto-upload
+    localStorage.setItem('portal_upload_file', base64);
+    localStorage.setItem('portal_upload_filename', filename);
 
-  document.getElementById('pricerResult').innerHTML =
-    '✅ <span style="color:var(--accent)">Downloaded <b>' + filename + '</b> — ' + updateRows.length + ' products.</span><br>' +
-    '<span style="color:var(--muted)">Click <b>🚀 Open Seller Portal</b> to auto-upload, or upload manually in the portal.</span>';
+    // Also trigger download for manual fallback
+    XLSX.writeFile(wb, filename);
 
-  document.getElementById('portalUploadBtn').style.display = 'block';
-  buildPricerPreview();
+    document.getElementById('pricerResult').innerHTML =
+      '✅ <span style="color:var(--accent)">Downloaded <b>' + filename + '</b><br>' +
+      changed + ' prices updated in original file format.</span><br>' +
+      '<span style="color:var(--muted)">Click <b>🚀 Open Seller Portal</b> to auto-upload.</span>';
+
+    document.getElementById('portalUploadBtn').style.display = 'block';
+    buildPricerPreview();
+
+  } catch(err) {
+    document.getElementById('pricerResult').innerHTML =
+      '❌ <span style="color:#ff4444">Error building file: ' + err.message + '<br>Please re-import your listing file.</span>';
+  }
 }
 
 function openPortalUpload() {
