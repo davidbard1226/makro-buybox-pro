@@ -777,6 +777,39 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
               <label style="font-size:13px;color:var(--muted)">Floor price margin (% above cost — only used in floor strategy)
                 <input id="pricerFloor" type="number" value="10" min="0" step="1" style="width:100%;margin-top:6px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:6px;font-size:13px">
               </label>
+
+              <!-- Min / Max price guards — apply to ALL strategies -->
+              <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:2px">
+                <div style="font-size:11px;color:var(--accent);font-weight:700;letter-spacing:1px;margin-bottom:10px">🛡 PRICE GUARDS — applies to every strategy</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                  <label style="font-size:12px;color:var(--muted)">
+                    Min Price (R) — never go below
+                    <div style="display:flex;align-items:center;gap:6px;margin-top:5px">
+                      <label style="font-size:11px;display:flex;align-items:center;gap:4px;cursor:pointer">
+                        <input type="checkbox" id="pricerMinEnabled" onchange="buildPricerPreview()" style="width:14px;height:14px"> On
+                      </label>
+                      <input id="pricerMinPrice" type="number" value="0" min="0" step="1"
+                        style="flex:1;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:5px;font-size:12px"
+                        oninput="buildPricerPreview()">
+                    </div>
+                  </label>
+                  <label style="font-size:12px;color:var(--muted)">
+                    Max Price (R) — never go above
+                    <div style="display:flex;align-items:center;gap:6px;margin-top:5px">
+                      <label style="font-size:11px;display:flex;align-items:center;gap:4px;cursor:pointer">
+                        <input type="checkbox" id="pricerMaxEnabled" onchange="buildPricerPreview()" style="width:14px;height:14px"> On
+                      </label>
+                      <input id="pricerMaxPrice" type="number" value="9999" min="0" step="1"
+                        style="flex:1;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:5px;font-size:12px"
+                        oninput="buildPricerPreview()">
+                    </div>
+                  </label>
+                </div>
+                <div style="font-size:10px;color:var(--muted);margin-top:8px;line-height:1.5">
+                  Products clamped to min/max will show <span style="color:#ff9500">⚠ CLAMPED</span> in the preview and be skipped from the upload to avoid pricing mistakes.
+                </div>
+              </div>
+
               <label style="font-size:13px;display:flex;align-items:center;gap:8px;color:var(--muted);cursor:pointer">
                 <input type="checkbox" id="pricerWinsOnly" checked style="width:16px;height:16px">
                 Only update products where I'm losing the BuyBox
@@ -1416,40 +1449,39 @@ function deleteSelected() {
 function importListings(input) {
   const file = input.files[0];
   if (!file) return;
+
+  // Step 1: read as Data URL (no stack overflow risk — browser handles it natively)
+  const urlReader = new FileReader();
+  urlReader.onload = function(urlEvt) {
+    // urlEvt.target.result is "data:...;base64,XXXX" — extract the base64 part
+    const dataUrl = urlEvt.target.result;
+    const base64  = dataUrl.split(',')[1];
+    localStorage.setItem('makro_listings_raw',      base64);
+    localStorage.setItem('makro_listings_filename', file.name);
+  };
+  urlReader.readAsDataURL(file);
+
+  // Step 2: read as ArrayBuffer to parse with SheetJS
   const reader = new FileReader();
   reader.onload = function(e) {
     try {
       const data = new Uint8Array(e.target.result);
-      const wb = XLSX.read(data, { type: 'array' });
-      const sh = wb.Sheets[wb.SheetNames[0]];
+      const wb   = XLSX.read(data, { type: 'array' });
+      const sh   = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(sh, { header: 1 });
       const listings = [];
       for (let r = 2; r < rows.length; r++) {
         const row = rows[r];
         if (!row || !row[4]) continue;
-        const fsn = String(row[4]||'').trim();
-        const sku = String(row[1]||'').trim();
-        const title = String(row[0]||'').trim();
-        const myPrice = parseFloat(row[9]) || 0;
-        const myStock = parseInt(row[12]) || 0;
-        const status = String(row[6]||'').trim();
+        const fsn      = String(row[4]  || '').trim();
+        const sku      = String(row[1]  || '').trim();
+        const title    = String(row[0]  || '').trim();
+        const myPrice  = parseFloat(row[9])  || 0;
+        const myStock  = parseInt(row[12])   || 0;
+        const status   = String(row[6]  || '').trim();
         if (fsn) listings.push({ fsn, sku, title, myPrice, myStock, status });
       }
       localStorage.setItem('makro_listings', JSON.stringify(listings));
-
-      // Save the raw workbook as base64 — used as template for price updates
-      // so the generated file is structurally identical to the original (same sheets,
-      // same columns, same header rows) with ONLY column J prices changed.
-      // Convert in 8KB chunks to avoid call stack overflow on large files
-      let base64 = '';
-      const CHUNK = 8192;
-      for (let i = 0; i < data.length; i += CHUNK) {
-        base64 += String.fromCharCode.apply(null, data.subarray(i, i + CHUNK));
-      }
-      base64 = btoa(base64);
-      localStorage.setItem('makro_listings_raw', base64);
-      localStorage.setItem('makro_listings_filename', file.name);
-
       alert('✅ Imported ' + listings.length + ' listings! Your prices & stock now show in the Products table.');
       renderProducts();
     } catch(err) {
@@ -2049,7 +2081,7 @@ function getListings() {
   } catch(e) { return []; }
 }
 
-function calcNewPrice(myPrice, buyboxPrice, strategy, beatBy, floorPct) {
+function calcNewPrice(myPrice, buyboxPrice, strategy, beatBy, floorPct, minPrice, maxPrice) {
   if (!buyboxPrice || buyboxPrice <= 0) return null;
   let newPrice;
   if (strategy === 'match') {
@@ -2062,7 +2094,18 @@ function calcNewPrice(myPrice, buyboxPrice, strategy, beatBy, floorPct) {
     const floor = myPrice * (1 - parseFloat(floorPct) / 100);
     newPrice = Math.max(buyboxPrice - parseFloat(beatBy), floor);
   }
-  return Math.max(newPrice, 0.01);
+  newPrice = Math.max(newPrice, 0.01);
+
+  // Apply min/max guards — return object so callers can detect clamping
+  const rawPrice = newPrice;
+  if (minPrice !== null && newPrice < minPrice) newPrice = minPrice;
+  if (maxPrice !== null && newPrice > maxPrice) newPrice = maxPrice;
+
+  return {
+    price:    Math.round(newPrice * 100) / 100,
+    clamped:  Math.round(rawPrice * 100) / 100 !== Math.round(newPrice * 100) / 100,
+    clampDir: rawPrice < (minPrice || 0) ? 'min' : 'max'
+  };
 }
 
 function buildPricerPreview() {
@@ -2072,12 +2115,13 @@ function buildPricerPreview() {
   const floorPct    = document.getElementById('pricerFloor').value;
   const winsOnly    = document.getElementById('pricerWinsOnly').checked;
   const skipUnknown = document.getElementById('pricerSkipUnknown').checked;
+  const minEnabled  = document.getElementById('pricerMinEnabled').checked;
+  const maxEnabled  = document.getElementById('pricerMaxEnabled').checked;
+  const minPrice    = minEnabled ? parseFloat(document.getElementById('pricerMinPrice').value) || 0    : null;
+  const maxPrice    = maxEnabled ? parseFloat(document.getElementById('pricerMaxPrice').value) || 9999 : null;
 
-  // Build FSN lookup from scraped products
   const scrapedMap = {};
-  state.products.forEach(function(p) {
-    if (p.fsn) scrapedMap[p.fsn] = p;
-  });
+  state.products.forEach(function(p) { if (p.fsn) scrapedMap[p.fsn] = p; });
 
   const rows = [];
   listings.forEach(function(l) {
@@ -2085,17 +2129,19 @@ function buildPricerPreview() {
     if (!scraped) return;
     if (skipUnknown && (!scraped.buybox_price || scraped.buybox_price <= 0)) return;
     if (winsOnly && scraped.status === 'win') return;
-    const newPrice = calcNewPrice(l.myPrice, scraped.buybox_price, strategy, beatBy, floorPct);
-    if (!newPrice) return;
+    const result = calcNewPrice(l.myPrice, scraped.buybox_price, strategy, beatBy, floorPct, minPrice, maxPrice);
+    if (!result) return;
     rows.push({
-      fsn:       l.fsn,
-      sku:       l.sku,
-      title:     l.title,
-      myPrice:   l.myPrice,
-      buybox:    scraped.buybox_price,
-      newPrice:  Math.round(newPrice * 100) / 100,
-      status:    scraped.status,
-      seller:    scraped.seller
+      fsn:      l.fsn,
+      sku:      l.sku,
+      title:    l.title,
+      myPrice:  l.myPrice,
+      buybox:   scraped.buybox_price,
+      newPrice: result.price,
+      clamped:  result.clamped,
+      clampDir: result.clampDir,
+      status:   scraped.status,
+      seller:   scraped.seller
     });
   });
 
@@ -2105,7 +2151,21 @@ function buildPricerPreview() {
     return;
   }
 
-  el.innerHTML = '<div style="margin-bottom:8px;color:var(--accent);font-size:12px">' + rows.length + ' products will be updated</div>' +
+  const okRows      = rows.filter(function(r) { return !r.clamped; });
+  const clampedRows = rows.filter(function(r) { return  r.clamped; });
+
+  let html = '';
+  if (clampedRows.length) {
+    html += '<div style="background:rgba(255,149,0,0.1);border:1px solid #ff9500;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:11px">' +
+      '⚠️ <b style="color:#ff9500">' + clampedRows.length + ' product' + (clampedRows.length > 1 ? 's' : '') + ' clamped by price guard</b> — ' +
+      'these will be <b>skipped</b> from the upload file to protect you from pricing mistakes.<br>' +
+      '<span style="color:var(--muted)">Adjust your Min/Max guards or strategy if you want to include them.</span></div>';
+  }
+
+  html += '<div style="margin-bottom:8px;font-size:12px">' +
+    '<span style="color:var(--accent)">' + okRows.length + ' products will update</span>' +
+    (clampedRows.length ? ' &nbsp;·&nbsp; <span style="color:#ff9500">' + clampedRows.length + ' skipped (clamped)</span>' : '') +
+    '</div>' +
     '<table style="width:100%;border-collapse:collapse;font-size:11px">' +
     '<thead><tr style="color:var(--muted);border-bottom:1px solid var(--border)">' +
     '<th style="text-align:left;padding:6px 4px">Product</th>' +
@@ -2113,26 +2173,39 @@ function buildPricerPreview() {
     '<th style="text-align:right;padding:6px 4px">BuyBox</th>' +
     '<th style="text-align:right;padding:6px 4px">New Price</th>' +
     '<th style="text-align:right;padding:6px 4px">Change</th>' +
-    '</tr></thead><tbody>' +
-    rows.slice(0, 50).map(function(r) {
-      const change = r.newPrice - r.myPrice;
-      const changeColor = change < 0 ? '#ff9500' : 'var(--accent)';
-      const changeStr = (change >= 0 ? '+' : '') + 'R' + change.toFixed(2);
-      return '<tr style="border-bottom:1px solid var(--border)">' +
-        '<td style="padding:5px 4px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml(r.title) + '">' + escHtml(r.title.slice(0,30)) + '</td>' +
-        '<td style="text-align:right;padding:5px 4px;color:var(--accent3)">R' + r.myPrice.toFixed(2) + '</td>' +
-        '<td style="text-align:right;padding:5px 4px;color:var(--muted)">R' + r.buybox.toFixed(2) + '</td>' +
-        '<td style="text-align:right;padding:5px 4px;color:var(--accent);font-weight:700">R' + r.newPrice.toFixed(2) + '</td>' +
-        '<td style="text-align:right;padding:5px 4px;color:' + changeColor + '">' + changeStr + '</td>' +
-        '</tr>';
-    }).join('') +
-    (rows.length > 50 ? '<tr><td colspan="5" style="color:var(--muted);padding:8px">...and ' + (rows.length-50) + ' more</td></tr>' : '') +
-    '</tbody></table>';
+    '</tr></thead><tbody>';
+
+  // Show OK rows first, then clamped (faded)
+  const displayRows = okRows.concat(clampedRows).slice(0, 50);
+  displayRows.forEach(function(r) {
+    const change      = r.newPrice - r.myPrice;
+    const changeColor = r.clamped ? '#ff9500' : (change < 0 ? '#ff9500' : 'var(--accent)');
+    const changeStr   = (change >= 0 ? '+' : '') + 'R' + change.toFixed(2);
+    const rowStyle    = r.clamped ? 'opacity:0.5;background:rgba(255,149,0,0.05)' : '';
+    const clampBadge  = r.clamped ? ' <span style="color:#ff9500;font-size:9px">⚠ ' + r.clampDir.toUpperCase() + '</span>' : '';
+    html += '<tr style="border-bottom:1px solid var(--border);' + rowStyle + '">' +
+      '<td style="padding:5px 4px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml(r.title) + '">' +
+        escHtml(r.title.slice(0, 28)) + clampBadge + '</td>' +
+      '<td style="text-align:right;padding:5px 4px;color:var(--muted)">R' + r.myPrice.toFixed(2) + '</td>' +
+      '<td style="text-align:right;padding:5px 4px;color:var(--muted)">R' + r.buybox.toFixed(2) + '</td>' +
+      '<td style="text-align:right;padding:5px 4px;color:' + (r.clamped ? '#ff9500' : 'var(--accent)') + ';font-weight:700">R' + r.newPrice.toFixed(2) + '</td>' +
+      '<td style="text-align:right;padding:5px 4px;color:' + changeColor + '">' + changeStr + '</td>' +
+      '</tr>';
+  });
+
+  if (rows.length > 50) {
+    html += '<tr><td colspan="5" style="color:var(--muted);padding:8px">...and ' + (rows.length - 50) + ' more</td></tr>';
+  }
+  html += '</tbody></table>';
+  el.innerHTML = html;
 }
 
-// Recalculate preview when settings change
-['pricerStrategy','pricerBeatBy','pricerFloor','pricerWinsOnly','pricerSkipUnknown'].forEach(function(id) {
+// Recalculate preview when any setting changes
+['pricerStrategy','pricerBeatBy','pricerFloor','pricerWinsOnly','pricerSkipUnknown','pricerMinPrice','pricerMaxPrice'].forEach(function(id) {
   document.getElementById(id) && document.getElementById(id).addEventListener('change', function() {
+    if (document.getElementById('tab-pricer').classList.contains('active')) buildPricerPreview();
+  });
+  document.getElementById(id) && document.getElementById(id).addEventListener('input', function() {
     if (document.getElementById('tab-pricer').classList.contains('active')) buildPricerPreview();
   });
 });
@@ -2144,6 +2217,10 @@ function generatePriceUpdate() {
   const floorPct    = document.getElementById('pricerFloor').value;
   const winsOnly    = document.getElementById('pricerWinsOnly').checked;
   const skipUnknown = document.getElementById('pricerSkipUnknown').checked;
+  const minEnabled  = document.getElementById('pricerMinEnabled').checked;
+  const maxEnabled  = document.getElementById('pricerMaxEnabled').checked;
+  const minPrice    = minEnabled ? parseFloat(document.getElementById('pricerMinPrice').value) || 0    : null;
+  const maxPrice    = maxEnabled ? parseFloat(document.getElementById('pricerMaxPrice').value) || 9999 : null;
 
   // Check we have the raw template file
   const rawBase64  = localStorage.getItem('makro_listings_raw');
@@ -2160,14 +2237,16 @@ function generatePriceUpdate() {
 
   const priceMap = {};  // fsn → new selling price
   let updateCount = 0;
+  let skippedClamped = 0;
   listings.forEach(function(l) {
     const scraped = scrapedMap[l.fsn];
     if (!scraped) return;
     if (skipUnknown && (!scraped.buybox_price || scraped.buybox_price <= 0)) return;
     if (winsOnly && scraped.status === 'win') return;
-    const newPrice = calcNewPrice(l.myPrice, scraped.buybox_price, strategy, beatBy, floorPct);
-    if (!newPrice) return;
-    priceMap[l.fsn] = Math.round(newPrice * 100) / 100;
+    const result = calcNewPrice(l.myPrice, scraped.buybox_price, strategy, beatBy, floorPct, minPrice, maxPrice);
+    if (!result) return;
+    if (result.clamped) { skippedClamped++; return; }  // skip clamped — protect from mistakes
+    priceMap[l.fsn] = result.price;
     updateCount++;
   });
 
@@ -2212,8 +2291,14 @@ function generatePriceUpdate() {
     const filename = rawFilename.replace(/(_\d{4}-\d{6}_default)/, '_' + dateStr.slice(4) + '-' + timeStr + '00_default');
 
     // Write back as XLS (same format as original)
-    const wbout  = XLSX.write(wb, { bookType: 'xls', type: 'array' });
-    const base64 = btoa(String.fromCharCode.apply(null, new Uint8Array(wbout)));
+    const wbout = XLSX.write(wb, { bookType: 'xls', type: 'array' });
+    const wbBytes = new Uint8Array(wbout);
+    let base64 = '';
+    const CHUNK = 8192;
+    for (let i = 0; i < wbBytes.length; i += CHUNK) {
+      base64 += String.fromCharCode.apply(null, wbBytes.subarray(i, i + CHUNK));
+    }
+    base64 = btoa(base64);
 
     // Save to localStorage for portal auto-upload
     localStorage.setItem('portal_upload_file', base64);
@@ -2224,7 +2309,9 @@ function generatePriceUpdate() {
 
     document.getElementById('pricerResult').innerHTML =
       '✅ <span style="color:var(--accent)">Downloaded <b>' + filename + '</b><br>' +
-      changed + ' prices updated in original file format.</span><br>' +
+      changed + ' prices updated.' +
+      (skippedClamped ? ' <span style="color:#ff9500">' + skippedClamped + ' skipped (price guard).</span>' : '') +
+      '</span><br>' +
       '<span style="color:var(--muted)">Click <b>🚀 Open Seller Portal</b> to auto-upload.</span>';
 
     document.getElementById('portalUploadBtn').style.display = 'block';
