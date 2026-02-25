@@ -500,6 +500,59 @@
   .seller-name-input { background:transparent; border:none; color:var(--accent3); font-family:'Space Mono',monospace; font-size:11px; width:120px; outline:none; cursor:pointer; }
   .seller-name-input:focus { border-bottom:1px solid var(--accent3); cursor:text; }
 
+  /* COST SYNC BUTTON */
+  .btn-sync-costs {
+    background: none;
+    color: #60a5fa;
+    border: 1px solid rgba(96,165,250,0.4);
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all .2s;
+    background: rgba(96,165,250,0.08);
+  }
+  .btn-sync-costs:hover { border-color:#60a5fa; background:rgba(96,165,250,0.15); color:#93c5fd; }
+  .btn-sync-costs:disabled { opacity:0.5; cursor:not-allowed; }
+
+  /* COST + PROFIT CELLS */
+  .cost-cell { font-family:'Space Mono',monospace; font-size:13px; font-weight:700; color:#e2e8f0; }
+  .cost-supplier-tag { display:inline-block; font-size:10px; color:#818cf8; background:rgba(99,102,241,0.12); border:1px solid rgba(99,102,241,0.25); border-radius:4px; padding:1px 6px; margin-top:3px; font-family:'Space Mono',monospace; }
+  .profit-pos { color: var(--accent); font-weight:700; font-family:'Space Mono',monospace; font-size:13px; }
+  .profit-neg { color: var(--accent2); font-weight:700; font-family:'Space Mono',monospace; font-size:13px; }
+  .profit-sub { font-size:10px; color:var(--muted); margin-top:2px; }
+  .minmax-cell { font-family:'Space Mono',monospace; font-size:12px; }
+
+  /* SKU INLINE EDIT */
+  .sku-display { display:flex; align-items:center; gap:4px; }
+  .sku-edit-wrap { display:none; align-items:center; gap:4px; }
+  .sku-input { background:var(--surface2); border:1px solid var(--accent); color:var(--text); padding:3px 8px; border-radius:4px; font-size:11px; font-family:'Space Mono',monospace; width:110px; outline:none; }
+  .sku-btn { background:none; border:none; cursor:pointer; font-size:11px; padding:2px 6px; border-radius:3px; }
+
+  /* COST NOTIFICATION */
+  #costNotify {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 18px;
+    font-size: 13px;
+    max-width: 340px;
+    z-index: 200;
+    display: none;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  }
+  #costNotify.show { display:block; }
+  #costNotify.success { border-color: rgba(0,229,160,0.4); color: var(--accent); }
+  #costNotify.error { border-color: rgba(255,149,0,0.4); color: var(--accent2); }
+
   /* CANVAS WRAPPER */
   canvas { display:block; }
 
@@ -627,6 +680,7 @@
           <option value="unknown">Unknown</option>
         </select>
         <div class="toolbar-right">
+          <button class="btn-sync-costs" id="syncCostsBtn" onclick="syncCostsFromGSheet()" title="Fetch cost price from Google Sheets by matching SKU">📊 Sync Costs</button>
           <label class="btn-secondary" style="width:auto;padding:8px 16px;cursor:pointer" title="Import your Makro S_listing XLS file">
             📂 Import Listings
             <input type="file" id="listingsFileInput" accept=".xls,.xlsx,.csv" style="display:none" onchange="importListings(this)">
@@ -644,10 +698,14 @@
             <tr>
               <th style="width:32px"><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)" title="Select all"></th>
               <th>Product</th>
-              <th>FSN</th>
+              <th>FSN / SKU</th>
               <th>My Price</th>
               <th>Stock</th>
               <th>Buy Box Price</th>
+              <th>Cost Price</th>
+              <th>Min Price</th>
+              <th>Max Price</th>
+              <th>Profit (My Price)</th>
               <th>Seller</th>
               <th>Status</th>
               <th>Last Checked</th>
@@ -655,7 +713,7 @@
             </tr>
           </thead>
           <tbody id="productsBody">
-            <tr><td colspan="10">
+            <tr><td colspan="14">
               <div class="empty-state">
                 <div class="empty-icon">📦</div>
                 <div class="empty-title">No Products Yet</div>
@@ -924,6 +982,9 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
 
   </main>
 </div>
+
+<!-- COST SYNC NOTIFICATION -->
+<div id="costNotify"></div>
 
 <!-- CLEAR CONFIRM MODAL -->
 <div class="modal-backdrop" id="clearModal">
@@ -1372,7 +1433,7 @@ function renderProducts() {
 
   const tbody = document.getElementById('productsBody');
   if (prods.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="10"><div class="empty-state">
+    tbody.innerHTML = `<tr><td colspan="14"><div class="empty-state">
       <div class="empty-icon">📦</div>
       <div class="empty-title">${state.products.length === 0 ? 'No Products Yet' : 'No Matches'}</div>
       <div class="empty-text">${state.products.length === 0 ? 'Use the Scraper tab to add products.' : 'Try changing your filters.'}</div>
@@ -1386,24 +1447,80 @@ function renderProducts() {
     const t = p.lastChecked ? new Date(p.lastChecked).toLocaleString() : '—';
     const realIdx = state.products.indexOf(p);
     const listing = listingsMap[p.fsn] || null;
-    const myPrice = listing ? `<span style="color:var(--accent3);font-family:'Space Mono',monospace;font-size:12px">R ${listing.myPrice.toFixed(2)}</span>` : '<span style="color:var(--muted);font-size:11px">—</span>';
+
+    // ── My Price & Stock from listings ──
+    const myPriceVal = listing ? listing.myPrice : (p.myPrice || null);
     const myStock = listing ? `<span style="color:${listing.myStock > 0 ? 'var(--accent)' : '#ff9500'};font-size:12px">${listing.myStock}</span>` : '<span style="color:var(--muted);font-size:11px">—</span>';
     let priceIndicator = '';
-    if (listing && p.buybox_price > 0) {
-      if (listing.myPrice > p.buybox_price) priceIndicator = ' <span style="color:#ff9500;font-size:10px">▲above</span>';
-      else if (listing.myPrice < p.buybox_price) priceIndicator = ' <span style="color:var(--accent);font-size:10px">▼below</span>';
+    if (myPriceVal && p.buybox_price > 0) {
+      if (myPriceVal > p.buybox_price) priceIndicator = ' <span style="color:#ff9500;font-size:10px">▲above</span>';
+      else if (myPriceVal < p.buybox_price) priceIndicator = ' <span style="color:var(--accent);font-size:10px">▼below</span>';
       else priceIndicator = ' <span style="color:var(--muted);font-size:10px">=match</span>';
     }
+    const myPriceHtml = myPriceVal
+      ? `<span style="color:var(--accent3);font-family:'Space Mono',monospace;font-size:12px">R ${myPriceVal.toFixed(2)}</span>${priceIndicator}`
+      : '<span style="color:var(--muted);font-size:11px">—</span>';
+
+    // ── FSN / SKU display (read-only — SKU comes from listings import) ──
+    const skuVal = escHtml(p.sku || '');
+    const fsnVal = escHtml(p.fsn || '—');
+    const fsnSkuHtml = `
+      <div style="font-family:'Space Mono',monospace;font-size:11px;color:var(--muted)">${fsnVal}</div>
+      ${skuVal ? `<div style="font-size:10px;color:#818cf8;font-family:'Space Mono',monospace">${skuVal}</div>` : '<div style="font-size:10px;color:var(--muted)">no sku — import listings</div>'}`;
+
+    // ── Cost price — inline editable ──
+    const cost = p.cost_price ? Number(p.cost_price) : null;
+    const costDisplay = cost ? `R ${cost.toFixed(2)}` : '—';
+    const costHtml = `
+      <div class="sku-display" id="cost-disp-${realIdx}" style="display:flex;align-items:center;gap:4px">
+        <span class="${cost ? 'cost-cell' : ''}" style="${!cost ? 'color:var(--muted);font-size:11px' : ''}">${costDisplay}</span>
+        ${p.cost_supplier ? `<div class="cost-supplier-tag">${escHtml(p.cost_supplier)}</div>` : ''}
+        <button class="sku-btn" onclick="editCost(${realIdx})" title="Edit cost price" style="color:var(--muted);font-size:11px">✏</button>
+      </div>
+      <div class="sku-edit-wrap" id="cost-edit-${realIdx}" style="display:none;align-items:center;gap:4px">
+        <input class="sku-input" id="cost-inp-${realIdx}" value="${cost ? cost.toFixed(2) : ''}" placeholder="0.00" type="number" step="0.01" min="0"
+          onkeydown="if(event.key==='Enter')saveCost(${realIdx});if(event.key==='Escape')cancelCost(${realIdx})" style="width:90px">
+        <button class="sku-btn" onclick="saveCost(${realIdx})" style="color:var(--accent)">✓</button>
+        <button class="sku-btn" onclick="cancelCost(${realIdx})" style="color:var(--muted)">✕</button>
+      </div>`;
+
+    // ── Min / Max price ──
+    const minP = p.min_price ? Number(p.min_price) : null;
+    const maxP = p.max_price ? Number(p.max_price) : null;
+    const minHtml = minP
+      ? `<span class="minmax-cell" style="color:#34d399">R ${minP.toFixed(2)}</span>`
+      : `<span style="color:var(--muted);font-size:11px">—</span>`;
+    const maxHtml = maxP
+      ? `<span class="minmax-cell" style="color:#f59e0b">R ${maxP.toFixed(2)}</span>`
+      : `<span style="color:var(--muted);font-size:11px">—</span>`;
+
+    // ── Profit calculation: 10% Makro commission + tiered delivery ──
+    let profitHtml = '<span style="color:var(--muted);font-size:11px">—</span>';
+    const priceForCalc = myPriceVal || (p.buybox_price ? Number(p.buybox_price) : null);
+    if (cost && priceForCalc) {
+      const fees   = makroFees(priceForCalc);
+      const profit = priceForCalc - fees.total - cost;
+      const margin = ((profit / priceForCalc) * 100).toFixed(1);
+      const cls    = profit >= 0 ? 'profit-pos' : 'profit-neg';
+      const label  = myPriceVal ? 'My Price' : 'BuyBox';
+      profitHtml   = `<div class="${cls}">${profit >= 0 ? '+' : ''}R ${Math.abs(profit).toFixed(2)}</div>
+        <div class="profit-sub">10% (R${fees.commission.toFixed(0)}) + del R${fees.delivery} · ${margin}% · ${label}</div>`;
+    }
+
     return `<tr>
       <td><input type="checkbox" class="row-check" data-idx="${realIdx}"></td>
       <td>
         <div class="prod-title">${escHtml((p.title||'Unknown').slice(0,55))}</div>
-        <a class="prod-url" href="${escHtml(p.url)}" target="_blank" rel="noopener">${escHtml(p.sku || shortUrl(p.url))}</a>
+        <a class="prod-url" href="${escHtml(p.url)}" target="_blank" rel="noopener">${escHtml(shortUrl(p.url))}</a>
       </td>
-      <td><span style="font-family:'Space Mono',monospace;font-size:11px;color:var(--muted)">${escHtml(p.fsn||'—')}</span></td>
-      <td>${myPrice}${priceIndicator}</td>
+      <td>${fsnSkuHtml}</td>
+      <td>${myPriceHtml}</td>
       <td>${myStock}</td>
       <td><span class="price-cell ${p.status==='win'?'win':'lose'}">R ${(p.buybox_price||0).toFixed(2)}</span></td>
+      <td>${costHtml}</td>
+      <td>${minHtml}</td>
+      <td>${maxHtml}</td>
+      <td>${profitHtml}</td>
       <td style="font-size:12px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(p.seller||'')}">${escHtml((p.seller||'Unknown').slice(0,20))}</td>
       <td><span class="status-pill ${statusClass}">${statusLabel}</span></td>
       <td style="font-size:11px;color:var(--muted);white-space:nowrap">${t}</td>
@@ -1483,7 +1600,20 @@ function importListings(input) {
         if (fsn) listings.push({ fsn, sku, title, myPrice, myStock, status });
       }
       localStorage.setItem('makro_listings', JSON.stringify(listings));
-      alert('✅ Imported ' + listings.length + ' listings! Your prices & stock now show in the Products table.');
+
+      // ── Auto-populate SKU on matched products (needed for cost sync) ──────
+      const fsnToSku = {};
+      listings.forEach(l => { if (l.fsn && l.sku) fsnToSku[l.fsn] = l.sku; });
+      let skuPopulated = 0;
+      state.products.forEach(p => {
+        if (p.fsn && fsnToSku[p.fsn] && !p.sku) {
+          p.sku = fsnToSku[p.fsn];
+          skuPopulated++;
+        }
+      });
+      if (skuPopulated > 0) saveProducts();
+
+      alert('✅ Imported ' + listings.length + ' listings!' + (skuPopulated > 0 ? ' Auto-populated ' + skuPopulated + ' SKU(s) from listings — click 📊 Sync Costs to fetch cost prices.' : ' Your prices & stock now show in the Products table.'));
       renderProducts();
     } catch(err) {
       alert('❌ Error: ' + err.message);
@@ -1527,11 +1657,189 @@ function updateProductCount() {
   document.getElementById('prodCount').textContent = state.products.length;
 }
 
+// ============================================================
+// COST PRICE INLINE EDIT
+// ============================================================
+function editCost(idx) {
+  document.getElementById('cost-disp-' + idx).style.display = 'none';
+  const wrap = document.getElementById('cost-edit-' + idx);
+  wrap.style.display = 'flex';
+  const inp = document.getElementById('cost-inp-' + idx);
+  inp.focus(); inp.select();
+}
+
+function cancelCost(idx) {
+  document.getElementById('cost-disp-' + idx).style.display = 'flex';
+  document.getElementById('cost-edit-' + idx).style.display = 'none';
+}
+
+function saveCost(idx) {
+  const val = parseFloat(document.getElementById('cost-inp-' + idx).value);
+  if (!isNaN(val) && val >= 0) {
+    state.products[idx].cost_price = val;
+    if (!state.products[idx].cost_supplier) state.products[idx].cost_supplier = 'Manual';
+  } else if (document.getElementById('cost-inp-' + idx).value.trim() === '') {
+    // Clear cost
+    delete state.products[idx].cost_price;
+    delete state.products[idx].cost_supplier;
+  }
+  saveProducts();
+  renderProducts();
+  showCostNotify('✅ Cost price saved.', 'success');
+}
+
+// ============================================================
+// GOOGLE SHEETS COST SYNC — pure browser fetch, no backend needed
+// Sheet: https://docs.google.com/spreadsheets/d/1ISaEOPBElufeYh6eq6APtlFjeMvrKqlAwEd3F4K6rBw
+// Reads multiple supplier tabs, matches by SKU, picks lowest cost
+// ============================================================
+const GSHEET_ID = '1ISaEOPBElufeYh6eq6APtlFjeMvrKqlAwEd3F4K6rBw';
+
+// Define each supplier tab: { gid, skuCol, costCol, minCol, maxCol, supplierName }
+// Column indices are 0-based: A=0, B=1, C=2, D=3, ... N=13, O=14, P=15
+// The sync picks the LOWEST cost match across all tabs.
+const GSHEET_TABS = [
+  // Tab gid=2144903566: SKU(A=0), Title(B=1), Stock(C=2), Cost Price(D=3), Min(N=13), Max(O=14)
+  { gid: '2144903566', skuCol: 0, costCol: 3, minCol: 13, maxCol: 14, supplierName: 'Kolok' },
+  // ── Add more supplier tabs below ──────────────────────────────────────────
+  // Example: { gid: 'YOUR_GID', skuCol: 2, costCol: 13, minCol: 14, maxCol: 15, supplierName: 'Supplier B' },
+];
+
+// ── Makro fee structure ─────────────────────────────────────────────────────
+// 10% commission on selling price PLUS tiered delivery fee:
+//   < R1500  → R50
+//   R1500–R3999.99 → R80
+//   R4000–R9999.99 → R100
+//   ≥ R10000  → R200
+function makroFees(sellingPrice) {
+  const commission = sellingPrice * 0.10;
+  let delivery = 50;
+  if (sellingPrice >= 10000) delivery = 200;
+  else if (sellingPrice >= 4000)  delivery = 100;
+  else if (sellingPrice >= 1500)  delivery = 80;
+  return { commission, delivery, total: commission + delivery };
+}
+function makroProfit(sellingPrice, costPrice) {
+  const fees = makroFees(sellingPrice);
+  return sellingPrice - fees.total - costPrice;
+}
+
+async function syncCostsFromGSheet() {
+  const btn = document.getElementById('syncCostsBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Syncing...';
+  showCostNotify('⏳ Fetching cost data from Google Sheets...', 'success');
+
+  try {
+    // ── Step 1: Fetch all tabs and build SKU→cost lookup ──────────────────
+    const lookup = {}; // sku_lower → { cost_price, supplier }
+
+    for (const tab of GSHEET_TABS) {
+      const url = `https://docs.google.com/spreadsheets/d/${GSHEET_ID}/export?format=csv&gid=${tab.gid}`;
+      let csvText = '';
+      try {
+        const resp = await fetch(url);
+        if (!resp.ok) { console.warn('Tab', tab.gid, 'returned', resp.status); continue; }
+        csvText = await resp.text();
+      } catch (e) { console.warn('Tab', tab.gid, 'fetch error:', e); continue; }
+
+      // Parse CSV rows
+      const rows = parseCSV(csvText);
+      for (let r = 1; r < rows.length; r++) { // skip header row
+        const row = rows[r];
+        if (!row || row.length === 0) continue;
+        const rawSku  = (row[tab.skuCol]  || '').toString().trim();
+        const rawCost = (row[tab.costCol] || '').toString().trim().replace(/[R,\s]/g, '');
+        if (!rawSku) continue;
+        const costVal = parseFloat(rawCost);
+        if (isNaN(costVal) || costVal <= 0) continue;
+        const skuKey = rawSku.toLowerCase();
+        const supplierName = tab.supplierName || 'Sheet';
+        // Read min/max if columns defined
+        const rawMin = tab.minCol != null ? (row[tab.minCol] || '').toString().trim().replace(/[R,\s]/g, '') : '';
+        const rawMax = tab.maxCol != null ? (row[tab.maxCol] || '').toString().trim().replace(/[R,\s]/g, '') : '';
+        const minVal = rawMin ? parseFloat(rawMin) : null;
+        const maxVal = rawMax ? parseFloat(rawMax) : null;
+        // Keep lowest cost supplier
+        if (!lookup[skuKey] || costVal < lookup[skuKey].cost_price) {
+          lookup[skuKey] = {
+            cost_price: costVal,
+            supplier: supplierName,
+            min_price: (!isNaN(minVal) && minVal > 0) ? minVal : null,
+            max_price: (!isNaN(maxVal) && maxVal > 0) ? maxVal : null,
+          };
+        }
+      }
+    }
+
+    // ── Step 2: Match products by SKU and update cost_price ───────────────
+    let updated = 0;
+    const notFound = [];
+    state.products.forEach(p => {
+      const sku = (p.sku || '').trim().toLowerCase();
+      if (!sku) return;
+      if (lookup[sku]) {
+        p.cost_price    = lookup[sku].cost_price;
+        p.cost_supplier = lookup[sku].supplier;
+        if (lookup[sku].min_price) p.min_price = lookup[sku].min_price;
+        if (lookup[sku].max_price) p.max_price = lookup[sku].max_price;
+        updated++;
+      } else {
+        notFound.push(p.sku);
+      }
+    });
+
+    saveProducts();
+    renderProducts();
+
+    const msg = updated > 0
+      ? `✅ Cost sync complete — ${updated} product${updated!==1?'s':''} updated.${notFound.length ? ` ${notFound.length} SKU(s) not matched.` : ' All SKUs matched!'}`
+      : `⚠️ No products updated. Make sure your products have SKUs matching the Google Sheet.`;
+    showCostNotify(msg, updated > 0 ? 'success' : 'error');
+
+  } catch (e) {
+    showCostNotify('❌ Sync error: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '📊 Sync Costs';
+  }
+}
+
+// Minimal CSV parser (handles quoted fields with commas/newlines)
+function parseCSV(text) {
+  const rows = [];
+  let row = [], cur = '', inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '"') {
+      if (inQ && text[i+1] === '"') { cur += '"'; i++; }
+      else inQ = !inQ;
+    } else if (ch === ',' && !inQ) {
+      row.push(cur); cur = '';
+    } else if ((ch === '\n' || ch === '\r') && !inQ) {
+      if (ch === '\r' && text[i+1] === '\n') i++;
+      row.push(cur); rows.push(row); row = []; cur = '';
+    } else {
+      cur += ch;
+    }
+  }
+  if (cur || row.length) { row.push(cur); rows.push(row); }
+  return rows;
+}
+
+function showCostNotify(msg, type) {
+  const el = document.getElementById('costNotify');
+  el.textContent = msg;
+  el.className = 'show ' + (type || 'success');
+  clearTimeout(el._timer);
+  el._timer = setTimeout(() => { el.className = ''; }, 6000);
+}
+
 function exportCSV() {
   if (state.products.length === 0) { alert('No products to export.'); return; }
-  const headers = ['Title', 'URL', 'FSN', 'BuyBox Price', 'Seller', 'Status', 'Last Checked'];
+  const headers = ['Title', 'URL', 'FSN', 'SKU', 'BuyBox Price', 'Cost Price', 'Supplier', 'Min Price', 'Max Price', 'Seller', 'Status', 'Last Checked'];
   const rows = state.products.map(p => [
-    p.title, p.url, p.fsn, p.buybox_price, p.seller, p.status, p.lastChecked
+    p.title, p.url, p.fsn, p.sku, p.buybox_price, p.cost_price, p.cost_supplier, p.min_price, p.max_price, p.seller, p.status, p.lastChecked
   ].map(v => '"' + String(v||'').replace(/"/g,'""') + '"'));
   const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
