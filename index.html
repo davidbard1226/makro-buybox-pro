@@ -1466,7 +1466,8 @@ function importListings(input) {
   reader.onload = function(e) {
     try {
       const data = new Uint8Array(e.target.result);
-      const wb   = XLSX.read(data, { type: 'array' });
+      // dense:true uses array-of-arrays internally — avoids deep recursion on large XLS files
+      const wb   = XLSX.read(data, { type: 'array', dense: true, cellStyles: false, cellFormula: false, cellHTML: false });
       const sh   = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(sh, { header: 1 });
       const listings = [];
