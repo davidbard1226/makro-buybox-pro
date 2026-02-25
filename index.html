@@ -1440,7 +1440,13 @@ function importListings(input) {
       // Save the raw workbook as base64 — used as template for price updates
       // so the generated file is structurally identical to the original (same sheets,
       // same columns, same header rows) with ONLY column J prices changed.
-      const base64 = btoa(String.fromCharCode.apply(null, data));
+      // Convert in 8KB chunks to avoid call stack overflow on large files
+      let base64 = '';
+      const CHUNK = 8192;
+      for (let i = 0; i < data.length; i += CHUNK) {
+        base64 += String.fromCharCode.apply(null, data.subarray(i, i + CHUNK));
+      }
+      base64 = btoa(base64);
       localStorage.setItem('makro_listings_raw', base64);
       localStorage.setItem('makro_listings_filename', file.name);
 
