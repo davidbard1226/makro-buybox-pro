@@ -686,6 +686,7 @@
             📂 Import Listings
             <input type="file" id="listingsFileInput" accept=".xls,.xlsx,.csv" style="display:none" onchange="importListings(this)">
           </label>
+          <button class="btn-secondary" style="width:auto;padding:8px 16px" onclick="switchTab('scraper');generateUrlsFromListings()" title="Generate scraper URLs from your imported listings FSN codes">⚡ Generate &amp; Scrape URLs</button>
           <button class="btn-secondary" style="width:auto;padding:8px 16px" onclick="refreshSelected()">↻ Refresh Selected</button>
           <button class="btn-secondary danger" style="width:auto;padding:8px 16px;color:#ff9500;border-color:#ff950044" onclick="deleteSelected()">🗑 Delete Selected</button>
           <button class="btn-secondary" style="width:auto;padding:8px 16px" onclick="exportCSV()">⬇ Export CSV</button>
@@ -740,6 +741,12 @@
         <div class="scraper-layout">
           <div>
             <div class="card-title" style="margin-bottom:10px">PASTE MAKRO PRODUCT URLs</div>
+            <div style="margin-bottom:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <button class="btn-primary" onclick="generateUrlsFromListings()" style="width:auto;padding:8px 16px;font-size:12px">
+                ⚡ Generate URLs from Imported Listings
+              </button>
+              <span id="urlGenStatus" style="font-size:11px;color:var(--muted)"></span>
+            </div>
             <textarea id="urlInput" class="url-input-area" placeholder="https://www.makro.co.za/electronics/televisions/p/itmxxxxxxxx
 https://www.makro.co.za/appliances/p/itmxxxxxxxx
 https://www.makro.co.za/...
@@ -1277,7 +1284,50 @@ function clearUrlInput() {
   document.getElementById('urlCount').textContent = '0 URLs detected';
 }
 
-function startScraping() {
+function generateUrlsFromListings() {
+  const listings = getListings();
+  const statusEl = document.getElementById('urlGenStatus');
+
+  if (!listings.length) {
+    statusEl.textContent = '⚠️ No listings imported yet — go to Products tab and import your Makro Offers XLS first.';
+    statusEl.style.color = '#ff9500';
+    return;
+  }
+
+  // Build URLs from FSN — Makro product URL format: makro.co.za/p/FSN
+  const urls = [];
+  const skipped = [];
+  listings.forEach(function(l) {
+    if (l.fsn && l.fsn.length > 6) {
+      urls.push('https://www.makro.co.za/p/' + l.fsn);
+    } else {
+      skipped.push(l.title || l.sku || '?');
+    }
+  });
+
+  if (!urls.length) {
+    statusEl.textContent = '⚠️ No FSN codes found in listings. Make sure column E of your XLS has the FSN.';
+    statusEl.style.color = '#ff9500';
+    return;
+  }
+
+  // Deduplicate
+  const unique = [...new Set(urls)];
+
+  // Fill the scraper textarea
+  const textarea = document.getElementById('urlInput');
+  textarea.value = unique.join('\n');
+
+  // Trigger URL count update
+  const countEl = document.getElementById('urlCount');
+  countEl.textContent = unique.length + ' URLs loaded';
+
+  statusEl.textContent = '✅ ' + unique.length + ' URLs generated from listings' + (skipped.length ? ' · ' + skipped.length + ' skipped (no FSN)' : '') + ' — click Start Scraping when ready.';
+  statusEl.style.color = '#00e5a0';
+
+  // Scroll to textarea
+  textarea.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
   if (!state.extReady) { alert('Extension not connected. Please install the Makro Pro Scraper extension.'); return; }
   const urls = parseUrls();
   if (urls.length === 0) { alert('No valid Makro URLs found. Paste at least one makro.co.za product URL.'); return; }
