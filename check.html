@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head><title>Data Check</title>
+<style>body{font-family:monospace;background:#1a1a2e;color:#eee;padding:20px;font-size:13px}</style>
+</head>
+<body>
+<h2>🔍 LocalStorage Data Check</h2>
+<div id="out"></div>
+<script>
+const keys = ['makro_buybox_v2','makro_buybox_v1','makro_listings','makro_costs','makro_seller_name','gist_token','gist_id'];
+let html = '';
+keys.forEach(function(k) {
+  const val = localStorage.getItem(k);
+  if (!val) { html += '<p style="color:#888">❌ ' + k + ' — not found</p>'; return; }
+  try {
+    const parsed = JSON.parse(val);
+    const count  = Array.isArray(parsed) ? parsed.length + ' items' : typeof parsed === 'object' ? Object.keys(parsed).length + ' keys' : val.length + ' chars';
+    html += '<p style="color:#00e5a0">✅ ' + k + ' — ' + count + '</p>';
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      html += '<pre style="color:#aaa;font-size:11px;margin-left:20px">' + JSON.stringify(parsed[0], null, 2).slice(0,300) + '</pre>';
+    }
+  } catch(e) {
+    html += '<p style="color:#ffd60a">⚠️ ' + k + ' — exists but not JSON (' + val.length + ' chars)</p>';
+  }
+});
+// Check for any other makro keys
+Object.keys(localStorage).filter(k => k.startsWith('makro') || k.startsWith('gist')).forEach(function(k) {
+  if (!keys.includes(k)) html += '<p style="color:#818cf8">🔵 Extra key: ' + k + ' (' + (localStorage.getItem(k)||'').length + ' chars)</p>';
+});
+document.getElementById('out').innerHTML = html || '<p style="color:#ff9500">No makro data found at all</p>';
+</script>
+</body>
+</html>
