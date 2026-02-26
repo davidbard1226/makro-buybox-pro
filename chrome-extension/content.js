@@ -116,11 +116,10 @@
         inStock: null
       };
 
-      // URL slug (itm...) — stored separately, NOT as SKU
-      // Real SKU comes from the Makro Offers XLS file (Column B), matched via FSN
+      // URL slug stored separately — NOT as SKU (real SKU comes from Makro Offers XLS via FSN match)
       const skuMatch = window.location.pathname.match(/\/p\/([^/?#]+)/);
       if (skuMatch) data.slug = skuMatch[1];
-      // sku stays null — gets populated by importListings() via FSN matching
+      // sku stays null
 
       // FSN — try multiple sources in priority order
       // 1. pid= query param (present when clicking from Google ads)
