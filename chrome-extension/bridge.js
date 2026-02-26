@@ -79,7 +79,9 @@
           const price  = parseFloat(p.buyBoxPrice) || 0;
 
           const entry = {
-            url, fsn: p.fsn || '', sku: p.sku || '',
+            url, fsn: p.fsn || '',
+            // Never store itm... URL slugs as SKU — real SKU comes from listings XLS
+            sku: (p.sku && !p.sku.startsWith('itm')) ? p.sku : '',
             title: p.title || url, buybox_price: price,
             seller, status: 'unknown',
             lastChecked: p.timestamp || new Date().toISOString(),

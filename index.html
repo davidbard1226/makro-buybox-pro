@@ -631,6 +631,7 @@
             📂 Import Listings
             <input type="file" id="listingsFileInput" accept=".xls,.xlsx,.csv" style="display:none" onchange="importListings(this)">
           </label>
+          <button class="btn-secondary" id="syncCostsBtn" style="width:auto;padding:8px 16px;color:#60a5fa;border-color:rgba(96,165,250,0.4)" onclick="syncCostsFromSheet()" title="Fetch cost prices from Google Sheet by matching SKU">📊 Sync Costs</button>
           <button class="btn-secondary" style="width:auto;padding:8px 16px" onclick="refreshSelected()">↻ Refresh Selected</button>
           <button class="btn-secondary danger" style="width:auto;padding:8px 16px;color:#ff9500;border-color:#ff950044" onclick="deleteSelected()">🗑 Delete Selected</button>
           <button class="btn-secondary" style="width:auto;padding:8px 16px" onclick="exportCSV()">⬇ Export CSV</button>
@@ -1538,6 +1539,109 @@ function importListings(input) {
   };
   reader.readAsArrayBuffer(file);
   input.value = '';
+}
+
+// ============================================================
+// GOOGLE SHEET COST SYNC
+// ============================================================
+const GSHEET_ID = '1ISaEOPBElufeYh6eq6APtlFjeMvrKqlAwEd3F4K6rBw';
+const GSHEET_TABS = [
+  { gid: '2144903566', costCol: 3, minCol: 13, maxCol: 14, supplierName: 'Kolok' },
+];
+
+function parseCSV(text) {
+  var rows = [];
+  var lines = text.split('\n');
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i];
+    if (!line.trim()) continue;
+    var row = [], inQ = false, cur = '';
+    for (var j = 0; j < line.length; j++) {
+      var c = line[j];
+      if (c === '"') { if (inQ && line[j+1] === '"') { cur += '"'; j++; } else inQ = !inQ; }
+      else if (c === ',' && !inQ) { row.push(cur.trim()); cur = ''; }
+      else cur += c;
+    }
+    row.push(cur.trim());
+    if (row.some(function(x) { return x; })) rows.push(row);
+  }
+  return rows;
+}
+
+async function syncCostsFromSheet() {
+  var btn = document.getElementById('syncCostsBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Syncing...';
+
+  try {
+    var lookup = {};
+
+    for (var t = 0; t < GSHEET_TABS.length; t++) {
+      var tab = GSHEET_TABS[t];
+      var url = 'https://docs.google.com/spreadsheets/d/' + GSHEET_ID + '/gviz/tq?tqx=out:csv&gid=' + tab.gid;
+      try {
+        var resp = await fetch(url);
+        if (!resp.ok) continue;
+        var csv = await resp.text();
+        if (!csv || csv.includes('<!DOCTYPE')) continue;
+        var rows = parseCSV(csv);
+
+        // Auto-detect cost column from header if not set
+        var costCol = tab.costCol;
+        if (rows.length > 0 && costCol == null) {
+          var hdr = rows[0];
+          for (var h = 0; h < hdr.length; h++) {
+            if (/cost|price|sell|landed/i.test(hdr[h]) && !/sku|code|name/i.test(hdr[h])) { costCol = h; break; }
+          }
+          if (costCol == null) costCol = 3;
+        }
+
+        for (var r = 1; r < rows.length; r++) {
+          var row = rows[r];
+          if (!row[0]) continue;
+          var sku = row[0].toString().trim().toLowerCase();
+          var cost = parseFloat((row[costCol] || '').toString().replace(/[R,\s]/g,''));
+          if (!sku || isNaN(cost) || cost <= 0) continue;
+          var minV = tab.minCol != null ? parseFloat((row[tab.minCol]||'').toString().replace(/[R,\s]/g,'')) : NaN;
+          var maxV = tab.maxCol != null ? parseFloat((row[tab.maxCol]||'').toString().replace(/[R,\s]/g,'')) : NaN;
+          if (!lookup[sku] || cost < lookup[sku].cost) {
+            lookup[sku] = { cost: cost, supplier: tab.supplierName,
+              minPrice: isNaN(minV) ? null : minV, maxPrice: isNaN(maxV) ? null : maxV };
+          }
+        }
+      } catch(e) { console.warn('Tab fetch error', e); }
+    }
+
+    var updated = 0, noSku = 0, noMatch = [];
+    state.products.forEach(function(p) {
+      if (!p.sku) { noSku++; return; }
+      var key = p.sku.trim().toLowerCase();
+      if (lookup[key]) {
+        p.cost_price    = lookup[key].cost;
+        p.cost_supplier = lookup[key].supplier;
+        p.minPrice      = lookup[key].cost; // floor = cost price
+        if (lookup[key].minPrice) p.min_price = lookup[key].minPrice;
+        if (lookup[key].maxPrice) p.max_price = lookup[key].maxPrice;
+        updated++;
+      } else {
+        noMatch.push(p.sku);
+      }
+    });
+
+    if (updated > 0) saveProducts();
+    renderProducts();
+
+    var msg = '✅ ' + updated + ' product(s) updated with cost data.';
+    if (noSku > 0)   msg += ' ' + noSku + ' product(s) have no SKU yet — import listings first.';
+    if (noMatch.length > 0) msg += ' ' + noMatch.length + ' SKU(s) not found in sheet.';
+    alert(msg);
+
+  } catch(e) {
+    alert('❌ Cost sync error: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '📊 Sync Costs';
+  }
 }
 
 function deleteProduct(idx) {
