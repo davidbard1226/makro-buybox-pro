@@ -500,59 +500,6 @@
   .seller-name-input { background:transparent; border:none; color:var(--accent3); font-family:'Space Mono',monospace; font-size:11px; width:120px; outline:none; cursor:pointer; }
   .seller-name-input:focus { border-bottom:1px solid var(--accent3); cursor:text; }
 
-  /* COST SYNC BUTTON */
-  .btn-sync-costs {
-    background: none;
-    color: #60a5fa;
-    border: 1px solid rgba(96,165,250,0.4);
-    border-radius: 8px;
-    padding: 8px 16px;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    transition: all .2s;
-    background: rgba(96,165,250,0.08);
-  }
-  .btn-sync-costs:hover { border-color:#60a5fa; background:rgba(96,165,250,0.15); color:#93c5fd; }
-  .btn-sync-costs:disabled { opacity:0.5; cursor:not-allowed; }
-
-  /* COST + PROFIT CELLS */
-  .cost-cell { font-family:'Space Mono',monospace; font-size:13px; font-weight:700; color:#e2e8f0; }
-  .cost-supplier-tag { display:inline-block; font-size:10px; color:#818cf8; background:rgba(99,102,241,0.12); border:1px solid rgba(99,102,241,0.25); border-radius:4px; padding:1px 6px; margin-top:3px; font-family:'Space Mono',monospace; }
-  .profit-pos { color: var(--accent); font-weight:700; font-family:'Space Mono',monospace; font-size:13px; }
-  .profit-neg { color: var(--accent2); font-weight:700; font-family:'Space Mono',monospace; font-size:13px; }
-  .profit-sub { font-size:10px; color:var(--muted); margin-top:2px; }
-  .minmax-cell { font-family:'Space Mono',monospace; font-size:12px; }
-
-  /* SKU INLINE EDIT */
-  .sku-display { display:flex; align-items:center; gap:4px; }
-  .sku-edit-wrap { display:none; align-items:center; gap:4px; }
-  .sku-input { background:var(--surface2); border:1px solid var(--accent); color:var(--text); padding:3px 8px; border-radius:4px; font-size:11px; font-family:'Space Mono',monospace; width:110px; outline:none; }
-  .sku-btn { background:none; border:none; cursor:pointer; font-size:11px; padding:2px 6px; border-radius:3px; }
-
-  /* COST NOTIFICATION */
-  #costNotify {
-    position: fixed;
-    bottom: 24px;
-    right: 24px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 14px 18px;
-    font-size: 13px;
-    max-width: 340px;
-    z-index: 200;
-    display: none;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-  }
-  #costNotify.show { display:block; }
-  #costNotify.success { border-color: rgba(0,229,160,0.4); color: var(--accent); }
-  #costNotify.error { border-color: rgba(255,149,0,0.4); color: var(--accent2); }
-
   /* CANVAS WRAPPER */
   canvas { display:block; }
 
@@ -590,7 +537,6 @@
     <button class="tab-btn" onclick="switchTab('scraper')">⚡ Scraper</button>
     <button class="tab-btn" onclick="switchTab('pricer')">💰 Price Updater</button>
     <button class="tab-btn" onclick="switchTab('analytics')">📈 Analytics</button>
-    <button class="tab-btn" onclick="switchTab('sync')">🔄 Sync &amp; Costs</button>
   </nav>
 
   <!-- MAIN -->
@@ -681,7 +627,6 @@
           <option value="unknown">Unknown</option>
         </select>
         <div class="toolbar-right">
-          <button class="btn-sync-costs" id="syncCostsBtn" onclick="syncCostsFromGSheet()" title="Fetch cost price from Google Sheets by matching SKU">📊 Sync Costs</button>
           <label class="btn-secondary" style="width:auto;padding:8px 16px;cursor:pointer" title="Import your Makro S_listing XLS file">
             📂 Import Listings
             <input type="file" id="listingsFileInput" accept=".xls,.xlsx,.csv" style="display:none" onchange="importListings(this)">
@@ -699,14 +644,10 @@
             <tr>
               <th style="width:32px"><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)" title="Select all"></th>
               <th>Product</th>
-              <th>FSN / SKU</th>
+              <th>FSN</th>
               <th>My Price</th>
               <th>Stock</th>
               <th>Buy Box Price</th>
-              <th>Cost Price</th>
-              <th>Min Price</th>
-              <th>Max Price</th>
-              <th>Profit (My Price)</th>
               <th>Seller</th>
               <th>Status</th>
               <th>Last Checked</th>
@@ -714,7 +655,7 @@
             </tr>
           </thead>
           <tbody id="productsBody">
-            <tr><td colspan="14">
+            <tr><td colspan="10">
               <div class="empty-state">
                 <div class="empty-icon">📦</div>
                 <div class="empty-title">No Products Yet</div>
@@ -942,12 +883,6 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
           </div>
         </div>
 
-        <!-- ROW 2: Status bar chart (was missing from HTML) -->
-        <div class="card analytics-full">
-          <div class="card-title" style="margin-bottom:14px">📊 All Products — BuyBox Price vs Status</div>
-          <div id="statusBarChartAnalytics" style="max-height:400px;overflow-y:auto"></div>
-        </div>
-
         <!-- ROW 3: Competitor full breakdown + price gap analysis -->
         <div class="card">
           <div class="card-title" style="margin-bottom:14px">🏆 Competitor Breakdown</div>
@@ -957,15 +892,6 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
         <div class="card">
           <div class="card-title" style="margin-bottom:14px">📉 Price Gap Analysis</div>
           <div id="priceGapAnalysis"></div>
-        </div>
-
-        <!-- ROW 4: Price comparison bar (was missing) -->
-        <div class="card analytics-full">
-          <div class="card-title" style="margin-bottom:10px">💰 BuyBox Price Comparison</div>
-          <div id="priceCompBar" class="bar-chart" style="max-height:320px;overflow-y:auto"></div>
-          <div id="emptyPriceComp" class="empty-state" style="padding:20px;display:none">
-            <div class="empty-text">No price data yet</div>
-          </div>
         </div>
 
         <!-- ROW 5: Opportunity table + Summary -->
@@ -979,87 +905,25 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
           <div id="summaryStats" style="display:flex; flex-direction:column; gap:4px; padding-top:4px"></div>
         </div>
 
+        <div class="card">
+          <div class="card-title" style="margin-bottom:14px">🔄 Data & Sync</div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <button class="btn-secondary" style="width:100%;padding:10px" onclick="exportAllData()">⬇ Export All Data (JSON)</button>
+            <label class="btn-secondary" style="width:100%;padding:10px;text-align:center;cursor:pointer">
+              ⬆ Import Data (JSON) — sync from another PC
+              <input type="file" accept=".json" style="display:none" onchange="importAllData(this)">
+            </label>
+            <div style="font-size:11px;color:var(--muted);line-height:1.7;padding:8px;background:var(--surface2);border-radius:6px">
+              Export on this PC → copy JSON file to your work PC → Import there. All products, history and listings transfer instantly.
+            </div>
+          </div>
+        </div>
+
       </div>
     </div><!-- /analytics -->
 
-    <!-- ========== SYNC & COSTS TAB ========== -->
-    <div class="tab-content" id="tab-sync">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
-
-        <!-- LEFT: GitHub Gist Sync -->
-        <div class="card">
-          <div class="card-title" style="margin-bottom:14px">🔄 GITHUB GIST SYNC — Auto Sync Both PCs</div>
-          <div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.7">
-            Syncs all your products between home &amp; work PC via a private GitHub Gist. Set up once — auto-syncs every 5 minutes in the background.
-          </div>
-          <div style="display:grid;gap:10px;margin-bottom:14px">
-            <label style="font-size:12px;color:var(--muted)">GitHub Token (ghp_...)
-              <input id="gistTokenInput" type="password" placeholder="ghp_xxxxxxxxxxxxx"
-                style="width:100%;margin-top:5px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:6px;font-size:12px;font-family:monospace"
-                oninput="localStorage.setItem('gist_token',this.value)">
-            </label>
-            <label style="font-size:12px;color:var(--muted)">Gist ID
-              <span style="color:var(--muted);font-size:10px"> — leave blank on first push, it creates one automatically</span>
-              <input id="gistIdInput" type="text" placeholder="paste Gist ID from home PC here..."
-                style="width:100%;margin-top:5px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:6px;font-size:12px;font-family:monospace"
-                oninput="localStorage.setItem('gist_id',this.value)">
-            </label>
-          </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
-            <button class="btn-primary" onclick="gistPush()" style="padding:10px;font-size:12px">⬆ Push to Gist</button>
-            <button class="btn-secondary" onclick="gistPull(false)" style="padding:10px;font-size:12px">⬇ Pull from Gist</button>
-          </div>
-          <div id="gistIdRow" style="display:none;align-items:center;gap:8px;margin-bottom:10px;background:rgba(0,229,160,0.08);border:1px solid rgba(0,229,160,0.2);border-radius:6px;padding:10px">
-            <span style="font-size:11px;color:var(--muted)">Your Gist ID — paste this on your other PC:</span>
-            <code id="gistIdDisplay" style="color:var(--accent);font-size:12px;flex:1;word-break:break-all"></code>
-            <button onclick="navigator.clipboard.writeText(document.getElementById('gistIdDisplay').textContent)"
-              style="background:none;border:1px solid var(--accent);color:var(--accent);padding:3px 8px;border-radius:4px;font-size:10px;cursor:pointer">Copy</button>
-          </div>
-          <div id="gistStatus" style="font-size:12px;color:var(--muted);min-height:20px"></div>
-          <div id="gistLastSync" style="font-size:10px;color:var(--muted);margin-top:4px"></div>
-          <div style="margin-top:14px;font-size:11px;color:var(--muted);line-height:1.9;background:var(--surface2);border-radius:6px;padding:12px">
-            <b style="color:var(--accent3)">One-time setup:</b><br>
-            1. Paste your GitHub token (needs <b>gist</b> scope only)<br>
-            2. <b>Home PC:</b> click Push → copy the Gist ID shown<br>
-            3. <b>Work PC:</b> same token + paste Gist ID → Pull<br>
-            4. ✅ Both PCs auto-sync every 5 minutes
-          </div>
-        </div>
-
-        <!-- RIGHT: Google Sheet Cost Importer -->
-        <div class="card">
-          <div class="card-title" style="margin-bottom:14px">💰 SUPPLIER COST IMPORTER — Google Sheet</div>
-          <div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.7">
-            Reads your supplier Google Sheet tabs via public CSV — no API key needed. SKU in column A, you pick the cost column. Sets <b style="color:var(--text)">Min Price</b> per product automatically.
-          </div>
-          <button class="btn-primary" onclick="loadSheetTabs()" style="width:100%;margin-bottom:12px;padding:10px;font-size:12px">
-            📊 Load Supplier Sheet Tabs
-          </button>
-          <div id="costTabSelector" style="margin-bottom:10px"></div>
-          <div style="display:flex;gap:8px;margin-bottom:10px">
-            <input id="manualTabName" placeholder="Or type tab name manually..."
-              style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:6px;font-size:12px">
-            <button class="btn-secondary" style="width:auto;padding:7px 14px;font-size:12px"
-              onclick="previewTab(document.getElementById('manualTabName').value)">Preview</button>
-          </div>
-          <div id="costColumnPicker" style="display:none;margin-bottom:12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px"></div>
-          <div id="costStatus" style="font-size:12px;color:var(--muted);min-height:20px;line-height:1.6"></div>
-        </div>
-
-      </div>
-
-      <!-- Cost coverage table -->
-      <div class="card">
-        <div class="card-title" style="margin-bottom:12px">📋 COST COVERAGE — Products with supplier cost data</div>
-        <div id="costCoverageTable"><div style="color:var(--muted);font-size:12px;padding:10px">Load supplier sheet above to populate costs.</div></div>
-      </div>
-    </div><!-- /sync -->
-
   </main>
 </div>
-
-<!-- COST SYNC NOTIFICATION -->
-<div id="costNotify"></div>
 
 <!-- CLEAR CONFIRM MODAL -->
 <div class="modal-backdrop" id="clearModal">
@@ -1213,19 +1077,17 @@ function setExtStatus(online) {
 // TABS
 // ============================================================
 function switchTab(name) {
-  document.querySelectorAll('.tab-btn').forEach(b => {
-    const match = (b.getAttribute('onclick') || '').includes("'" + name + "'");
-    b.classList.toggle('active', match);
+  const names = ['dashboard','products','scraper','pricer','analytics'];
+  document.querySelectorAll('.tab-btn').forEach((b,i) => {
+    b.classList.toggle('active', names[i] === name);
   });
   document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-  const tabEl = document.getElementById('tab-' + name);
-  if (tabEl) tabEl.classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
   if (name === 'dashboard') renderDashboard();
   if (name === 'products')  renderProducts();
   if (name === 'analytics') renderAnalytics();
   if (name === 'scraper')   syncSellerConfig();
   if (name === 'pricer')    initPricer();
-  if (name === 'sync')      initSyncTab();
 }
 
 function syncSellerConfig() {
@@ -1510,7 +1372,7 @@ function renderProducts() {
 
   const tbody = document.getElementById('productsBody');
   if (prods.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="14"><div class="empty-state">
+    tbody.innerHTML = `<tr><td colspan="10"><div class="empty-state">
       <div class="empty-icon">📦</div>
       <div class="empty-title">${state.products.length === 0 ? 'No Products Yet' : 'No Matches'}</div>
       <div class="empty-text">${state.products.length === 0 ? 'Use the Scraper tab to add products.' : 'Try changing your filters.'}</div>
@@ -1524,80 +1386,24 @@ function renderProducts() {
     const t = p.lastChecked ? new Date(p.lastChecked).toLocaleString() : '—';
     const realIdx = state.products.indexOf(p);
     const listing = listingsMap[p.fsn] || null;
-
-    // ── My Price & Stock from listings ──
-    const myPriceVal = listing ? listing.myPrice : (p.myPrice || null);
+    const myPrice = listing ? `<span style="color:var(--accent3);font-family:'Space Mono',monospace;font-size:12px">R ${listing.myPrice.toFixed(2)}</span>` : '<span style="color:var(--muted);font-size:11px">—</span>';
     const myStock = listing ? `<span style="color:${listing.myStock > 0 ? 'var(--accent)' : '#ff9500'};font-size:12px">${listing.myStock}</span>` : '<span style="color:var(--muted);font-size:11px">—</span>';
     let priceIndicator = '';
-    if (myPriceVal && p.buybox_price > 0) {
-      if (myPriceVal > p.buybox_price) priceIndicator = ' <span style="color:#ff9500;font-size:10px">▲above</span>';
-      else if (myPriceVal < p.buybox_price) priceIndicator = ' <span style="color:var(--accent);font-size:10px">▼below</span>';
+    if (listing && p.buybox_price > 0) {
+      if (listing.myPrice > p.buybox_price) priceIndicator = ' <span style="color:#ff9500;font-size:10px">▲above</span>';
+      else if (listing.myPrice < p.buybox_price) priceIndicator = ' <span style="color:var(--accent);font-size:10px">▼below</span>';
       else priceIndicator = ' <span style="color:var(--muted);font-size:10px">=match</span>';
     }
-    const myPriceHtml = myPriceVal
-      ? `<span style="color:var(--accent3);font-family:'Space Mono',monospace;font-size:12px">R ${myPriceVal.toFixed(2)}</span>${priceIndicator}`
-      : '<span style="color:var(--muted);font-size:11px">—</span>';
-
-    // ── FSN / SKU display (read-only — SKU comes from listings import) ──
-    const skuVal = escHtml(p.sku || '');
-    const fsnVal = escHtml(p.fsn || '—');
-    const fsnSkuHtml = `
-      <div style="font-family:'Space Mono',monospace;font-size:11px;color:var(--muted)">${fsnVal}</div>
-      ${skuVal ? `<div style="font-size:10px;color:#818cf8;font-family:'Space Mono',monospace">${skuVal}</div>` : '<div style="font-size:10px;color:var(--muted)">no sku — import listings</div>'}`;
-
-    // ── Cost price — inline editable ──
-    const cost = p.cost_price ? Number(p.cost_price) : null;
-    const costDisplay = cost ? `R ${cost.toFixed(2)}` : '—';
-    const costHtml = `
-      <div class="sku-display" id="cost-disp-${realIdx}" style="display:flex;align-items:center;gap:4px">
-        <span class="${cost ? 'cost-cell' : ''}" style="${!cost ? 'color:var(--muted);font-size:11px' : ''}">${costDisplay}</span>
-        ${p.cost_supplier ? `<div class="cost-supplier-tag">${escHtml(p.cost_supplier)}</div>` : ''}
-        <button class="sku-btn" onclick="editCost(${realIdx})" title="Edit cost price" style="color:var(--muted);font-size:11px">✏</button>
-      </div>
-      <div class="sku-edit-wrap" id="cost-edit-${realIdx}" style="display:none;align-items:center;gap:4px">
-        <input class="sku-input" id="cost-inp-${realIdx}" value="${cost ? cost.toFixed(2) : ''}" placeholder="0.00" type="number" step="0.01" min="0"
-          onkeydown="if(event.key==='Enter')saveCost(${realIdx});if(event.key==='Escape')cancelCost(${realIdx})" style="width:90px">
-        <button class="sku-btn" onclick="saveCost(${realIdx})" style="color:var(--accent)">✓</button>
-        <button class="sku-btn" onclick="cancelCost(${realIdx})" style="color:var(--muted)">✕</button>
-      </div>`;
-
-    // ── Min / Max price ──
-    const minP = p.min_price ? Number(p.min_price) : null;
-    const maxP = p.max_price ? Number(p.max_price) : null;
-    const minHtml = minP
-      ? `<span class="minmax-cell" style="color:#34d399">R ${minP.toFixed(2)}</span>`
-      : `<span style="color:var(--muted);font-size:11px">—</span>`;
-    const maxHtml = maxP
-      ? `<span class="minmax-cell" style="color:#f59e0b">R ${maxP.toFixed(2)}</span>`
-      : `<span style="color:var(--muted);font-size:11px">—</span>`;
-
-    // ── Profit calculation: 10% Makro commission + tiered delivery ──
-    let profitHtml = '<span style="color:var(--muted);font-size:11px">—</span>';
-    const priceForCalc = myPriceVal || (p.buybox_price ? Number(p.buybox_price) : null);
-    if (cost && priceForCalc) {
-      const fees   = makroFees(priceForCalc);
-      const profit = priceForCalc - fees.total - cost;
-      const margin = ((profit / priceForCalc) * 100).toFixed(1);
-      const cls    = profit >= 0 ? 'profit-pos' : 'profit-neg';
-      const label  = myPriceVal ? 'My Price' : 'BuyBox';
-      profitHtml   = `<div class="${cls}">${profit >= 0 ? '+' : ''}R ${Math.abs(profit).toFixed(2)}</div>
-        <div class="profit-sub">10% (R${fees.commission.toFixed(0)}) + del R${fees.delivery} · ${margin}% · ${label}</div>`;
-    }
-
     return `<tr>
       <td><input type="checkbox" class="row-check" data-idx="${realIdx}"></td>
       <td>
         <div class="prod-title">${escHtml((p.title||'Unknown').slice(0,55))}</div>
-        <a class="prod-url" href="${escHtml(p.url)}" target="_blank" rel="noopener">${escHtml(shortUrl(p.url))}</a>
+        <a class="prod-url" href="${escHtml(p.url)}" target="_blank" rel="noopener">${escHtml(p.sku || shortUrl(p.url))}</a>
       </td>
-      <td>${fsnSkuHtml}</td>
-      <td>${myPriceHtml}</td>
+      <td><span style="font-family:'Space Mono',monospace;font-size:11px;color:var(--muted)">${escHtml(p.fsn||'—')}</span></td>
+      <td>${myPrice}${priceIndicator}</td>
       <td>${myStock}</td>
       <td><span class="price-cell ${p.status==='win'?'win':'lose'}">R ${(p.buybox_price||0).toFixed(2)}</span></td>
-      <td>${costHtml}</td>
-      <td>${minHtml}</td>
-      <td>${maxHtml}</td>
-      <td>${profitHtml}</td>
       <td style="font-size:12px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(p.seller||'')}">${escHtml((p.seller||'Unknown').slice(0,20))}</td>
       <td><span class="status-pill ${statusClass}">${statusLabel}</span></td>
       <td style="font-size:11px;color:var(--muted);white-space:nowrap">${t}</td>
@@ -1677,20 +1483,7 @@ function importListings(input) {
         if (fsn) listings.push({ fsn, sku, title, myPrice, myStock, status });
       }
       localStorage.setItem('makro_listings', JSON.stringify(listings));
-
-      // ── Auto-populate SKU on matched products (needed for cost sync) ──────
-      const fsnToSku = {};
-      listings.forEach(l => { if (l.fsn && l.sku) fsnToSku[l.fsn] = l.sku; });
-      let skuPopulated = 0;
-      state.products.forEach(p => {
-        if (p.fsn && fsnToSku[p.fsn] && !p.sku) {
-          p.sku = fsnToSku[p.fsn];
-          skuPopulated++;
-        }
-      });
-      if (skuPopulated > 0) saveProducts();
-
-      alert('✅ Imported ' + listings.length + ' listings!' + (skuPopulated > 0 ? ' Auto-populated ' + skuPopulated + ' SKU(s) from listings — click 📊 Sync Costs to fetch cost prices.' : ' Your prices & stock now show in the Products table.'));
+      alert('✅ Imported ' + listings.length + ' listings! Your prices & stock now show in the Products table.');
       renderProducts();
     } catch(err) {
       alert('❌ Error: ' + err.message);
@@ -1734,189 +1527,11 @@ function updateProductCount() {
   document.getElementById('prodCount').textContent = state.products.length;
 }
 
-// ============================================================
-// COST PRICE INLINE EDIT
-// ============================================================
-function editCost(idx) {
-  document.getElementById('cost-disp-' + idx).style.display = 'none';
-  const wrap = document.getElementById('cost-edit-' + idx);
-  wrap.style.display = 'flex';
-  const inp = document.getElementById('cost-inp-' + idx);
-  inp.focus(); inp.select();
-}
-
-function cancelCost(idx) {
-  document.getElementById('cost-disp-' + idx).style.display = 'flex';
-  document.getElementById('cost-edit-' + idx).style.display = 'none';
-}
-
-function saveCost(idx) {
-  const val = parseFloat(document.getElementById('cost-inp-' + idx).value);
-  if (!isNaN(val) && val >= 0) {
-    state.products[idx].cost_price = val;
-    if (!state.products[idx].cost_supplier) state.products[idx].cost_supplier = 'Manual';
-  } else if (document.getElementById('cost-inp-' + idx).value.trim() === '') {
-    // Clear cost
-    delete state.products[idx].cost_price;
-    delete state.products[idx].cost_supplier;
-  }
-  saveProducts();
-  renderProducts();
-  showCostNotify('✅ Cost price saved.', 'success');
-}
-
-// ============================================================
-// GOOGLE SHEETS COST SYNC — pure browser fetch, no backend needed
-// Sheet: https://docs.google.com/spreadsheets/d/1ISaEOPBElufeYh6eq6APtlFjeMvrKqlAwEd3F4K6rBw
-// Reads multiple supplier tabs, matches by SKU, picks lowest cost
-// ============================================================
-const GSHEET_ID = '1ISaEOPBElufeYh6eq6APtlFjeMvrKqlAwEd3F4K6rBw';
-
-// Define each supplier tab: { gid, skuCol, costCol, minCol, maxCol, supplierName }
-// Column indices are 0-based: A=0, B=1, C=2, D=3, ... N=13, O=14, P=15
-// The sync picks the LOWEST cost match across all tabs.
-const GSHEET_TABS = [
-  // Tab gid=2144903566: SKU(A=0), Title(B=1), Stock(C=2), Cost Price(D=3), Min(N=13), Max(O=14)
-  { gid: '2144903566', skuCol: 0, costCol: 3, minCol: 13, maxCol: 14, supplierName: 'Kolok' },
-  // ── Add more supplier tabs below ──────────────────────────────────────────
-  // Example: { gid: 'YOUR_GID', skuCol: 2, costCol: 13, minCol: 14, maxCol: 15, supplierName: 'Supplier B' },
-];
-
-// ── Makro fee structure ─────────────────────────────────────────────────────
-// 10% commission on selling price PLUS tiered delivery fee:
-//   < R1500  → R50
-//   R1500–R3999.99 → R80
-//   R4000–R9999.99 → R100
-//   ≥ R10000  → R200
-function makroFees(sellingPrice) {
-  const commission = sellingPrice * 0.10;
-  let delivery = 50;
-  if (sellingPrice >= 10000) delivery = 200;
-  else if (sellingPrice >= 4000)  delivery = 100;
-  else if (sellingPrice >= 1500)  delivery = 80;
-  return { commission, delivery, total: commission + delivery };
-}
-function makroProfit(sellingPrice, costPrice) {
-  const fees = makroFees(sellingPrice);
-  return sellingPrice - fees.total - costPrice;
-}
-
-async function syncCostsFromGSheet() {
-  const btn = document.getElementById('syncCostsBtn');
-  btn.disabled = true;
-  btn.textContent = '⏳ Syncing...';
-  showCostNotify('⏳ Fetching cost data from Google Sheets...', 'success');
-
-  try {
-    // ── Step 1: Fetch all tabs and build SKU→cost lookup ──────────────────
-    const lookup = {}; // sku_lower → { cost_price, supplier }
-
-    for (const tab of GSHEET_TABS) {
-      const url = `https://docs.google.com/spreadsheets/d/${GSHEET_ID}/export?format=csv&gid=${tab.gid}`;
-      let csvText = '';
-      try {
-        const resp = await fetch(url);
-        if (!resp.ok) { console.warn('Tab', tab.gid, 'returned', resp.status); continue; }
-        csvText = await resp.text();
-      } catch (e) { console.warn('Tab', tab.gid, 'fetch error:', e); continue; }
-
-      // Parse CSV rows
-      const rows = parseCSV(csvText);
-      for (let r = 1; r < rows.length; r++) { // skip header row
-        const row = rows[r];
-        if (!row || row.length === 0) continue;
-        const rawSku  = (row[tab.skuCol]  || '').toString().trim();
-        const rawCost = (row[tab.costCol] || '').toString().trim().replace(/[R,\s]/g, '');
-        if (!rawSku) continue;
-        const costVal = parseFloat(rawCost);
-        if (isNaN(costVal) || costVal <= 0) continue;
-        const skuKey = rawSku.toLowerCase();
-        const supplierName = tab.supplierName || 'Sheet';
-        // Read min/max if columns defined
-        const rawMin = tab.minCol != null ? (row[tab.minCol] || '').toString().trim().replace(/[R,\s]/g, '') : '';
-        const rawMax = tab.maxCol != null ? (row[tab.maxCol] || '').toString().trim().replace(/[R,\s]/g, '') : '';
-        const minVal = rawMin ? parseFloat(rawMin) : null;
-        const maxVal = rawMax ? parseFloat(rawMax) : null;
-        // Keep lowest cost supplier
-        if (!lookup[skuKey] || costVal < lookup[skuKey].cost_price) {
-          lookup[skuKey] = {
-            cost_price: costVal,
-            supplier: supplierName,
-            min_price: (!isNaN(minVal) && minVal > 0) ? minVal : null,
-            max_price: (!isNaN(maxVal) && maxVal > 0) ? maxVal : null,
-          };
-        }
-      }
-    }
-
-    // ── Step 2: Match products by SKU and update cost_price ───────────────
-    let updated = 0;
-    const notFound = [];
-    state.products.forEach(p => {
-      const sku = (p.sku || '').trim().toLowerCase();
-      if (!sku) return;
-      if (lookup[sku]) {
-        p.cost_price    = lookup[sku].cost_price;
-        p.cost_supplier = lookup[sku].supplier;
-        if (lookup[sku].min_price) p.min_price = lookup[sku].min_price;
-        if (lookup[sku].max_price) p.max_price = lookup[sku].max_price;
-        updated++;
-      } else {
-        notFound.push(p.sku);
-      }
-    });
-
-    saveProducts();
-    renderProducts();
-
-    const msg = updated > 0
-      ? `✅ Cost sync complete — ${updated} product${updated!==1?'s':''} updated.${notFound.length ? ` ${notFound.length} SKU(s) not matched.` : ' All SKUs matched!'}`
-      : `⚠️ No products updated. Make sure your products have SKUs matching the Google Sheet.`;
-    showCostNotify(msg, updated > 0 ? 'success' : 'error');
-
-  } catch (e) {
-    showCostNotify('❌ Sync error: ' + e.message, 'error');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '📊 Sync Costs';
-  }
-}
-
-// Minimal CSV parser (handles quoted fields with commas/newlines)
-function parseCSV(text) {
-  const rows = [];
-  let row = [], cur = '', inQ = false;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (ch === '"') {
-      if (inQ && text[i+1] === '"') { cur += '"'; i++; }
-      else inQ = !inQ;
-    } else if (ch === ',' && !inQ) {
-      row.push(cur); cur = '';
-    } else if ((ch === '\n' || ch === '\r') && !inQ) {
-      if (ch === '\r' && text[i+1] === '\n') i++;
-      row.push(cur); rows.push(row); row = []; cur = '';
-    } else {
-      cur += ch;
-    }
-  }
-  if (cur || row.length) { row.push(cur); rows.push(row); }
-  return rows;
-}
-
-function showCostNotify(msg, type) {
-  const el = document.getElementById('costNotify');
-  el.textContent = msg;
-  el.className = 'show ' + (type || 'success');
-  clearTimeout(el._timer);
-  el._timer = setTimeout(() => { el.className = ''; }, 6000);
-}
-
 function exportCSV() {
   if (state.products.length === 0) { alert('No products to export.'); return; }
-  const headers = ['Title', 'URL', 'FSN', 'SKU', 'BuyBox Price', 'Cost Price', 'Supplier', 'Min Price', 'Max Price', 'Seller', 'Status', 'Last Checked'];
+  const headers = ['Title', 'URL', 'FSN', 'BuyBox Price', 'Seller', 'Status', 'Last Checked'];
   const rows = state.products.map(p => [
-    p.title, p.url, p.fsn, p.sku, p.buybox_price, p.cost_price, p.cost_supplier, p.min_price, p.max_price, p.seller, p.status, p.lastChecked
+    p.title, p.url, p.fsn, p.buybox_price, p.seller, p.status, p.lastChecked
   ].map(v => '"' + String(v||'').replace(/"/g,'""') + '"'));
   const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
@@ -2467,7 +2082,7 @@ function getListings() {
   } catch(e) { return []; }
 }
 
-function calcNewPrice(myPrice, buyboxPrice, strategy, beatBy, floorPct, globalMin, globalMax, productMin) {
+function calcNewPrice(myPrice, buyboxPrice, strategy, beatBy, floorPct, minPrice, maxPrice) {
   if (!buyboxPrice || buyboxPrice <= 0) return null;
   let newPrice;
   if (strategy === 'match') {
@@ -2481,16 +2096,16 @@ function calcNewPrice(myPrice, buyboxPrice, strategy, beatBy, floorPct, globalMi
     newPrice = Math.max(buyboxPrice - parseFloat(beatBy), floor);
   }
   newPrice = Math.max(newPrice, 0.01);
-  const effectiveMin = Math.max(globalMin !== null ? globalMin : 0, productMin || 0);
-  const effectiveMax = globalMax;
+
+  // Apply min/max guards — return object so callers can detect clamping
   const rawPrice = newPrice;
-  if (effectiveMin > 0 && newPrice < effectiveMin) newPrice = effectiveMin;
-  if (effectiveMax !== null && newPrice > effectiveMax) newPrice = effectiveMax;
+  if (minPrice !== null && newPrice < minPrice) newPrice = minPrice;
+  if (maxPrice !== null && newPrice > maxPrice) newPrice = maxPrice;
+
   return {
-    price:       Math.round(newPrice * 100) / 100,
-    clamped:     Math.round(rawPrice * 100) / 100 !== Math.round(newPrice * 100) / 100,
-    clampDir:    rawPrice < effectiveMin ? 'min' : 'max',
-    effectiveMin
+    price:    Math.round(newPrice * 100) / 100,
+    clamped:  Math.round(rawPrice * 100) / 100 !== Math.round(newPrice * 100) / 100,
+    clampDir: rawPrice < (minPrice || 0) ? 'min' : 'max'
   };
 }
 
@@ -2515,21 +2130,19 @@ function buildPricerPreview() {
     if (!scraped) return;
     if (skipUnknown && (!scraped.buybox_price || scraped.buybox_price <= 0)) return;
     if (winsOnly && scraped.status === 'win') return;
-    const prodMin = scraped.minPrice || l.minPrice || 0;
-    const result = calcNewPrice(l.myPrice, scraped.buybox_price, strategy, beatBy, floorPct, minPrice, maxPrice, prodMin);
+    const result = calcNewPrice(l.myPrice, scraped.buybox_price, strategy, beatBy, floorPct, minPrice, maxPrice);
     if (!result) return;
     rows.push({
-      fsn:          l.fsn,
-      sku:          l.sku,
-      title:        l.title,
-      myPrice:      l.myPrice,
-      buybox:       scraped.buybox_price,
-      newPrice:     result.price,
-      clamped:      result.clamped,
-      clampDir:     result.clampDir,
-      effectiveMin: result.effectiveMin || 0,
-      status:       scraped.status,
-      seller:       scraped.seller
+      fsn:      l.fsn,
+      sku:      l.sku,
+      title:    l.title,
+      myPrice:  l.myPrice,
+      buybox:   scraped.buybox_price,
+      newPrice: result.price,
+      clamped:  result.clamped,
+      clampDir: result.clampDir,
+      status:   scraped.status,
+      seller:   scraped.seller
     });
   });
 
@@ -2561,7 +2174,6 @@ function buildPricerPreview() {
     '<th style="text-align:right;padding:6px 4px">BuyBox</th>' +
     '<th style="text-align:right;padding:6px 4px">New Price</th>' +
     '<th style="text-align:right;padding:6px 4px">Change</th>' +
-    '<th style="text-align:right;padding:6px 4px">Cost/Min</th>' +
     '</tr></thead><tbody>';
 
   // Show OK rows first, then clamped (faded)
@@ -2632,8 +2244,7 @@ function generatePriceUpdate() {
     if (!scraped) return;
     if (skipUnknown && (!scraped.buybox_price || scraped.buybox_price <= 0)) return;
     if (winsOnly && scraped.status === 'win') return;
-    const prodMin = scraped.minPrice || l.minPrice || 0;
-    const result = calcNewPrice(l.myPrice, scraped.buybox_price, strategy, beatBy, floorPct, minPrice, maxPrice, prodMin);
+    const result = calcNewPrice(l.myPrice, scraped.buybox_price, strategy, beatBy, floorPct, minPrice, maxPrice);
     if (!result) return;
     if (result.clamped) { skippedClamped++; return; }  // skip clamped — protect from mistakes
     priceMap[l.fsn] = result.price;
@@ -2730,257 +2341,6 @@ function openPortalUpload() {
   document.getElementById('pricerResult').innerHTML +=
     '<br><span style="color:#ffd60a">✅ File saved to extension. On the portal page, click ' +
     '<b style="color:#00e5a0">🚀 Auto Upload Now</b> in the green overlay to replay your recorded steps.</span>';
-}
-
-// ============================================================
-// GITHUB GIST SYNC
-// ============================================================
-async function gistPush() {
-  const token  = localStorage.getItem('gist_token') || '';
-  const gistId = localStorage.getItem('gist_id')    || '';
-  if (!token) { showGistStatus('⚠️ Enter your GitHub token first', '#ff9500'); return; }
-  const payload = JSON.stringify({
-    products:   state.products,
-    listings:   JSON.parse(localStorage.getItem('makro_listings') || '[]'),
-    costs:      JSON.parse(localStorage.getItem('makro_costs')    || '{}'),
-    sellerName: localStorage.getItem('makro_seller_name') || '',
-    pushedAt:   new Date().toISOString()
-  });
-  showGistStatus('⬆ Pushing ' + state.products.length + ' products...', '#ffd60a');
-  try {
-    const isNew = !gistId;
-    const res = await fetch(isNew ? 'https://api.github.com/gists' : 'https://api.github.com/gists/' + gistId, {
-      method:  isNew ? 'POST' : 'PATCH',
-      headers: { 'Authorization': 'token ' + token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ description: 'Makro BuyBox Pro auto-sync', public: false,
-        files: { 'makro_buybox_data.json': { content: payload } } })
-    });
-    if (!res.ok) { const e = await res.json(); throw new Error(e.message || res.status); }
-    const data = await res.json();
-    if (isNew) {
-      localStorage.setItem('gist_id', data.id);
-      document.getElementById('gistIdInput').value = data.id;
-      document.getElementById('gistIdDisplay').textContent = data.id;
-      document.getElementById('gistIdRow').style.display = 'flex';
-      showGistStatus('✅ Gist created! Copy the ID above and paste it on your other PC.', '#00e5a0');
-    } else {
-      showGistStatus('✅ Pushed ' + state.products.length + ' products at ' + new Date().toLocaleTimeString(), '#00e5a0');
-    }
-    document.getElementById('gistLastSync').textContent = 'Last push: ' + new Date().toLocaleTimeString();
-  } catch(e) { showGistStatus('❌ Push failed: ' + e.message, '#ff4444'); }
-}
-
-async function gistPull(silent) {
-  const token  = localStorage.getItem('gist_token') || '';
-  const gistId = localStorage.getItem('gist_id')    || '';
-  if (!token || !gistId) { if (!silent) showGistStatus('⚠️ Enter token and Gist ID first', '#ff9500'); return; }
-  try {
-    if (!silent) showGistStatus('⬇ Pulling...', '#ffd60a');
-    const res = await fetch('https://api.github.com/gists/' + gistId, {
-      headers: { 'Authorization': 'token ' + token }
-    });
-    if (!res.ok) throw new Error('GitHub returned ' + res.status);
-    const gist    = await res.json();
-    const content = gist.files['makro_buybox_data.json'] && gist.files['makro_buybox_data.json'].content;
-    if (!content) throw new Error('Data file not found in gist');
-    const data = JSON.parse(content);
-    const merged = {};
-    (data.products || []).forEach(function(p) { if (p.url) merged[p.url] = p; });
-    state.products.forEach(function(p) {
-      if (!p.url) return;
-      if (!merged[p.url]) { merged[p.url] = p; return; }
-      const remoteTs = new Date(merged[p.url].lastChecked || 0).getTime();
-      const localTs  = new Date(p.lastChecked || 0).getTime();
-      if (localTs > remoteTs) merged[p.url] = p;
-    });
-    state.products = Object.values(merged);
-    saveProducts(); reEvaluateStatuses(); renderProducts(); renderDashboard(); updateProductCount();
-    if (data.listings && data.listings.length) localStorage.setItem('makro_listings', JSON.stringify(data.listings));
-    if (data.costs)    localStorage.setItem('makro_costs', JSON.stringify(data.costs));
-    const pushedAt = data.pushedAt ? new Date(data.pushedAt).toLocaleString() : 'unknown';
-    if (!silent) showGistStatus('✅ Pulled ' + state.products.length + ' products (last push: ' + pushedAt + ')', '#00e5a0');
-    document.getElementById('gistLastSync').textContent = 'Last sync: ' + new Date().toLocaleTimeString();
-    renderCostCoverage();
-  } catch(e) { if (!silent) showGistStatus('❌ Pull failed: ' + e.message, '#ff4444'); }
-}
-
-function showGistStatus(msg, color) {
-  const el = document.getElementById('gistStatus');
-  if (el) { el.textContent = msg; el.style.color = color || 'var(--muted)'; }
-}
-
-setInterval(function() {
-  if (localStorage.getItem('gist_token') && localStorage.getItem('gist_id')) gistPull(true);
-}, 5 * 60 * 1000);
-
-function initSyncTab() {
-  const token  = localStorage.getItem('gist_token') || '';
-  const gistId = localStorage.getItem('gist_id')    || '';
-  const tEl = document.getElementById('gistTokenInput');
-  const gEl = document.getElementById('gistIdInput');
-  if (tEl && !tEl.value) tEl.value = token;
-  if (gEl && !gEl.value) gEl.value = gistId;
-  if (gistId) {
-    document.getElementById('gistIdDisplay').textContent = gistId;
-    document.getElementById('gistIdRow').style.display   = 'flex';
-  }
-  renderCostCoverage();
-}
-
-// ============================================================
-// GOOGLE SHEET COST IMPORTER (no API key — public CSV)
-// ============================================================
-const GSHEET_ID = '1ISaEOPBElufeYh6eq6APtlFjeMvrKqlAwEd3F4K6rBw';
-
-async function loadSheetTabs() {
-  showCostStatus('⏳ Fetching sheet tabs...', '#ffd60a');
-  try {
-    const res  = await fetch('https://docs.google.com/spreadsheets/d/' + GSHEET_ID + '/edit?usp=sharing');
-    const text = await res.text();
-    const matches = [...text.matchAll(/"name":"([^"]{1,50})"/g)].map(m => m[1]);
-    const skip = /^(true|false|null|script|style|div|span|button|input|form|table|head|body|html|object|string|number)$/i;
-    const tabs = [...new Set(matches)].filter(n => n && !skip.test(n));
-    if (tabs.length) {
-      renderTabButtons(tabs);
-      showCostStatus('✅ Found ' + tabs.length + ' tabs — click one to load', '#00e5a0');
-    } else { throw new Error('no tabs parsed'); }
-  } catch(e) {
-    showCostStatus('⚠️ Auto-detect failed — type a tab name below and click Preview.', '#ff9500');
-    document.getElementById('costTabSelector').innerHTML =
-      '<div style="font-size:11px;color:var(--muted)">Enter tab name in the box below.</div>';
-  }
-}
-
-function renderTabButtons(tabs) {
-  const el = document.getElementById('costTabSelector');
-  if (!el) return;
-  el.innerHTML = '<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Select a supplier tab:</div>' +
-    '<div style="display:flex;flex-wrap:wrap;gap:6px">' +
-    tabs.map(t => '<button onclick="previewTab(\'' + t.replace(/'/g,"\\'") + '\');' +
-      'document.querySelectorAll(\'#costTabSelector button\').forEach(b=>b.style.borderColor=\'var(--border)\');this.style.borderColor=\'var(--accent)\'"' +
-      ' style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:5px 12px;border-radius:5px;cursor:pointer;font-size:11px">' +
-      escHtml(t) + '</button>').join('') + '</div>';
-}
-
-function parseCSV(text) {
-  const rows = [];
-  for (const line of text.split('\n')) {
-    if (!line.trim()) continue;
-    const row = []; let inQ = false, cur = '';
-    for (let i = 0; i < line.length; i++) {
-      const c = line[i];
-      if (c === '"') { if (inQ && line[i+1] === '"') { cur += '"'; i++; } else inQ = !inQ; }
-      else if (c === ',' && !inQ) { row.push(cur.trim()); cur = ''; }
-      else cur += c;
-    }
-    row.push(cur.trim());
-    if (row.some(c => c)) rows.push(row);
-  }
-  return rows;
-}
-
-async function previewTab(tabName) {
-  if (!tabName || !tabName.trim()) { showCostStatus('⚠️ Enter a tab name', '#ff9500'); return; }
-  tabName = tabName.trim();
-  showCostStatus('⏳ Loading "' + tabName + '"...', '#ffd60a');
-  try {
-    const url = 'https://docs.google.com/spreadsheets/d/' + GSHEET_ID + '/gviz/tq?tqx=out:csv&sheet=' + encodeURIComponent(tabName);
-    const res  = await fetch(url);
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const text = await res.text();
-    if (!text.trim() || text.includes('<!DOCTYPE')) throw new Error('Tab not found or sheet is private');
-    const rows = parseCSV(text);
-    if (rows.length < 2) throw new Error('Tab appears empty');
-    const headers  = rows[0];
-    const guessIdx = headers.findIndex(h => /cost|price|sell|landed|rate|amount/i.test(h) && !/sku|code|name|desc|item|ref/i.test(h));
-    const guessCol = guessIdx >= 0 ? guessIdx : 1;
-    const sampleJson = JSON.stringify(rows.slice(1,6));
-    const headersJson = JSON.stringify(headers);
-    const allRowsJson = JSON.stringify(rows.slice(1));
-    const picker = document.getElementById('costColumnPicker');
-    picker.style.display = 'block';
-    picker.innerHTML =
-      '<div style="font-size:12px;color:var(--muted);margin-bottom:10px"><b style="color:var(--text)">' + escHtml(tabName) + '</b> — ' + (rows.length-1) + ' rows · Column A = SKU. Pick your cost column:</div>' +
-      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">' +
-        '<select id="costColSelect" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:6px;font-size:12px" onchange="updateCostPreview(' + sampleJson + ')">' +
-          headers.map((h,i) => '<option value="' + i + '"' + (i===guessCol?' selected':'') + '>' + String.fromCharCode(65+Math.min(i,25)) + ': ' + escHtml(h||'(empty)') + '</option>').join('') +
-        '</select>' +
-        '<button onclick="applyTabCosts(\'' + tabName.replace(/'/g,"\\'") + '\',' + headersJson + ',' + allRowsJson + ')" class="btn-primary" style="width:auto;padding:8px 18px;font-size:12px">✅ Import This Tab</button>' +
-      '</div>' +
-      '<div id="costPreviewRows" style="font-size:11px;color:var(--muted)"></div>';
-    updateCostPreview(rows.slice(1,6));
-    showCostStatus('✅ "' + tabName + '" loaded — ' + (rows.length-1) + ' rows. Pick cost column and click Import.', '#00e5a0');
-  } catch(e) { showCostStatus('❌ ' + e.message, '#ff4444'); }
-}
-
-function updateCostPreview(sampleRows) {
-  const colIdx = parseInt(document.getElementById('costColSelect').value);
-  const el = document.getElementById('costPreviewRows');
-  if (!el) return;
-  el.innerHTML = 'Preview: ' + sampleRows.slice(0,5).filter(r=>r[0]).map(r =>
-    '<b>' + escHtml(String(r[0]||'')) + '</b> → <span style="color:var(--accent)">R' +
-    (parseFloat(String(r[colIdx]||'0').replace(/[^0-9.]/g,''))||0).toFixed(2) + '</span>'
-  ).join(' &nbsp;·&nbsp; ');
-}
-
-function applyTabCosts(tabName, headers, rows) {
-  const colIdx = parseInt(document.getElementById('costColSelect').value);
-  const costs  = JSON.parse(localStorage.getItem('makro_costs') || '{}');
-  let matched = 0, stored = 0;
-  rows.forEach(function(row) {
-    const sku  = String(row[0]||'').trim();
-    const cost = parseFloat(String(row[colIdx]||'').replace(/[^0-9.]/g,''));
-    if (!sku || isNaN(cost) || cost <= 0) return;
-    costs[sku] = { cost, source: tabName, col: headers[colIdx], updated: new Date().toISOString() };
-    let found = false;
-    state.products.forEach(function(p) {
-      if (p.sku === sku || p.fsn === sku) { p.minPrice = cost; found = true; }
-    });
-    if (found) matched++; else stored++;
-  });
-  localStorage.setItem('makro_costs', JSON.stringify(costs));
-  saveProducts();
-  renderCostCoverage();
-  if (document.getElementById('tab-pricer').classList.contains('active')) buildPricerPreview();
-  showCostStatus('✅ Imported from "' + tabName + '": <span style="color:var(--accent)">' + matched + ' products updated</span> · <span style="color:var(--muted)">' + stored + ' stored (not scraped yet)</span>', '#00e5a0');
-}
-
-function showCostStatus(msg, color) {
-  const el = document.getElementById('costStatus');
-  if (el) { el.innerHTML = msg; el.style.color = color || 'var(--muted)'; }
-}
-
-function renderCostCoverage() {
-  const el = document.getElementById('costCoverageTable');
-  if (!el) return;
-  const costs = JSON.parse(localStorage.getItem('makro_costs') || '{}');
-  if (!Object.keys(costs).length) {
-    el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:10px">No costs imported yet.</div>'; return;
-  }
-  const withCost = state.products.filter(p => costs[p.sku] || costs[p.fsn]);
-  const without  = state.products.filter(p => !costs[p.sku] && !costs[p.fsn]);
-  let html = '<div style="font-size:12px;margin-bottom:12px"><span style="color:var(--accent)">' + withCost.length + ' have cost data</span> · <span style="color:#ff9500">' + without.length + ' missing</span> · <span style="color:var(--muted)">' + Object.keys(costs).length + ' SKUs stored</span></div>';
-  if (withCost.length) {
-    html += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px">' +
-      '<thead><tr style="color:var(--muted);border-bottom:1px solid var(--border)">' +
-      '<th style="text-align:left;padding:5px 8px">Product</th><th style="text-align:left;padding:5px 8px">SKU</th>' +
-      '<th style="text-align:right;padding:5px 8px">Cost</th><th style="text-align:right;padding:5px 8px">Min Price</th>' +
-      '<th style="text-align:right;padding:5px 8px">BuyBox & Margin</th><th style="text-align:left;padding:5px 8px">Supplier</th>' +
-      '</tr></thead><tbody>' +
-      withCost.slice(0,200).map(function(p) {
-        const c = costs[p.sku] || costs[p.fsn] || {};
-        const margin = p.buybox_price > 0 && c.cost > 0 ? ((p.buybox_price - c.cost) / p.buybox_price * 100).toFixed(1) + '%' : '—';
-        const mc = parseFloat(margin) > 20 ? 'var(--accent)' : parseFloat(margin) > 10 ? '#ffd60a' : '#ff9500';
-        return '<tr style="border-bottom:1px solid var(--border)">' +
-          '<td style="padding:5px 8px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml((p.title||'').slice(0,40)) + '</td>' +
-          '<td style="padding:5px 8px;font-family:monospace;font-size:10px;color:var(--muted)">' + escHtml(p.sku||p.fsn||'') + '</td>' +
-          '<td style="text-align:right;padding:5px 8px;color:var(--accent3)">R' + (c.cost||0).toFixed(2) + '</td>' +
-          '<td style="text-align:right;padding:5px 8px;color:var(--accent)">R' + (p.minPrice||c.cost||0).toFixed(2) + '</td>' +
-          '<td style="text-align:right;padding:5px 8px;color:' + mc + '">' + (p.buybox_price > 0 ? 'R' + p.buybox_price.toFixed(2) + ' (' + margin + ')' : '—') + '</td>' +
-          '<td style="padding:5px 8px;font-size:10px;color:var(--muted)">' + escHtml(c.source||'') + '</td></tr>';
-      }).join('') + '</tbody></table></div>';
-  }
-  el.innerHTML = html;
 }
 </script>
 </body>
