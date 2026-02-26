@@ -1284,6 +1284,39 @@ function clearUrlInput() {
   document.getElementById('urlCount').textContent = '0 URLs detected';
 }
 
+function startScraping() {
+  if (!state.extReady) { alert('Extension not connected. Please install the Makro Pro Scraper extension.'); return; }
+  const urls = parseUrls();
+  if (urls.length === 0) { alert('No valid Makro URLs found. Paste at least one makro.co.za product URL.'); return; }
+
+  const configSeller = document.getElementById('sellerNameConfig').value.trim();
+  if (configSeller) document.getElementById('sellerNameInput').value = configSeller;
+
+  scrapeQueue = [...urls];
+  scrapeIdx   = 0;
+  state.scraping = true;
+  state.stopRequested = false;
+
+  document.getElementById('startBtn').style.display = 'none';
+  document.getElementById('stopBtn').style.display  = 'flex';
+  document.getElementById('progressSection').style.display = 'block';
+  clearLog();
+  log('info', '🚀 Human-mode queue started: ' + urls.length + ' URLs');
+  log('info', 'Each product page will open in a foreground tab — fully bot-free.');
+  log('info', 'Seller: ' + getMySellerName());
+
+  updateProgress(0, urls.length);
+  window.postMessage({ type: 'START_QUEUE', urls: urls }, '*');
+}
+
+function stopScraping() {
+  state.stopRequested = true;
+  state.scraping = false;
+  window.postMessage({ type: 'STOP_QUEUE' }, '*');
+  finishScraping();
+  log('info', '⏹ Scraping stopped.');
+}
+
 function generateUrlsFromListings() {
   const listings = getListings();
   const statusEl = document.getElementById('urlGenStatus');
