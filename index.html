@@ -1336,12 +1336,16 @@ function handleQueueProgress(d) {
       existing.lastChecked  = new Date().toISOString();
       existing.title        = p.title || existing.title;
       existing.fsn          = p.fsn || existing.fsn || '';
+      // Never overwrite a real SKU with null/itm slug from scraper
+      if (p.sku && !p.sku.startsWith('itm')) existing.sku = p.sku;
       existing.history      = existing.history || [];
       existing.history.push({ price, seller, status, ts: new Date().toISOString() });
       if (existing.history.length > 30) existing.history.shift();
     } else {
+      // Don't store itm... slugs as SKU — real SKU comes from listings import
+      const realSku = (p.sku && !p.sku.startsWith('itm')) ? p.sku : '';
       state.products.push({
-        url: p.url, fsn: p.fsn || '', sku: p.sku || '',
+        url: p.url, fsn: p.fsn || '', sku: realSku,
         title: p.title || p.url, buybox_price: price,
         seller, status, lastChecked: new Date().toISOString(),
         history: [{ price, seller, status, ts: new Date().toISOString() }]
@@ -1703,14 +1707,20 @@ function importListings(input) {
       localStorage.setItem('makro_listings', JSON.stringify(listings));
 
       // ── Auto-populate SKU on matched products (needed for cost sync) ──────
+      // Always overwrite — old products may have itm... slugs stored wrongly as SKU
       const fsnToSku = {};
       listings.forEach(l => { if (l.fsn && l.sku) fsnToSku[l.fsn] = l.sku; });
       let skuPopulated = 0;
       state.products.forEach(p => {
-        if (p.fsn && fsnToSku[p.fsn] && !p.sku) {
-          p.sku = fsnToSku[p.fsn];
-          skuPopulated++;
+        if (p.fsn && fsnToSku[p.fsn]) {
+          const newSku = fsnToSku[p.fsn];
+          if (p.sku !== newSku) {
+            p.sku = newSku;
+            skuPopulated++;
+          }
         }
+        // Also clear any itm... slugs wrongly stored as SKU
+        if (p.sku && p.sku.startsWith('itm')) { p.sku = ''; skuPopulated++; }
       });
       if (skuPopulated > 0) saveProducts();
 
