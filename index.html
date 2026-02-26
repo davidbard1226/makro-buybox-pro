@@ -2830,7 +2830,7 @@ function initSyncTab() {
 // ============================================================
 // GOOGLE SHEET COST IMPORTER (no API key — public CSV)
 // ============================================================
-const GSHEET_ID = '1ISaEOPBElufeYh6eq6APtlFjeMvrKqlAwEd3F4K6rBw';
+// GSHEET_ID already declared above — reusing it here
 
 async function loadSheetTabs() {
   showCostStatus('⏳ Fetching sheet tabs...', '#ffd60a');
@@ -2862,22 +2862,7 @@ function renderTabButtons(tabs) {
       escHtml(t) + '</button>').join('') + '</div>';
 }
 
-function parseCSV(text) {
-  const rows = [];
-  for (const line of text.split('\n')) {
-    if (!line.trim()) continue;
-    const row = []; let inQ = false, cur = '';
-    for (let i = 0; i < line.length; i++) {
-      const c = line[i];
-      if (c === '"') { if (inQ && line[i+1] === '"') { cur += '"'; i++; } else inQ = !inQ; }
-      else if (c === ',' && !inQ) { row.push(cur.trim()); cur = ''; }
-      else cur += c;
-    }
-    row.push(cur.trim());
-    if (row.some(c => c)) rows.push(row);
-  }
-  return rows;
-}
+// parseCSV already declared above — reusing it
 
 async function previewTab(tabName) {
   if (!tabName || !tabName.trim()) { showCostStatus('⚠️ Enter a tab name', '#ff9500'); return; }
