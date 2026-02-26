@@ -699,7 +699,8 @@
             <tr>
               <th style="width:32px"><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)" title="Select all"></th>
               <th>Product</th>
-              <th>FSN / SKU</th>
+              <th>FSN</th>
+              <th>SKU</th>
               <th>My Price</th>
               <th>Stock</th>
               <th>Buy Box Price</th>
@@ -714,7 +715,7 @@
             </tr>
           </thead>
           <tbody id="productsBody">
-            <tr><td colspan="14">
+            <tr><td colspan="15">
               <div class="empty-state">
                 <div class="empty-icon">📦</div>
                 <div class="empty-title">No Products Yet</div>
@@ -1030,20 +1031,39 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
         <div class="card">
           <div class="card-title" style="margin-bottom:14px">💰 SUPPLIER COST IMPORTER — Google Sheet</div>
           <div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.7">
-            Reads your supplier Google Sheet tabs via public CSV — no API key needed. SKU in column A, you pick the cost column. Sets <b style="color:var(--text)">Min Price</b> per product automatically.
+            Reads your supplier Google Sheet. <b style="color:var(--text)">SKU must be in Column A</b> on every tab. Cost column differs per tab — you pick it. Matches SKU to your Makro products and sets Min Price automatically.
           </div>
-          <button class="btn-primary" onclick="loadSheetTabs()" style="width:100%;margin-bottom:12px;padding:10px;font-size:12px">
-            📊 Load Supplier Sheet Tabs
-          </button>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+            <button class="btn-primary" onclick="loadSheetTabs()" style="padding:10px;font-size:12px">
+              📊 Load Known Tabs
+            </button>
+            <button class="btn-secondary" onclick="syncCostsFromGSheet()" style="padding:10px;font-size:12px" id="syncCostsBtn2">
+              ⚡ Quick Sync All
+            </button>
+          </div>
+
           <div id="costTabSelector" style="margin-bottom:10px"></div>
+
+          <!-- Manual tab name entry -->
+          <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Enter any supplier tab name to preview & import:</div>
           <div style="display:flex;gap:8px;margin-bottom:10px">
-            <input id="manualTabName" placeholder="Or type tab name manually..."
+            <input id="manualTabName" placeholder="e.g. Kolok, Rectron, Pinnacle..."
               style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:6px;font-size:12px">
             <button class="btn-secondary" style="width:auto;padding:7px 14px;font-size:12px"
               onclick="previewTab(document.getElementById('manualTabName').value)">Preview</button>
           </div>
+
           <div id="costColumnPicker" style="display:none;margin-bottom:12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px"></div>
           <div id="costStatus" style="font-size:12px;color:var(--muted);min-height:20px;line-height:1.6"></div>
+
+          <div style="margin-top:12px;font-size:11px;color:var(--muted);background:var(--surface2);border-radius:6px;padding:10px;line-height:1.8">
+            <b style="color:var(--accent3)">How it works:</b><br>
+            1. Import your Makro Offers file on the <b>Products tab</b> — this loads SKUs<br>
+            2. Type a supplier tab name above → Preview → Import<br>
+            3. Or click <b>Quick Sync All</b> to auto-match all known tabs at once<br>
+            4. Cost price auto-populates on matched products + sets Min Price guard
+          </div>
         </div>
 
       </div>
@@ -1510,7 +1530,7 @@ function renderProducts() {
 
   const tbody = document.getElementById('productsBody');
   if (prods.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="14"><div class="empty-state">
+    tbody.innerHTML = `<tr><td colspan="15"><div class="empty-state">
       <div class="empty-icon">📦</div>
       <div class="empty-title">${state.products.length === 0 ? 'No Products Yet' : 'No Matches'}</div>
       <div class="empty-text">${state.products.length === 0 ? 'Use the Scraper tab to add products.' : 'Try changing your filters.'}</div>
@@ -1538,12 +1558,15 @@ function renderProducts() {
       ? `<span style="color:var(--accent3);font-family:'Space Mono',monospace;font-size:12px">R ${myPriceVal.toFixed(2)}</span>${priceIndicator}`
       : '<span style="color:var(--muted);font-size:11px">—</span>';
 
-    // ── FSN / SKU display (read-only — SKU comes from listings import) ──
-    const skuVal = escHtml(p.sku || '');
+    // ── FSN display ──
     const fsnVal = escHtml(p.fsn || '—');
-    const fsnSkuHtml = `
-      <div style="font-family:'Space Mono',monospace;font-size:11px;color:var(--muted)">${fsnVal}</div>
-      ${skuVal ? `<div style="font-size:10px;color:#818cf8;font-family:'Space Mono',monospace">${skuVal}</div>` : '<div style="font-size:10px;color:var(--muted)">no sku — import listings</div>'}`;
+    const fsnHtml = `<div style="font-family:'Space Mono',monospace;font-size:11px;color:var(--muted)">${fsnVal}</div>`;
+
+    // ── SKU display — from listings import, needed for cost sync ──
+    const skuVal  = escHtml(p.sku || '');
+    const skuHtml = skuVal
+      ? `<div style="font-family:'Space Mono',monospace;font-size:12px;color:#818cf8;font-weight:600">${skuVal}</div>`
+      : `<div style="font-size:10px;color:var(--muted)">— import listings</div>`;
 
     // ── Cost price — inline editable ──
     const cost = p.cost_price ? Number(p.cost_price) : null;
@@ -1590,7 +1613,8 @@ function renderProducts() {
         <div class="prod-title">${escHtml((p.title||'Unknown').slice(0,55))}</div>
         <a class="prod-url" href="${escHtml(p.url)}" target="_blank" rel="noopener">${escHtml(shortUrl(p.url))}</a>
       </td>
-      <td>${fsnSkuHtml}</td>
+      <td>${fsnHtml}</td>
+      <td>${skuHtml}</td>
       <td>${myPriceHtml}</td>
       <td>${myStock}</td>
       <td><span class="price-cell ${p.status==='win'?'win':'lose'}">R ${(p.buybox_price||0).toFixed(2)}</span></td>
@@ -1808,56 +1832,99 @@ async function syncCostsFromGSheet() {
   showCostNotify('⏳ Fetching cost data from Google Sheets...', 'success');
 
   try {
-    // ── Step 1: Fetch all tabs and build SKU→cost lookup ──────────────────
-    const lookup = {}; // sku_lower → { cost_price, supplier }
+    // ── Build SKU list from loaded products ───────────────────────────────
+    const productSkus = new Set();
+    state.products.forEach(p => { if (p.sku) productSkus.add(p.sku.trim().toLowerCase()); });
 
-    for (const tab of GSHEET_TABS) {
-      const url = `https://docs.google.com/spreadsheets/d/${GSHEET_ID}/export?format=csv&gid=${tab.gid}`;
+    if (productSkus.size === 0) {
+      showCostNotify('⚠️ No SKUs found on products. Import your Makro Offers file first (Products tab → Import Listings).', 'error');
+      return;
+    }
+
+    // ── Fetch all known supplier tabs via public CSV URL ──────────────────
+    // Uses: /gviz/tq?tqx=out:csv&sheet=TABNAME — no login required
+    const lookup = {}; // sku_lower → { cost_price, supplier, min_price, max_price }
+    let tabsChecked = 0, tabsFailed = 0;
+
+    // First try GSHEET_TABS hardcoded tabs, then also try the Sync & Costs stored tabs
+    const storedCosts  = JSON.parse(localStorage.getItem('makro_costs') || '{}');
+    const knownSources = [...new Set(Object.values(storedCosts).map(c => c.source).filter(Boolean))];
+
+    // Combine hardcoded tabs + any tabs already imported via Sync & Costs tab
+    const tabsToCheck = [...GSHEET_TABS.map(t => ({ name: null, gid: t.gid, skuCol: t.skuCol, costCol: t.costCol, minCol: t.minCol, maxCol: t.maxCol, supplierName: t.supplierName }))];
+
+    // Also check any tab names we know from previous imports
+    knownSources.forEach(name => {
+      if (name && !tabsToCheck.find(t => t.supplierName === name)) {
+        tabsToCheck.push({ name, gid: null, skuCol: 0, costCol: null, supplierName: name });
+      }
+    });
+
+    for (const tab of tabsToCheck) {
+      // Build URL — prefer gid, fall back to sheet name
+      const url = tab.gid
+        ? `https://docs.google.com/spreadsheets/d/${GSHEET_ID}/gviz/tq?tqx=out:csv&gid=${tab.gid}`
+        : `https://docs.google.com/spreadsheets/d/${GSHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tab.name)}`;
+
       let csvText = '';
       try {
         const resp = await fetch(url);
-        if (!resp.ok) { console.warn('Tab', tab.gid, 'returned', resp.status); continue; }
+        if (!resp.ok) { tabsFailed++; continue; }
         csvText = await resp.text();
-      } catch (e) { console.warn('Tab', tab.gid, 'fetch error:', e); continue; }
+        if (csvText.includes('<!DOCTYPE') || csvText.trim().length < 10) { tabsFailed++; continue; }
+      } catch(e) { tabsFailed++; continue; }
 
-      // Parse CSV rows
+      tabsChecked++;
       const rows = parseCSV(csvText);
-      for (let r = 1; r < rows.length; r++) { // skip header row
+      if (rows.length < 2) continue;
+
+      const headers = rows[0];
+
+      // Auto-detect cost column if not hardcoded
+      let costCol = tab.costCol;
+      if (costCol == null) {
+        costCol = headers.findIndex(h => /cost|price|sell|landed/i.test(h) && !/sku|code|name|desc/i.test(h));
+        if (costCol < 0) costCol = 3; // default column D
+      }
+
+      const supplierName = tab.supplierName || headers[0] || ('Tab ' + tabsChecked);
+
+      for (let r = 1; r < rows.length; r++) {
         const row = rows[r];
-        if (!row || row.length === 0) continue;
-        const rawSku  = (row[tab.skuCol]  || '').toString().trim();
-        const rawCost = (row[tab.costCol] || '').toString().trim().replace(/[R,\s]/g, '');
+        if (!row || !row[0]) continue;
+        const rawSku  = row[0].toString().trim();
+        const rawCost = (row[costCol] || '').toString().replace(/[R,\s]/g, '');
         if (!rawSku) continue;
         const costVal = parseFloat(rawCost);
         if (isNaN(costVal) || costVal <= 0) continue;
         const skuKey = rawSku.toLowerCase();
-        const supplierName = tab.supplierName || 'Sheet';
-        // Read min/max if columns defined
-        const rawMin = tab.minCol != null ? (row[tab.minCol] || '').toString().trim().replace(/[R,\s]/g, '') : '';
-        const rawMax = tab.maxCol != null ? (row[tab.maxCol] || '').toString().trim().replace(/[R,\s]/g, '') : '';
+
+        const rawMin = tab.minCol != null ? (row[tab.minCol] || '').toString().replace(/[R,\s]/g, '') : '';
+        const rawMax = tab.maxCol != null ? (row[tab.maxCol] || '').toString().replace(/[R,\s]/g, '') : '';
         const minVal = rawMin ? parseFloat(rawMin) : null;
         const maxVal = rawMax ? parseFloat(rawMax) : null;
-        // Keep lowest cost supplier
+
+        // Keep lowest cost across all supplier tabs
         if (!lookup[skuKey] || costVal < lookup[skuKey].cost_price) {
           lookup[skuKey] = {
-            cost_price: costVal,
-            supplier: supplierName,
-            min_price: (!isNaN(minVal) && minVal > 0) ? minVal : null,
-            max_price: (!isNaN(maxVal) && maxVal > 0) ? maxVal : null,
+            cost_price:  costVal,
+            supplier:    supplierName,
+            min_price:   (!isNaN(minVal) && minVal > 0) ? minVal : null,
+            max_price:   (!isNaN(maxVal) && maxVal > 0) ? maxVal : null,
           };
         }
       }
     }
 
-    // ── Step 2: Match products by SKU and update cost_price ───────────────
-    let updated = 0;
-    const notFound = [];
+    // ── Match products by SKU ─────────────────────────────────────────────
+    let updated = 0, notFound = [];
     state.products.forEach(p => {
       const sku = (p.sku || '').trim().toLowerCase();
       if (!sku) return;
       if (lookup[sku]) {
         p.cost_price    = lookup[sku].cost_price;
         p.cost_supplier = lookup[sku].supplier;
+        p.minPrice      = lookup[sku].cost_price; // never sell below cost
         if (lookup[sku].min_price) p.min_price = lookup[sku].min_price;
         if (lookup[sku].max_price) p.max_price = lookup[sku].max_price;
         updated++;
@@ -1866,15 +1933,24 @@ async function syncCostsFromGSheet() {
       }
     });
 
+    // Also store in makro_costs for use in Sync & Costs tab
+    const costsStore = JSON.parse(localStorage.getItem('makro_costs') || '{}');
+    Object.entries(lookup).forEach(([sku, data]) => {
+      costsStore[sku] = { cost: data.cost_price, source: data.supplier, updated: new Date().toISOString() };
+    });
+    localStorage.setItem('makro_costs', JSON.stringify(costsStore));
+
     saveProducts();
     renderProducts();
 
+    const tabInfo  = tabsChecked > 0 ? ` (${tabsChecked} tab${tabsChecked!==1?'s':''} scanned)` : '';
+    const skipInfo = notFound.length > 0 ? ` · ${notFound.length} SKU(s) not in sheet` : ' · All SKUs matched!';
     const msg = updated > 0
-      ? `✅ Cost sync complete — ${updated} product${updated!==1?'s':''} updated.${notFound.length ? ` ${notFound.length} SKU(s) not matched.` : ' All SKUs matched!'}`
-      : `⚠️ No products updated. Make sure your products have SKUs matching the Google Sheet.`;
+      ? `✅ ${updated} product${updated!==1?'s':''} updated with cost data${tabInfo}${skipInfo}`
+      : `⚠️ 0 products updated${tabInfo}. Check that SKUs in your products match column A of the Google Sheet.`;
     showCostNotify(msg, updated > 0 ? 'success' : 'error');
 
-  } catch (e) {
+  } catch(e) {
     showCostNotify('❌ Sync error: ' + e.message, 'error');
   } finally {
     btn.disabled = false;
@@ -2833,21 +2909,51 @@ function initSyncTab() {
 // GSHEET_ID already declared above — reusing it here
 
 async function loadSheetTabs() {
-  showCostStatus('⏳ Fetching sheet tabs...', '#ffd60a');
-  try {
-    const res  = await fetch('https://docs.google.com/spreadsheets/d/' + GSHEET_ID + '/edit?usp=sharing');
-    const text = await res.text();
-    const matches = [...text.matchAll(/"name":"([^"]{1,50})"/g)].map(m => m[1]);
-    const skip = /^(true|false|null|script|style|div|span|button|input|form|table|head|body|html|object|string|number)$/i;
-    const tabs = [...new Set(matches)].filter(n => n && !skip.test(n));
-    if (tabs.length) {
-      renderTabButtons(tabs);
-      showCostStatus('✅ Found ' + tabs.length + ' tabs — click one to load', '#00e5a0');
-    } else { throw new Error('no tabs parsed'); }
-  } catch(e) {
-    showCostStatus('⚠️ Auto-detect failed — type a tab name below and click Preview.', '#ff9500');
+  showCostStatus('⏳ Probing supplier sheet tabs...', '#ffd60a');
+  const found = [];
+
+  // Try all hardcoded GSHEET_TABS first
+  for (const tab of GSHEET_TABS) {
+    const url = 'https://docs.google.com/spreadsheets/d/' + GSHEET_ID + '/gviz/tq?tqx=out:csv&gid=' + tab.gid;
+    try {
+      const res = await fetch(url);
+      if (res.ok) {
+        const text = await res.text();
+        if (text && !text.includes('<!DOCTYPE') && text.trim().length > 5) {
+          // Get tab name from first row headers
+          const rows = parseCSV(text);
+          const label = tab.supplierName || ('GID ' + tab.gid);
+          found.push({ name: label, gid: tab.gid, rows });
+        }
+      }
+    } catch(e) {}
+  }
+
+  // Also try previously imported tab names stored in makro_costs
+  const storedCosts = JSON.parse(localStorage.getItem('makro_costs') || '{}');
+  const knownNames  = [...new Set(Object.values(storedCosts).map(c => c.source).filter(Boolean))];
+  for (const name of knownNames) {
+    if (found.find(f => f.name === name)) continue;
+    const url = 'https://docs.google.com/spreadsheets/d/' + GSHEET_ID + '/gviz/tq?tqx=out:csv&sheet=' + encodeURIComponent(name);
+    try {
+      const res = await fetch(url);
+      if (res.ok) {
+        const text = await res.text();
+        if (text && !text.includes('<!DOCTYPE') && text.trim().length > 5) {
+          const rows = parseCSV(text);
+          found.push({ name, gid: null, rows });
+        }
+      }
+    } catch(e) {}
+  }
+
+  if (found.length > 0) {
+    renderTabButtons(found.map(f => f.name));
+    showCostStatus('✅ Found ' + found.length + ' supplier tab(s) — click one to preview & import', '#00e5a0');
+  } else {
+    showCostStatus('⚠️ Could not auto-load tabs. Type a tab name below and click Preview.', '#ff9500');
     document.getElementById('costTabSelector').innerHTML =
-      '<div style="font-size:11px;color:var(--muted)">Enter tab name in the box below.</div>';
+      '<div style="font-size:11px;color:var(--muted)">Type the exact tab name from your Google Sheet below.</div>';
   }
 }
 
