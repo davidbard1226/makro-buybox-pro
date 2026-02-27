@@ -650,6 +650,10 @@
               <th>My Price</th>
               <th>Stock</th>
               <th>Buy Box Price</th>
+              <th>Cost</th>
+              <th title="Min sell price — never go below">Min R</th>
+              <th title="Max sell price — never go above">Max R</th>
+              <th>Margin</th>
               <th>Seller</th>
               <th>Status</th>
               <th>Last Checked</th>
@@ -657,7 +661,7 @@
             </tr>
           </thead>
           <tbody id="productsBody">
-            <tr><td colspan="11">
+            <tr><td colspan="15">
               <div class="empty-state">
                 <div class="empty-icon">📦</div>
                 <div class="empty-title">No Products Yet</div>
@@ -1403,7 +1407,7 @@ function renderProducts() {
 
   const tbody = document.getElementById('productsBody');
   if (prods.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="10"><div class="empty-state">
+    tbody.innerHTML = `<tr><td colspan="15"><div class="empty-state">
       <div class="empty-icon">📦</div>
       <div class="empty-title">${state.products.length === 0 ? 'No Products Yet' : 'No Matches'}</div>
       <div class="empty-text">${state.products.length === 0 ? 'Use the Scraper tab to add products.' : 'Try changing your filters.'}</div>
@@ -1436,6 +1440,34 @@ function renderProducts() {
       <td>${myPrice}${priceIndicator}</td>
       <td>${myStock}</td>
       <td><span class="price-cell ${p.status==='win'?'win':'lose'}">R ${(p.buybox_price||0).toFixed(2)}</span></td>
+      <td>
+        ${p.cost_price > 0
+          ? `<span style="font-family:'Space Mono',monospace;font-size:12px;color:#60a5fa">R ${p.cost_price.toFixed(2)}</span><br><span style="font-size:10px;color:var(--muted)">${p.cost_supplier||''}</span>`
+          : `<span style="color:var(--muted);font-size:10px">— sync costs</span>`}
+      </td>
+      <td>
+        <input type="number" step="1" min="0"
+          value="${p.min_price != null ? p.min_price : ''}"
+          placeholder="—"
+          title="Min sell price for this product"
+          style="width:70px;background:var(--surface2);border:1px solid var(--border);color:var(--accent3);font-family:'Space Mono',monospace;font-size:11px;padding:3px 5px;border-radius:4px;text-align:right"
+          onchange="setProductPrice(${realIdx},'min_price',this.value)"
+        >
+      </td>
+      <td>
+        <input type="number" step="1" min="0"
+          value="${p.max_price != null ? p.max_price : ''}"
+          placeholder="—"
+          title="Max sell price for this product"
+          style="width:70px;background:var(--surface2);border:1px solid var(--border);color:#a78bfa;font-family:'Space Mono',monospace;font-size:11px;padding:3px 5px;border-radius:4px;text-align:right"
+          onchange="setProductPrice(${realIdx},'max_price',this.value)"
+        >
+      </td>
+      <td>
+        ${(p.cost_price > 0 && p.buybox_price > 0)
+          ? (() => { var m = ((p.buybox_price - p.cost_price) / p.buybox_price * 100); return `<span style="font-size:12px;color:${m >= 15 ? 'var(--accent)' : m >= 5 ? '#ffd60a' : '#ff9500'};font-family:'Space Mono',monospace">${m.toFixed(1)}%</span>`; })()
+          : '<span style="color:var(--muted);font-size:10px">—</span>'}
+      </td>
       <td style="font-size:12px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(p.seller||'')}">${escHtml((p.seller||'Unknown').slice(0,20))}</td>
       <td><span class="status-pill ${statusClass}">${statusLabel}</span></td>
       <td style="font-size:11px;color:var(--muted);white-space:nowrap">${t}</td>
@@ -1546,7 +1578,9 @@ function importListings(input) {
 // ============================================================
 const GSHEET_ID = '1ISaEOPBElufeYh6eq6APtlFjeMvrKqlAwEd3F4K6rBw';
 const GSHEET_TABS = [
-  { gid: '2144903566', costCol: 3, minCol: 13, maxCol: 14, supplierName: 'Kolok' },
+  // Each tab: gid from the sheet URL, costCol=0-based column index for your cost, supplierName for display
+  // Column A (0)=SKU, Column D (3)=cost, Column N (13)=min, Column O (14)=max — adjust if needed
+  { gid: '2144903566', skuCol: 0, costCol: 3, minCol: 13, maxCol: 14, supplierName: 'Kolok' },
 ];
 
 function parseCSV(text) {
@@ -1599,7 +1633,7 @@ async function syncCostsFromSheet() {
         for (var r = 1; r < rows.length; r++) {
           var row = rows[r];
           if (!row[0]) continue;
-          var sku = row[0].toString().trim().toLowerCase();
+          var sku = row[tab.skuCol != null ? tab.skuCol : 0].toString().trim().toLowerCase();
           var cost = parseFloat((row[costCol] || '').toString().replace(/[R,\s]/g,''));
           if (!sku || isNaN(cost) || cost <= 0) continue;
           var minV = tab.minCol != null ? parseFloat((row[tab.minCol]||'').toString().replace(/[R,\s]/g,'')) : NaN;
@@ -1619,9 +1653,8 @@ async function syncCostsFromSheet() {
       if (lookup[key]) {
         p.cost_price    = lookup[key].cost;
         p.cost_supplier = lookup[key].supplier;
-        p.minPrice      = lookup[key].cost; // floor = cost price
-        if (lookup[key].minPrice) p.min_price = lookup[key].minPrice;
-        if (lookup[key].maxPrice) p.max_price = lookup[key].maxPrice;
+        if (lookup[key].minPrice != null) p.min_price = lookup[key].minPrice;
+        if (lookup[key].maxPrice != null) p.max_price = lookup[key].maxPrice;
         updated++;
       } else {
         noMatch.push(p.sku);
@@ -1649,6 +1682,15 @@ function deleteProduct(idx) {
   saveProducts();
   renderProducts();
   updateProductCount();
+}
+
+function setProductPrice(idx, field, val) {
+  var v = val === '' || val === null ? null : parseFloat(val);
+  if (val !== '' && isNaN(v)) return;
+  state.products[idx][field] = v;
+  saveProducts();
+  // re-render only the margin cell without full re-render to avoid losing focus
+  renderProducts();
 }
 
 function rescrapeOne(idx) {
