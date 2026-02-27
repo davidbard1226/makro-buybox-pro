@@ -124,11 +124,11 @@
     var url = queueUrls.shift();
     safe(function() {
       if (queueTabId) {
-        chrome.tabs.update(queueTabId, { url: url, active: true }, function() {
+        chrome.tabs.update(queueTabId, { url: url, active: false }, function() {
           if (chrome.runtime.lastError) {
             // tab gone, create new
             queueTabId = null;
-            chrome.tabs.create({ url: url, active: true }, function(tab) {
+            chrome.tabs.create({ url: url, active: false }, function(tab) {
               queueTabId = tab.id;
               waitForScrape();
             });
@@ -137,7 +137,7 @@
           }
         });
       } else {
-        chrome.tabs.create({ url: url, active: true }, function(tab) {
+        chrome.tabs.create({ url: url, active: false }, function(tab) {
           queueTabId = tab.id;
           waitForScrape();
         });
