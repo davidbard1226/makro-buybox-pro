@@ -834,7 +834,8 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
           <div class="card">
             <div class="card-title" style="margin-bottom:14px">📋 LISTINGS FILE REQUIRED</div>
             <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Import your S_listing XLS first (Products tab → Import Listings). The price updater uses your current prices and FSN codes to generate the upload file.</p>
-            <div id="pricerListingsStatus" style="font-size:13px;color:var(--muted);margin-bottom:16px">⏳ Checking listings...</div>
+            <div id="pricerListingsStatus" style="font-size:13px;color:var(--muted);margin-bottom:8px">⏳ Checking listings...</div>
+          <div id="pendingUploadCount" style="font-size:12px;color:var(--muted);margin-bottom:12px;font-family:'Space Mono',monospace"></div>
           <button class="btn-primary" onclick="generatePriceUpdate()" id="generateBtn" style="width:100%;margin-bottom:8px">⬇ Generate & Download Price Update File</button>
           <button class="btn-secondary" onclick="openPortalUpload()" id="portalUploadBtn" style="width:100%;margin-bottom:8px;color:#00e5a0;border-color:#00e5a044">🚀 Send to Portal & Auto Upload</button>
           <button class="btn-secondary" onclick="sendFileToPortal()" id="sendFileBtn" style="width:100%;margin-bottom:4px;color:#ffd60a;border-color:#ffd60a44" title="Re-send the generated file to the portal extension without downloading again">📤 Re-send File to Portal</button>
@@ -1231,6 +1232,11 @@ function handleQueueProgress(d) {
       });
     }
     saveProducts();
+
+    // ── AUTO REPRICE: beat competitor by R1, never below min_price ──────────
+    var prod = existing || state.products[state.products.length - 1];
+    autoReprice(prod);
+
     log(isWin ? 'ok' : 'err',
       (isWin ? '✓ WIN ' : '✗ LOSE') + ' | R' + price.toFixed(2) + ' | ' + seller.slice(0,30) +
       ' | ' + (p.title||'').slice(0,35));
@@ -1328,6 +1334,63 @@ function calcMinViablePrice(costPrice) {
 function roundPrice(p) {
   return Math.round(p);
 }
+
+// ── AUTO REPRICE ──────────────────────────────────────────────────────────
+// Called after every scrape. Beats competitor by R1, never below min_price.
+// Updates the listing's myPrice and flags product as pending upload.
+function autoReprice(prod) {
+  if (!prod) return;
+  var buybox = prod.buybox_price;
+  if (!buybox || buybox <= 0) return;         // no buybox data yet
+  if (prod.status === 'win') return;           // already winning — don't touch price
+
+  var minPrice = prod.min_price;
+  if (!minPrice || minPrice <= 0) return;      // no min price set — can't reprice safely
+
+  var targetPrice = roundPrice(buybox - 1);   // beat by R1, rounded to whole number
+  if (targetPrice < minPrice) {
+    targetPrice = minPrice;                    // floor — never go below min
+  }
+
+  // Update the listing's myPrice
+  var listings = getListings();
+  var changed = false;
+  listings.forEach(function(l) {
+    if (l.fsn && l.fsn === prod.fsn) {
+      if (l.myPrice !== targetPrice) {
+        l.myPrice = targetPrice;
+        changed = true;
+      }
+    }
+  });
+  if (changed) {
+    localStorage.setItem('makro_listings', JSON.stringify(listings));
+    // Mark product as pending price upload
+    prod.pending_price    = targetPrice;
+    prod.pending_updated  = new Date().toISOString();
+    saveProducts();
+    // Show in scrape log
+    var atFloor = targetPrice === minPrice;
+    log('info',
+      '💰 Auto-repriced: R' + roundPrice(buybox) + ' → R' + targetPrice +
+      (atFloor ? ' ⚠ AT FLOOR (min R' + minPrice + ')' : ' (beat by R1)')
+    );
+    // Update pending upload badge
+    updatePendingBadge();
+  }
+}
+
+// Track how many products have pending price changes
+function updatePendingBadge() {
+  var pending = state.products.filter(function(p) { return p.pending_price != null; }).length;
+  var el = document.getElementById('pendingUploadCount');
+  if (el) {
+    el.textContent = pending > 0 ? pending + ' price' + (pending > 1 ? 's' : '') + ' pending upload' : '';
+    el.style.color = pending > 0 ? '#ffd60a' : 'var(--muted)';
+  }
+}
+
+
 
 function shortUrl(url) {
   try { return new URL(url).pathname.split('/').filter(Boolean).pop() || url; } catch(e) { return url; }
@@ -1770,7 +1833,10 @@ async function syncCostsFromSheet() {
       if (match) {
         p.cost_price    = match.cost;
         p.cost_supplier = match.supplier;
-        if (match.minPrice != null) p.min_price = match.minPrice;
+        // Always auto-calculate min price from Makro fee structure + 5% min profit
+        // This overrides whatever the supplier sheet says — our floor is always fee-aware
+        p.min_price = calcMinViablePrice(match.cost);
+        // Only use supplier max if they provide one
         if (match.maxPrice != null) p.max_price = match.maxPrice;
         updated++;
       } else {
@@ -2397,6 +2463,7 @@ document.getElementById('sellerNameConfig').addEventListener('change', function(
 function initPricer() {
   const listings = getListings();
   const el = document.getElementById('pricerListingsStatus');
+  updatePendingBadge();
   if (listings.length === 0) {
     el.innerHTML = '⚠️ <span style="color:#ff9500">No listings imported yet.</span> Go to <b>Products tab → 📂 Import Listings</b> first.';
     document.getElementById('generateBtn').disabled = true;
@@ -2577,6 +2644,15 @@ function generatePriceUpdate() {
   listings.forEach(function(l) {
     const scraped = scrapedMap[l.fsn];
     if (!scraped) return;
+
+    // Priority 1: auto-repriced price (set by autoReprice after scrape)
+    if (scraped.pending_price != null) {
+      priceMap[l.fsn] = { newPrice: scraped.pending_price, sku: l.sku, title: l.title, oldPrice: l.myPrice };
+      updateCount++;
+      return;
+    }
+
+    // Priority 2: strategy-based calculation
     if (skipUnknown && (!scraped.buybox_price || scraped.buybox_price <= 0)) return;
     if (winsOnly && scraped.status === 'win') return;
     const result = calcNewPrice(l.myPrice, scraped.buybox_price, strategy, beatBy, floorPct, minPrice, maxPrice);
@@ -2644,6 +2720,13 @@ function generatePriceUpdate() {
 
     // Also trigger download for manual fallback
     XLSX.writeFile(wb, filename);
+
+    // Clear pending flags now that prices are in the file
+    state.products.forEach(function(p) {
+      if (p.pending_price != null) { delete p.pending_price; delete p.pending_updated; }
+    });
+    saveProducts();
+    updatePendingBadge();
 
     document.getElementById('pricerResult').innerHTML =
       '✅ <span style="color:var(--accent)">Downloaded <b>' + filename + '</b> — ' +
