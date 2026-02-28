@@ -1724,6 +1724,15 @@ function renderProducts() {
   const pageProds = prods.slice(pageStart, pageStart + pageSize);
 
   const tbody = document.getElementById('productsBody');
+
+  // Build a stable index map: filtered+paged product → index in state.products
+  // We can't use indexOf after JSON.parse (new object refs), so we match by URL+FSN
+  function findRealIdx(p) {
+    return state.products.findIndex(function(x) {
+      return x === p || x.url === p.url || (p.fsn && p.fsn === x.fsn);
+    });
+  }
+
   if (prods.length === 0) {
     tbody.innerHTML = `<tr><td colspan="15"><div class="empty-state">
       <div class="empty-icon">📦</div>
@@ -1737,7 +1746,7 @@ function renderProducts() {
     const statusClass = p.status === 'win' ? 'win' : p.status === 'lose' ? 'lose' : 'unknown';
     const statusLabel = p.status === 'win' ? '✓ WIN' : p.status === 'lose' ? '✗ LOSE' : '? UNKNOWN';
     const t = p.lastChecked ? new Date(p.lastChecked).toLocaleString() : '—';
-    const realIdx = state.products.indexOf(p);
+    const realIdx = findRealIdx(p);
     const listing = listingsMap[p.fsn] || null;
     const myPrice = listing ? `<span style="color:var(--accent3);font-family:'Space Mono',monospace;font-size:12px">R ${listing.myPrice.toFixed(2)}</span>` : '<span style="color:var(--muted);font-size:11px">—</span>';
     const myStock = listing ? `<span style="color:${listing.myStock > 0 ? 'var(--accent)' : '#ff9500'};font-size:12px">${listing.myStock}</span>` : '<span style="color:var(--muted);font-size:11px">—</span>';
@@ -1871,11 +1880,14 @@ function refreshSelected() {
 }
 
 function deleteSelected() {
-  const idxs = Array.from(document.querySelectorAll('.row-check:checked')).map(c => parseInt(c.dataset.idx));
+  const idxs = Array.from(document.querySelectorAll('.row-check:checked'))
+    .map(c => parseInt(c.dataset.idx))
+    .filter(i => !isNaN(i) && i >= 0 && i < state.products.length);
   if (idxs.length === 0) { alert('Tick at least one product to delete.'); return; }
   if (!confirm('Delete ' + idxs.length + ' selected product(s)?')) return;
+  // Sort descending so splicing doesn't shift indexes
   idxs.sort((a,b) => b-a).forEach(i => state.products.splice(i, 1));
-  saveProducts(); renderProducts(); updateProductCount();
+  saveProducts(); renderProducts(); updateProductCount(); renderDashboard();
   document.getElementById('selectAll').checked = false;
 }
 
@@ -2081,10 +2093,17 @@ async function syncCostsFromSheet() {
 }
 
 function deleteProduct(idx) {
+  if (idx < 0 || idx >= state.products.length) {
+    alert('Could not find that product — try refreshing the page.');
+    return;
+  }
+  var title = (state.products[idx].title || state.products[idx].url || 'this product').slice(0, 60);
+  if (!confirm('Delete "' + title + '"?')) return;
   state.products.splice(idx, 1);
   saveProducts();
   renderProducts();
   updateProductCount();
+  renderDashboard();
 }
 
 // ── EDIT PRODUCT MODAL ────────────────────────────────────────────────────
