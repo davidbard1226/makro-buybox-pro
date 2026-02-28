@@ -954,6 +954,41 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
   </main>
 </div>
 
+<!-- EDIT PRODUCT MODAL -->
+<div class="modal-backdrop" id="editModal">
+  <div class="modal" style="width:500px">
+    <h3>✎ Edit Product Details</h3>
+    <p id="editModalTitle" style="color:var(--accent);margin-bottom:16px;font-size:13px;font-weight:600"></p>
+
+    <div style="display:grid;gap:14px">
+      <div>
+        <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:5px">SKU (Seller Product Code)</label>
+        <input id="editSkuInput" type="text" placeholder="e.g. ABC-1234"
+          style="width:100%;background:var(--surface2);border:1px solid #818cf8;color:#818cf8;font-family:'Space Mono',monospace;font-size:13px;padding:8px 10px;border-radius:6px;outline:none">
+      </div>
+      <div>
+        <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:5px">Cost Price (R) — what you paid the supplier</label>
+        <input id="editCostInput" type="number" step="0.01" min="0" placeholder="e.g. 850.00"
+          style="width:100%;background:var(--surface2);border:1px solid #60a5fa;color:#60a5fa;font-family:'Space Mono',monospace;font-size:13px;padding:8px 10px;border-radius:6px;outline:none">
+        <div id="editCostHint" style="font-size:11px;color:var(--muted);margin-top:5px"></div>
+      </div>
+      <div>
+        <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:5px">Min Price (R) — override auto-calculated floor</label>
+        <input id="editMinInput" type="number" step="1" min="0" placeholder="Auto-calculated from cost"
+          style="width:100%;background:var(--surface2);border:1px solid var(--accent3);color:var(--accent3);font-family:'Space Mono',monospace;font-size:13px;padding:8px 10px;border-radius:6px;outline:none">
+        <div id="editMinHint" style="font-size:11px;color:var(--muted);margin-top:5px">Leave blank to auto-calculate from cost + Makro fees + 5% profit</div>
+      </div>
+    </div>
+
+    <div style="margin-top:20px;padding:10px;background:var(--surface2);border-radius:6px;font-size:11px;color:var(--muted);line-height:1.7" id="editCalcPreview"></div>
+
+    <div class="modal-actions" style="margin-top:20px">
+      <button class="btn-secondary" style="width:auto" onclick="closeEditModal()">Cancel</button>
+      <button class="btn-primary" style="width:auto;min-width:120px" onclick="saveEditModal()">💾 Save Changes</button>
+    </div>
+  </div>
+</div>
+
 <!-- CLEAR CONFIRM MODAL -->
 <div class="modal-backdrop" id="clearModal">
   <div class="modal">
@@ -1579,7 +1614,12 @@ function renderProducts() {
         <a class="prod-url" href="${escHtml(p.url)}" target="_blank" rel="noopener">${escHtml(p.sku || shortUrl(p.url))}</a>
       </td>
       <td><span style="font-family:'Space Mono',monospace;font-size:11px;color:var(--muted)">${escHtml(p.fsn||'—')}</span></td>
-      <td><span style="font-family:'Space Mono',monospace;font-size:12px;color:#818cf8;font-weight:600">${p.sku ? escHtml(p.sku) : '<span style="color:var(--muted);font-size:10px">— import listings</span>'}</span></td>
+      <td>
+        ${p.sku
+          ? `<span style="font-family:'Space Mono',monospace;font-size:12px;color:#818cf8;font-weight:600">${escHtml(p.sku)}</span>
+             <button class="action-btn" style="font-size:9px;padding:1px 5px;margin-left:3px" onclick="openEditModal(${realIdx})" title="Edit SKU/Cost/Min">✎</button>`
+          : `<button class="action-btn" style="font-size:10px;color:#818cf8;border-color:#818cf844" onclick="openEditModal(${realIdx})">+ Add SKU</button>`}
+      </td>
       <td>${myPrice}${priceIndicator}</td>
       <td>${myStock}</td>
       <td><span class="price-cell ${p.status==='win'?'win':'lose'}">R ${(p.buybox_price||0).toFixed(2)}</span></td>
@@ -1588,16 +1628,9 @@ function renderProducts() {
           ? `<div style="display:flex;align-items:center;gap:4px">
                <span style="font-family:'Space Mono',monospace;font-size:12px;color:#60a5fa">R ${p.cost_price.toFixed(0)}</span>
                <span style="font-size:10px;color:var(--muted)">${p.cost_supplier||''}</span>
-               <button class="action-btn" style="font-size:9px;padding:1px 5px" onclick="showCostInput(${realIdx})" title="Edit cost">✎</button>
+               <button class="action-btn" style="font-size:9px;padding:1px 5px" onclick="openEditModal(${realIdx})" title="Edit cost">✎</button>
              </div>`
-          : `<button class="action-btn" style="font-size:10px;color:#60a5fa;border-color:#60a5fa44" onclick="showCostInput(${realIdx})">+ Enter Cost</button>`}
-        <div id="costInputWrap_${realIdx}" style="display:none;margin-top:4px">
-          <input type="number" step="0.01" min="0" id="costInputField_${realIdx}"
-            value="${p.cost_price||''}" placeholder="Cost R"
-            style="width:80px;background:var(--surface2);border:1px solid #60a5fa;color:#60a5fa;font-family:'Space Mono',monospace;font-size:11px;padding:3px 5px;border-radius:4px"
-            onkeydown="if(event.key==='Enter')saveCostInput(${realIdx})">
-          <button class="action-btn" style="font-size:10px" onclick="saveCostInput(${realIdx})">✓</button>
-        </div>
+          : `<button class="action-btn" style="font-size:10px;color:#60a5fa;border-color:#60a5fa44" onclick="openEditModal(${realIdx})">+ Enter Cost</button>`}
       </td>
       <td>
         <input type="number" step="1" min="0"
@@ -1605,7 +1638,7 @@ function renderProducts() {
           placeholder="—"
           title="Min sell price for this product"
           style="width:70px;background:var(--surface2);border:1px solid var(--border);color:var(--accent3);font-family:'Space Mono',monospace;font-size:11px;padding:3px 5px;border-radius:4px;text-align:right"
-          onchange="setProductPrice(${realIdx},'min_price',this.value)"
+          onchange="setProductPriceSilent(${realIdx},'min_price',this.value)"
         >
       </td>
       <td>
@@ -1614,7 +1647,7 @@ function renderProducts() {
           placeholder="—"
           title="Max sell price for this product"
           style="width:70px;background:var(--surface2);border:1px solid var(--border);color:#a78bfa;font-family:'Space Mono',monospace;font-size:11px;padding:3px 5px;border-radius:4px;text-align:right"
-          onchange="setProductPrice(${realIdx},'max_price',this.value)"
+          onchange="setProductPriceSilent(${realIdx},'max_price',this.value)"
         >
       </td>
       <td>
@@ -1913,35 +1946,98 @@ function deleteProduct(idx) {
   updateProductCount();
 }
 
-function showCostInput(idx) {
-  var wrap = document.getElementById('costInputWrap_' + idx);
-  if (!wrap) return;
-  wrap.style.display = wrap.style.display === 'none' ? 'block' : 'none';
-  if (wrap.style.display === 'block') {
-    var f = document.getElementById('costInputField_' + idx);
-    if (f) { f.focus(); f.select(); }
-  }
+// ── EDIT PRODUCT MODAL ────────────────────────────────────────────────────
+var _editModalIdx = null;
+
+function openEditModal(idx) {
+  _editModalIdx = idx;
+  var p = state.products[idx];
+  if (!p) return;
+
+  document.getElementById('editModalTitle').textContent = (p.title || p.url || '').slice(0, 60);
+  document.getElementById('editSkuInput').value  = p.sku || '';
+  document.getElementById('editCostInput').value = p.cost_price > 0 ? p.cost_price : '';
+  document.getElementById('editMinInput').value  = p.min_price != null ? p.min_price : '';
+
+  updateEditCalcPreview();
+
+  document.getElementById('editModal').classList.add('show');
+  setTimeout(function() {
+    var f = p.sku ? document.getElementById('editCostInput') : document.getElementById('editSkuInput');
+    if (f) f.focus();
+  }, 100);
+
+  // Live preview when cost changes
+  document.getElementById('editCostInput').oninput = updateEditCalcPreview;
 }
 
-function saveCostInput(idx) {
-  var f = document.getElementById('costInputField_' + idx);
-  if (!f) return;
-  var v = parseFloat(f.value);
-  if (isNaN(v) || v <= 0) { alert('Enter a valid cost price.'); return; }
-  state.products[idx].cost_price = v;
-  state.products[idx].cost_supplier = 'Manual';
+function updateEditCalcPreview() {
+  var cost = parseFloat(document.getElementById('editCostInput').value);
+  var preview = document.getElementById('editCalcPreview');
+  if (!cost || cost <= 0) { preview.innerHTML = ''; return; }
+  var autoMin = calcMinViablePrice(cost);
+  var fees = makroFees(autoMin);
+  var profit = autoMin - fees - cost;
+  preview.innerHTML =
+    '<strong style="color:var(--accent)">Auto min price preview at this cost:</strong><br>' +
+    'Cost: <span style="color:#60a5fa">R' + cost.toFixed(0) + '</span> &nbsp;|&nbsp; ' +
+    'Makro fees at min price: <span style="color:#ff9500">R' + fees.toFixed(0) + '</span> &nbsp;|&nbsp; ' +
+    'Your profit: <span style="color:var(--accent)">R' + profit.toFixed(0) + ' (5%)</span><br>' +
+    '→ Auto min price = <strong style="color:var(--accent3)">R' + autoMin + '</strong> &nbsp;(override above if needed)';
+}
+
+function closeEditModal() {
+  document.getElementById('editModal').classList.remove('show');
+  _editModalIdx = null;
+}
+
+function saveEditModal() {
+  var idx = _editModalIdx;
+  if (idx === null || !state.products[idx]) return;
+  var p = state.products[idx];
+
+  var sku  = document.getElementById('editSkuInput').value.trim();
+  var cost = parseFloat(document.getElementById('editCostInput').value);
+  var min  = document.getElementById('editMinInput').value.trim();
+
+  if (sku)  p.sku = sku;
+  if (!isNaN(cost) && cost > 0) {
+    p.cost_price    = cost;
+    p.cost_supplier = p.cost_supplier || 'Manual';
+    // Auto-recalc min price from Makro fees unless user set one manually
+    if (!min) {
+      p.min_price = calcMinViablePrice(cost);
+    }
+  }
+  if (min !== '') {
+    var minVal = parseFloat(min);
+    if (!isNaN(minVal)) p.min_price = roundPrice(minVal);
+  }
+
   saveProducts();
+  closeEditModal();
   renderProducts();
 }
 
-function setProductPrice(idx, field, val) {
-  var v = val === '' || val === null ? null : parseFloat(val);
+// ── SAVE PRICE FIELDS WITHOUT RE-RENDER ───────────────────────────────────
+function setProductPriceSilent(idx, field, val) {
+  var v = val === '' ? null : parseFloat(val);
   if (val !== '' && isNaN(v)) return;
   state.products[idx][field] = v;
   saveProducts();
-  // re-render only the margin cell without full re-render to avoid losing focus
-  renderProducts();
+  // No re-render — the input itself already shows the new value
 }
+
+// Legacy wrapper — kept for any remaining calls
+function setProductPrice(idx, field, val) {
+  setProductPriceSilent(idx, field, val);
+}
+
+// Legacy — no longer used (modal replaces it) but kept to avoid JS errors
+function showCostInput(idx) { openEditModal(idx); }
+function saveCostInput(idx) { saveEditModal(); }
+
+
 
 function rescrapeOne(idx) {
   if (!state.extReady) { alert('Extension not connected.'); return; }
@@ -2459,6 +2555,14 @@ document.getElementById('sellerNameConfig').addEventListener('change', function(
 // ============================================================
 (function init() {
   loadProducts();
+
+  // Escape key closes any open modal
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      closeEditModal();
+      document.getElementById('clearModal').classList.remove('show');
+    }
+  });
 
   // Load saved seller name
   const savedSeller = localStorage.getItem(SELLER_KEY);
