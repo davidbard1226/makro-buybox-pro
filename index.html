@@ -836,7 +836,8 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
             <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Import your S_listing XLS first (Products tab → Import Listings). The price updater uses your current prices and FSN codes to generate the upload file.</p>
             <div id="pricerListingsStatus" style="font-size:13px;color:var(--muted);margin-bottom:16px">⏳ Checking listings...</div>
           <button class="btn-primary" onclick="generatePriceUpdate()" id="generateBtn" style="width:100%;margin-bottom:8px">⬇ Generate & Download Price Update File</button>
-          <button class="btn-secondary" onclick="openPortalUpload()" id="portalUploadBtn" style="width:100%;display:none">🚀 Open Seller Portal — Auto Upload</button>
+          <button class="btn-secondary" onclick="openPortalUpload()" id="portalUploadBtn" style="width:100%;margin-bottom:8px;color:#00e5a0;border-color:#00e5a044">🚀 Send to Portal & Auto Upload</button>
+          <button class="btn-secondary" onclick="sendFileToPortal()" id="sendFileBtn" style="width:100%;margin-bottom:4px;color:#ffd60a;border-color:#ffd60a44" title="Re-send the generated file to the portal extension without downloading again">📤 Re-send File to Portal</button>
             <div id="pricerResult" style="margin-top:14px;font-size:12px;color:var(--muted)"></div>
           </div>
         </div>
@@ -2675,7 +2676,7 @@ function generatePriceUpdate() {
       }).join('') +
       '</tbody></table></div>';
 
-    document.getElementById('portalUploadBtn').style.display = 'block';
+    document.getElementById('portalUploadBtn').style.display = 'flex';
     buildPricerPreview();
 
   } catch(err) {
@@ -2684,23 +2685,38 @@ function generatePriceUpdate() {
   }
 }
 
+function sendFileToPortal() {
+  const base64   = localStorage.getItem('portal_upload_file');
+  const filename = localStorage.getItem('portal_upload_filename');
+  if (!base64) {
+    alert('No price file generated yet.\nGo to Price Updater → Generate & Download first.');
+    return;
+  }
+  // Send to bridge → chrome.storage.local so portal.js can read it
+  window.postMessage({ type: 'SAVE_PORTAL_FILE', base64, filename }, '*');
+  setTimeout(function() {
+    document.getElementById('pricerResult').innerHTML =
+      (document.getElementById('pricerResult').innerHTML || '') +
+      '<br><span style="color:#ffd60a">✅ File sent to portal extension. Open seller.makro.co.za — click <b style="color:#00e5a0">🚀 Auto Upload Now</b> in the green overlay.</span>';
+  }, 300);
+}
+
 function openPortalUpload() {
   const base64   = localStorage.getItem('portal_upload_file');
   const filename = localStorage.getItem('portal_upload_filename');
-  if (!base64) { alert('Generate a price update file first.'); return; }
-
-  // Save into chrome.storage so portal.js can read it
+  if (!base64) {
+    alert('No price file generated yet.\nGenerate a price update file first.');
+    return;
+  }
+  // Send to bridge → chrome.storage.local
   window.postMessage({ type: 'SAVE_PORTAL_FILE', base64, filename }, '*');
-
-  // Open the seller portal — portal.js will inject the BuyBox Pro overlay
-  // regardless of which page loads. Navigate to My Listings from there.
+  // Open portal after short delay to ensure storage is written
   setTimeout(function() {
     window.open('https://seller.makro.co.za', '_blank');
-  }, 600);
-
-  document.getElementById('pricerResult').innerHTML +=
-    '<br><span style="color:#ffd60a">✅ File saved to extension. On the portal page, click ' +
-    '<b style="color:#00e5a0">🚀 Auto Upload Now</b> in the green overlay to replay your recorded steps.</span>';
+  }, 800);
+  document.getElementById('pricerResult').innerHTML =
+    (document.getElementById('pricerResult').innerHTML || '') +
+    '<br><span style="color:#ffd60a">✅ File sent. On the portal, click <b style="color:#00e5a0">🚀 Auto Upload Now</b> in the green overlay.</span>';
 }
 </script>
 </body>
