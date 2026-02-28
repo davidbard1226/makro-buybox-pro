@@ -537,6 +537,7 @@
     <button class="tab-btn" onclick="switchTab('scraper')">⚡ Scraper</button>
     <button class="tab-btn" onclick="switchTab('pricer')">💰 Price Updater</button>
     <button class="tab-btn" onclick="switchTab('analytics')">📈 Analytics</button>
+    <button class="tab-btn" onclick="switchTab('log')">📋 Price Log</button>
   </nav>
 
   <!-- MAIN -->
@@ -552,7 +553,7 @@
       </div>
 
       <div id="dashContent">
-        <div class="stats-grid">
+        <div class="stats-grid" style="grid-template-columns:repeat(6,1fr)">
           <div class="stat-card">
             <div class="stat-label">Total Products</div>
             <div class="stat-value accent" id="s-total">0</div>
@@ -567,6 +568,16 @@
             <div class="stat-label">BuyBox Losses</div>
             <div class="stat-value red" id="s-losses">0</div>
             <div class="stat-sub" id="s-loss-pct">—% loss rate</div>
+          </div>
+          <div class="stat-card" style="--accent-top:var(--accent)">
+            <div class="stat-label">Est. Margin (wins)</div>
+            <div class="stat-value accent" id="s-avgmargin" style="font-size:32px">—%</div>
+            <div class="stat-sub" id="s-totalprofit">avg on priced products</div>
+          </div>
+          <div class="stat-card yellow">
+            <div class="stat-label">⚠ Low / No Stock</div>
+            <div class="stat-value yellow" id="s-lowstock">0</div>
+            <div class="stat-sub" id="s-lowstock-sub">products need restocking</div>
           </div>
           <div class="stat-card yellow">
             <div class="stat-label">Last Scraped</div>
@@ -638,6 +649,7 @@
             <input type="file" id="listingsFileInput" accept=".xls,.xlsx,.csv" style="display:none" onchange="importListings(this)">
           </label>
           <button class="btn-secondary" id="syncCostsBtn" style="width:auto;padding:8px 16px;color:#60a5fa;border-color:rgba(96,165,250,0.4)" onclick="syncCostsFromSheet()" title="Fetch cost prices from Google Sheet by matching SKU">📊 Sync Costs</button>
+          <button class="btn-secondary" style="width:auto;padding:8px 16px;color:#818cf8;border-color:#818cf844" onclick="openBulkSkuModal()" title="Bulk import SKU → FSN mappings">🔗 Bulk SKU Import</button>
           <button class="btn-secondary" style="width:auto;padding:8px 16px" onclick="refreshSelected()">↻ Refresh Selected</button>
           <button class="btn-secondary danger" style="width:auto;padding:8px 16px;color:#ff9500;border-color:#ff950044" onclick="deleteSelected()">🗑 Delete Selected</button>
           <button class="btn-secondary" style="width:auto;padding:8px 16px" onclick="exportCSV()">⬇ Export CSV</button>
@@ -736,6 +748,34 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
                 <option value="3" selected>3 tabs — recommended max</option>
               </select>
               <div style="font-size:10px;color:var(--muted);margin-top:4px;line-height:1.5">3 tabs = ~3× faster. Each tab gets its own human delay so Makro sees normal browsing.</div>
+            </div>
+
+            <div class="config-field">
+              <label>Auto-Scrape Schedule</label>
+              <select class="config-input" id="autoScrapeInterval">
+                <option value="0">Off (manual only)</option>
+                <option value="60">Every 1 hour</option>
+                <option value="240">Every 4 hours</option>
+                <option value="480">Every 8 hours</option>
+                <option value="720">Every 12 hours</option>
+              </select>
+              <div id="autoScrapeStatus" style="font-size:10px;color:var(--muted);margin-top:4px"></div>
+            </div>
+
+            <div class="config-field">
+              <label>📱 WhatsApp Alerts (via CallMeBot)</label>
+              <input class="config-input" id="waPhone" placeholder="+27821234567" style="margin-bottom:6px">
+              <input class="config-input" id="waApiKey" placeholder="CallMeBot API key" style="margin-bottom:4px">
+              <div style="font-size:10px;color:var(--muted);line-height:1.6">
+                Get free API key: wa.me/34693281308 → send "I allow callmebot to send me messages"<br>
+                Alerts fire when you <span style="color:#ff9500">lose the BuyBox</span> after a scrape.
+              </div>
+              <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+                <label style="font-size:11px;display:flex;align-items:center;gap:4px;cursor:pointer;color:var(--muted)">
+                  <input type="checkbox" id="waEnabled" style="width:14px;height:14px"> Enable alerts
+                </label>
+                <button class="action-btn" style="font-size:10px;color:var(--accent)" onclick="testWhatsApp()">Test</button>
+              </div>
             </div>
 
             <div class="config-field">
@@ -954,6 +994,49 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
   </main>
 </div>
 
+    <!-- ========== PRICE LOG TAB ========== -->
+    <div class="tab-content" id="tab-log">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+        <div class="card-title" style="margin:0">📋 PRICE CHANGE HISTORY</div>
+        <button class="btn-secondary" style="width:auto;padding:6px 14px;font-size:12px" onclick="exportPriceLog()">⬇ Export CSV</button>
+        <button class="btn-secondary" style="width:auto;padding:6px 14px;font-size:12px;color:#ff9500;border-color:#ff950044" onclick="clearPriceLog()">🗑 Clear Log</button>
+        <span id="priceLogCount" style="font-size:12px;color:var(--muted);margin-left:auto"></span>
+      </div>
+      <div class="card">
+        <div id="priceLogTable" style="overflow-x:auto;font-size:12px"></div>
+      </div>
+    </div><!-- /log -->
+
+  </main>
+</div>
+
+<!-- PRICE HISTORY MODAL -->
+<div class="modal-backdrop" id="historyModal">
+  <div class="modal" style="width:600px">
+    <h3>📈 Price History</h3>
+    <p id="historyModalTitle" style="color:var(--accent);font-size:13px;margin-bottom:12px"></p>
+    <canvas id="historyCanvas" width="540" height="200" style="width:100%;border-radius:6px;background:var(--surface2)"></canvas>
+    <div id="historyTable" style="margin-top:14px;max-height:200px;overflow-y:auto;font-size:11px;font-family:'Space Mono',monospace"></div>
+    <div class="modal-actions" style="margin-top:16px">
+      <button class="btn-primary" style="width:auto" onclick="document.getElementById('historyModal').classList.remove('show')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- BULK SKU IMPORT MODAL -->
+<div class="modal-backdrop" id="bulkSkuModal">
+  <div class="modal" style="width:560px">
+    <h3>🔗 Bulk SKU Import</h3>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:14px">Paste a CSV with two columns: <span style="color:#818cf8">SKU</span> and <span style="color:var(--accent)">FSN</span> (one per line, comma-separated). Matches will be saved to all products with that FSN.</p>
+    <textarea id="bulkSkuInput" style="width:100%;height:160px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:'Space Mono',monospace;font-size:12px;padding:10px;border-radius:6px;resize:vertical;outline:none" placeholder="SKU,FSN&#10;ABC-001,INTHFFWCZ5WSYEPZ&#10;ABC-002,ABCDEFGHIJ123456"></textarea>
+    <div id="bulkSkuResult" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
+    <div class="modal-actions" style="margin-top:14px">
+      <button class="btn-secondary" style="width:auto" onclick="document.getElementById('bulkSkuModal').classList.remove('show')">Cancel</button>
+      <button class="btn-primary" style="width:auto;min-width:120px" onclick="saveBulkSkus()">💾 Import SKUs</button>
+    </div>
+  </div>
+</div>
+
 <!-- EDIT PRODUCT MODAL -->
 <div class="modal-backdrop" id="editModal">
   <div class="modal" style="width:500px">
@@ -1146,7 +1229,7 @@ function setExtStatus(online) {
 // TABS
 // ============================================================
 function switchTab(name) {
-  const names = ['dashboard','products','scraper','pricer','analytics'];
+  const names = ['dashboard','products','scraper','pricer','analytics','log'];
   document.querySelectorAll('.tab-btn').forEach((b,i) => {
     b.classList.toggle('active', names[i] === name);
   });
@@ -1157,6 +1240,7 @@ function switchTab(name) {
   if (name === 'analytics') renderAnalytics();
   if (name === 'scraper')   syncSellerConfig();
   if (name === 'pricer')    initPricer();
+  if (name === 'log')       renderPriceLog();
 }
 
 function syncSellerConfig() {
@@ -1197,10 +1281,29 @@ function generateUrlsFromListings() {
     statusEl.style.color = '#ff9500';
     return;
   }
-  var urls = [];
-  listings.forEach(function(l) {
-    if (l.fsn && l.fsn.length > 6) urls.push('https://www.makro.co.za/p/' + l.fsn);
+
+  // Build FSN → real URL map from already-scraped products
+  var fsnToUrl = {};
+  state.products.forEach(function(p) {
+    if (p.fsn && p.url && p.url.includes('makro.co.za')) fsnToUrl[p.fsn] = p.url;
   });
+
+  var urls = [];
+  var fromHistory = 0, fromSearch = 0;
+  listings.forEach(function(l) {
+    if (!l.fsn || l.fsn.length < 6) return;
+    if (fsnToUrl[l.fsn]) {
+      // Use the real URL we scraped before — guaranteed to work
+      urls.push(fsnToUrl[l.fsn]);
+      fromHistory++;
+    } else {
+      // Construct URL: makro search by FSN redirects directly to the product page
+      // Format: https://www.makro.co.za/search?q=FSN  (redirects to product)
+      urls.push('https://www.makro.co.za/search?q=' + encodeURIComponent(l.fsn));
+      fromSearch++;
+    }
+  });
+
   var unique = urls.filter(function(v, i, a) { return a.indexOf(v) === i; });
   if (!unique.length) {
     statusEl.textContent = '⚠️ No FSN codes found in listings.';
@@ -1209,7 +1312,7 @@ function generateUrlsFromListings() {
   }
   document.getElementById('urlInput').value = unique.join('\n');
   document.getElementById('urlCount').textContent = unique.length + ' URLs loaded';
-  statusEl.textContent = '✅ ' + unique.length + ' URLs generated — click Start Scraping when ready.';
+  statusEl.textContent = '✅ ' + unique.length + ' URLs generated (' + fromHistory + ' direct, ' + fromSearch + ' via search) — click Start Scraping.';
   statusEl.style.color = '#00e5a0';
   document.getElementById('urlInput').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
@@ -1290,6 +1393,22 @@ function handleQueueProgress(d) {
     // ── AUTO REPRICE: beat competitor by R1, never below min_price ──────────
     var prod = existing || state.products[state.products.length - 1];
     autoReprice(prod);
+
+    // ── PRICE LOG ENTRY ───────────────────────────────────────────────────
+    addPriceLogEntry({
+      ts: new Date().toISOString(),
+      title: prod.title || prod.url,
+      fsn: prod.fsn || '',
+      sku: prod.sku || '',
+      status: status,
+      buybox_price: price,
+      seller: seller,
+      my_price: (getListings().find(function(l){return l.fsn===prod.fsn;}) || {}).myPrice || null,
+      pending_price: prod.pending_price || null
+    });
+
+    // ── WHATSAPP ALERT on BuyBox loss ────────────────────────────────────
+    if (status === 'lose') sendWhatsAppAlert(prod, price, seller);
 
     log(isWin ? 'ok' : 'err',
       (isWin ? '✓ WIN ' : '✗ LOSE') + ' | R' + price.toFixed(2) + ' | ' + seller.slice(0,30) +
@@ -1470,6 +1589,27 @@ function renderDashboard() {
   document.getElementById('s-losses').textContent = loses;
   document.getElementById('s-win-pct').textContent = winPct + '% win rate';
   document.getElementById('s-loss-pct').textContent = total > 0 ? Math.round((loses/total)*100) + '% loss rate' : '—% loss rate';
+
+  // Profit summary — products with cost set
+  var margins = [];
+  prods.forEach(function(p) {
+    if (!p.cost_price || p.cost_price <= 0) return;
+    var price = p.buybox_price > 0 ? p.buybox_price : 0;
+    if (!price) return;
+    var r = calcProfit(price, p.cost_price);
+    if (r) margins.push(r.marginPct);
+  });
+  var avgMargin = margins.length ? (margins.reduce(function(a,b){return a+b;},0)/margins.length) : null;
+  document.getElementById('s-avgmargin').textContent = avgMargin !== null ? avgMargin.toFixed(1) + '%' : '—%';
+  document.getElementById('s-avgmargin').style.color = avgMargin !== null ? (avgMargin >= 5 ? 'var(--accent)' : avgMargin >= 0 ? '#ffd60a' : '#ff4d6d') : 'var(--muted)';
+  document.getElementById('s-totalprofit').textContent = margins.length + ' products with cost data';
+
+  // Low stock warning — from listings
+  var listings = getListings();
+  var lowStock = listings.filter(function(l) { return l.myStock <= 3; }).length;
+  document.getElementById('s-lowstock').textContent = lowStock;
+  document.getElementById('s-lowstock').style.color = lowStock > 0 ? '#ffd60a' : 'var(--accent)';
+  document.getElementById('s-lowstock-sub').textContent = lowStock > 0 ? 'check stock levels' : 'all stocked';
 
   const lastScrape = localStorage.getItem('makro_last_scrape');
   if (lastScrape) {
@@ -1681,6 +1821,7 @@ function renderProducts() {
       <td><span class="status-pill ${statusClass}">${statusLabel}</span></td>
       <td style="font-size:11px;color:var(--muted);white-space:nowrap">${t}</td>
       <td style="display:flex;gap:4px">
+        <button class="action-btn" onclick="showHistory(${realIdx})" title="Price history">📈</button>
         <button class="action-btn" onclick="rescrapeOne(${realIdx})" title="Re-scrape">↻</button>
         <button class="action-btn danger" onclick="deleteProduct(${realIdx})" title="Delete">✕</button>
       </td>
@@ -2561,8 +2702,13 @@ document.getElementById('sellerNameConfig').addEventListener('change', function(
     if (e.key === 'Escape') {
       closeEditModal();
       document.getElementById('clearModal').classList.remove('show');
+      document.getElementById('historyModal').classList.remove('show');
+      document.getElementById('bulkSkuModal').classList.remove('show');
     }
   });
+
+  loadWaSettings();
+  initAutoScrape();
 
   // Load saved seller name
   const savedSeller = localStorage.getItem(SELLER_KEY);
@@ -2933,6 +3079,287 @@ function sendFileToPortal() {
       (document.getElementById('pricerResult').innerHTML || '') +
       '<br><span style="color:#ffd60a">✅ File sent to portal extension. Open seller.makro.co.za — click <b style="color:#00e5a0">🚀 Auto Upload Now</b> in the green overlay.</span>';
   }, 300);
+}
+
+// ============================================================
+// WHATSAPP ALERTS via CallMeBot
+// ============================================================
+function saveWaSettings() {
+  var phone  = (document.getElementById('waPhone')  || {}).value || '';
+  var apiKey = (document.getElementById('waApiKey') || {}).value || '';
+  var enabled= !!(document.getElementById('waEnabled') || {}).checked;
+  if (phone)  localStorage.setItem('wa_phone',   phone);
+  if (apiKey) localStorage.setItem('wa_apikey',  apiKey);
+  localStorage.setItem('wa_enabled', enabled ? '1' : '0');
+}
+
+function loadWaSettings() {
+  var pEl = document.getElementById('waPhone');
+  var aEl = document.getElementById('waApiKey');
+  var eEl = document.getElementById('waEnabled');
+  if (pEl) pEl.value   = localStorage.getItem('wa_phone')   || '';
+  if (aEl) aEl.value   = localStorage.getItem('wa_apikey')  || '';
+  if (eEl) eEl.checked = localStorage.getItem('wa_enabled') === '1';
+}
+
+var _waLastSent = {};
+function sendWhatsAppAlert(prod, buyboxPrice, seller) {
+  if (localStorage.getItem('wa_enabled') !== '1') return;
+  var phone  = localStorage.getItem('wa_phone')  || '';
+  var apiKey = localStorage.getItem('wa_apikey') || '';
+  if (!phone || !apiKey) return;
+  var key = prod.fsn || prod.url;
+  var now = Date.now();
+  if (_waLastSent[key] && now - _waLastSent[key] < 30 * 60 * 1000) return;
+  _waLastSent[key] = now;
+  var title = (prod.title || prod.url || '').slice(0, 50);
+  var msg = '🔴 BuyBox LOST!\n' + title + '\nCompetitor: ' + seller.slice(0,30) +
+    '\nTheir price: R' + buyboxPrice.toFixed(2) +
+    (prod.pending_price ? '\nAuto-repriced to: R' + prod.pending_price : '') +
+    '\nTime: ' + new Date().toLocaleTimeString();
+  var url = 'https://api.callmebot.com/whatsapp.php?phone=' + encodeURIComponent(phone) +
+            '&text=' + encodeURIComponent(msg) + '&apikey=' + encodeURIComponent(apiKey);
+  fetch(url).catch(function(){});
+}
+
+function testWhatsApp() {
+  saveWaSettings();
+  var phone  = localStorage.getItem('wa_phone')  || '';
+  var apiKey = localStorage.getItem('wa_apikey') || '';
+  if (!phone || !apiKey) { alert('Enter your phone number and API key first.'); return; }
+  var url = 'https://api.callmebot.com/whatsapp.php?phone=' + encodeURIComponent(phone) +
+            '&text=' + encodeURIComponent('✅ Makro BuyBox Pro: WhatsApp alerts working!') +
+            '&apikey=' + encodeURIComponent(apiKey);
+  fetch(url)
+    .then(function(r){ alert(r.ok ? '✅ Test message sent! Check WhatsApp.' : '❌ Failed — status: ' + r.status + '\nCheck phone format (+27...) and API key.'); })
+    .catch(function(){ alert('❌ Network error. Make sure the extension allows external requests.'); });
+}
+
+document.addEventListener('change', function(e) {
+  if (e.target && ['waPhone','waApiKey','waEnabled'].includes(e.target.id)) saveWaSettings();
+});
+
+// ============================================================
+// PRICE CHANGE LOG
+// ============================================================
+var PRICE_LOG_KEY = 'makro_price_log';
+
+function getPriceLog() {
+  try { return JSON.parse(localStorage.getItem(PRICE_LOG_KEY) || '[]'); } catch(e) { return []; }
+}
+
+function addPriceLogEntry(entry) {
+  var log = getPriceLog();
+  log.unshift(entry);
+  if (log.length > 2000) log.length = 2000;
+  localStorage.setItem(PRICE_LOG_KEY, JSON.stringify(log));
+}
+
+function renderPriceLog() {
+  var log = getPriceLog();
+  var el = document.getElementById('priceLogTable');
+  var countEl = document.getElementById('priceLogCount');
+  if (!el) return;
+  if (countEl) countEl.textContent = log.length + ' entries';
+  if (!log.length) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-title">No Log Yet</div><div class="empty-text">Price changes appear here after scraping.</div></div>';
+    return;
+  }
+  var rows = log.slice(0, 500).map(function(e) {
+    var d = new Date(e.ts).toLocaleString();
+    var sc = e.status === 'win' ? 'var(--accent)' : e.status === 'lose' ? '#ff4d6d' : 'var(--muted)';
+    var si = e.status === 'win' ? '✓' : e.status === 'lose' ? '✗' : '?';
+    return '<tr><td style="padding:7px 10px;color:var(--muted);white-space:nowrap;font-size:11px">' + d + '</td>' +
+      '<td style="padding:7px 10px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml(e.title||'') + '">' + escHtml((e.title||e.fsn||'').slice(0,40)) + '</td>' +
+      '<td style="padding:7px 10px;font-family:monospace;font-size:11px;color:#818cf8">' + escHtml(e.sku||'—') + '</td>' +
+      '<td style="padding:7px 10px;color:' + sc + ';font-weight:700">' + si + ' ' + (e.status||'?').toUpperCase() + '</td>' +
+      '<td style="padding:7px 10px;font-family:monospace">R' + (e.buybox_price||0).toFixed(2) + '</td>' +
+      '<td style="padding:7px 10px;font-family:monospace;color:#60a5fa">' + (e.my_price ? 'R' + Number(e.my_price).toFixed(2) : '—') + '</td>' +
+      '<td style="padding:7px 10px;font-family:monospace;color:var(--accent3)">' + (e.pending_price ? 'R' + e.pending_price : '—') + '</td>' +
+      '<td style="padding:7px 10px;color:var(--muted);font-size:11px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml((e.seller||'').slice(0,25)) + '</td></tr>';
+  }).join('');
+  var hdr = ['Time','Product','SKU','Status','BuyBox R','My Price','Repriced To','Competitor'].map(function(h) {
+    return '<th style="padding:7px 10px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap">' + h + '</th>';
+  }).join('');
+  el.innerHTML = '<table style="width:100%;border-collapse:collapse">' +
+    '<thead><tr style="font-family:monospace;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">' + hdr + '</tr></thead>' +
+    '<tbody>' + rows + '</tbody></table>';
+}
+
+function exportPriceLog() {
+  var log = getPriceLog();
+  if (!log.length) { alert('No log entries yet.'); return; }
+  var csv = 'Time,Product,SKU,Status,BuyBox Price,My Price,Repriced To,Competitor\n' +
+    log.map(function(e) {
+      return [new Date(e.ts).toLocaleString(), e.title||'', e.sku||'', e.status||'',
+              e.buybox_price||'', e.my_price||'', e.pending_price||'', e.seller||'']
+        .map(function(v){ return '"' + String(v).replace(/"/g,'""') + '"'; }).join(',');
+    }).join('\n');
+  var a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = 'makro_price_log_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+}
+
+function clearPriceLog() {
+  if (!confirm('Clear all ' + getPriceLog().length + ' log entries? This cannot be undone.')) return;
+  localStorage.removeItem(PRICE_LOG_KEY);
+  renderPriceLog();
+}
+
+// ============================================================
+// PRICE HISTORY SPARKLINE MODAL
+// ============================================================
+function showHistory(idx) {
+  var p = state.products[idx];
+  if (!p) return;
+  document.getElementById('historyModalTitle').textContent = (p.title || p.url || '').slice(0,70);
+  document.getElementById('historyModal').classList.add('show');
+  var history = p.history || [];
+  var canvas = document.getElementById('historyCanvas');
+  var ctx = canvas.getContext('2d');
+  var W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  if (history.length < 2) {
+    ctx.fillStyle = '#6b7280'; ctx.font = '13px DM Sans'; ctx.textAlign = 'center';
+    ctx.fillText('Scrape this product a few more times to see a trend.', W/2, H/2);
+  } else {
+    var prices = history.map(function(h){ return h.price||0; }).filter(Boolean);
+    var minP = Math.min.apply(null, prices), maxP = Math.max.apply(null, prices);
+    var range = maxP - minP || 1;
+    var pL=50,pR=16,pT=20,pB=32, cW=W-pL-pR, cH=H-pT-pB;
+    var step = cW / Math.max(history.length-1, 1);
+    // Grid
+    ctx.strokeStyle='#1e2530'; ctx.lineWidth=1;
+    for(var gi=0;gi<=4;gi++){
+      var gy=pT+(gi/4)*cH;
+      ctx.beginPath(); ctx.moveTo(pL,gy); ctx.lineTo(W-pR,gy); ctx.stroke();
+      ctx.fillStyle='#6b7280'; ctx.font='9px monospace'; ctx.textAlign='right';
+      ctx.fillText('R'+Math.round(maxP-(gi/4)*range), pL-4, gy+3);
+    }
+    // Fill
+    ctx.beginPath();
+    history.forEach(function(h,i){
+      var x=pL+i*step, y=pT+(1-(h.price-minP)/range)*cH;
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    });
+    ctx.lineTo(pL+(history.length-1)*step,H-pB); ctx.lineTo(pL,H-pB); ctx.closePath();
+    ctx.fillStyle='rgba(0,229,160,0.08)'; ctx.fill();
+    // Line
+    ctx.beginPath();
+    history.forEach(function(h,i){
+      var x=pL+i*step, y=pT+(1-(h.price-minP)/range)*cH;
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    });
+    ctx.strokeStyle='#00e5a0'; ctx.lineWidth=2; ctx.stroke();
+    // Dots
+    history.forEach(function(h,i){
+      var x=pL+i*step, y=pT+(1-(h.price-minP)/range)*cH;
+      ctx.beginPath(); ctx.arc(x,y,4,0,Math.PI*2);
+      ctx.fillStyle = h.status==='win'?'#00e5a0':h.status==='lose'?'#ff4d6d':'#6b7280';
+      ctx.fill();
+    });
+    // X labels
+    var lev = Math.ceil(history.length/6);
+    history.forEach(function(h,i){
+      if(i%lev!==0 && i!==history.length-1) return;
+      var d=new Date(h.ts);
+      ctx.fillStyle='#6b7280'; ctx.font='9px monospace'; ctx.textAlign='center';
+      ctx.fillText(d.toLocaleDateString([],{month:'2-digit',day:'2-digit'}), pL+i*step, H-5);
+    });
+  }
+
+  var rows = [...history].reverse().map(function(h){
+    var d=new Date(h.ts).toLocaleString();
+    var sc=h.status==='win'?'var(--accent)':h.status==='lose'?'#ff4d6d':'var(--muted)';
+    return '<tr><td style="padding:4px 10px;color:var(--muted)">' + d + '</td>' +
+      '<td style="padding:4px 10px;font-family:monospace">R' + (h.price||0).toFixed(2) + '</td>' +
+      '<td style="padding:4px 10px;color:' + sc + '">' + (h.status||'?').toUpperCase() + '</td>' +
+      '<td style="padding:4px 10px;color:var(--muted)">' + escHtml((h.seller||'').slice(0,30)) + '</td></tr>';
+  }).join('');
+  document.getElementById('historyTable').innerHTML =
+    '<table style="width:100%;border-collapse:collapse;font-size:11px">' +
+    '<thead><tr style="color:var(--muted);font-family:monospace;font-size:10px;text-transform:uppercase">' +
+    '<th style="padding:4px 10px;text-align:left">Time</th><th style="text-align:left;padding:4px 10px">Price</th>' +
+    '<th style="text-align:left;padding:4px 10px">Status</th><th style="text-align:left;padding:4px 10px">Competitor</th>' +
+    '</tr></thead><tbody>' + rows + '</tbody></table>';
+}
+
+// ============================================================
+// BULK SKU IMPORT
+// ============================================================
+function openBulkSkuModal() {
+  document.getElementById('bulkSkuInput').value = '';
+  document.getElementById('bulkSkuResult').textContent = '';
+  document.getElementById('bulkSkuModal').classList.add('show');
+  setTimeout(function(){ document.getElementById('bulkSkuInput').focus(); }, 100);
+}
+
+function saveBulkSkus() {
+  var raw = document.getElementById('bulkSkuInput').value.trim();
+  if (!raw) { document.getElementById('bulkSkuResult').textContent = '⚠ Nothing to import.'; return; }
+  var map = {};
+  raw.split('\n').forEach(function(line) {
+    var parts = line.split(',');
+    if (parts.length < 2) return;
+    var sku = parts[0].trim(), fsn = parts[1].trim();
+    if (sku && fsn) map[fsn] = sku;
+  });
+  var matched = 0;
+  state.products.forEach(function(p) {
+    if (p.fsn && map[p.fsn]) { p.sku = map[p.fsn]; matched++; }
+  });
+  var listings = getListings();
+  listings.forEach(function(l) { if (l.fsn && map[l.fsn]) l.sku = map[l.fsn]; });
+  localStorage.setItem('makro_listings', JSON.stringify(listings));
+  saveProducts();
+  document.getElementById('bulkSkuResult').innerHTML = '<span style="color:var(--accent)">✅ Matched SKUs for ' + matched + ' products.</span>';
+  setTimeout(function() {
+    document.getElementById('bulkSkuModal').classList.remove('show');
+    renderProducts();
+  }, 1200);
+}
+
+// ============================================================
+// AUTO-SCRAPE SCHEDULER
+// ============================================================
+var _autoScrapeTimer = null;
+
+function initAutoScrape() {
+  var sel = document.getElementById('autoScrapeInterval');
+  if (!sel) return;
+  sel.value = localStorage.getItem('auto_scrape_interval') || '0';
+  applyAutoScrape();
+  sel.addEventListener('change', function() {
+    localStorage.setItem('auto_scrape_interval', sel.value);
+    applyAutoScrape();
+  });
+}
+
+function applyAutoScrape() {
+  if (_autoScrapeTimer) { clearInterval(_autoScrapeTimer); _autoScrapeTimer = null; }
+  var sel = document.getElementById('autoScrapeInterval');
+  var statusEl = document.getElementById('autoScrapeStatus');
+  var mins = sel ? parseInt(sel.value) : 0;
+  if (!mins) { if (statusEl) statusEl.textContent = ''; return; }
+  var showNext = function() {
+    if (!statusEl) return;
+    statusEl.textContent = 'Next auto-scrape: ' + new Date(Date.now() + mins*60000).toLocaleTimeString();
+  };
+  showNext();
+  _autoScrapeTimer = setInterval(function() {
+    var urls = state.products.map(function(p){ return p.url; }).filter(Boolean);
+    if (!urls.length || !state.extReady) return;
+    document.getElementById('urlInput').value = urls.join('\n');
+    var concurrency = parseInt((document.getElementById('scrapeParallel')||{}).value||'3');
+    window.postMessage({ type: 'START_QUEUE', urls: urls, concurrency: concurrency }, '*');
+    scrapeQueue = urls; scrapeIdx = 0; state.scraping = true;
+    document.getElementById('progressSection').style.display = 'block';
+    updateProgress(0, urls.length);
+    log('info', '🕐 Auto-scrape started (' + urls.length + ' products)');
+    showNext();
+  }, mins * 60000);
 }
 
 function openPortalUpload() {
