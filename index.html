@@ -1280,6 +1280,54 @@ function clearLog() {
   document.getElementById('scrapeLog').innerHTML = '';
 }
 
+// ============================================================
+// MAKRO FEE STRUCTURE
+// 10% of selling price + delivery fee:
+//   < R1500  → R50
+//   R1500–R3000 → R120
+//   > R3000  → R200
+// Minimum margin: 5% of cost (i.e. profit after fees >= 5% of cost)
+// ============================================================
+function makroFees(sellingPrice) {
+  var commission = sellingPrice * 0.10;
+  var delivery;
+  if (sellingPrice < 1500)       delivery = 50;
+  else if (sellingPrice <= 3000) delivery = 120;
+  else                           delivery = 200;
+  return commission + delivery;
+}
+
+function calcProfit(sellingPrice, costPrice) {
+  if (!sellingPrice || !costPrice || costPrice <= 0) return null;
+  var fees = makroFees(sellingPrice);
+  var profit = sellingPrice - fees - costPrice;
+  var marginPct = (profit / sellingPrice) * 100;
+  return { profit: profit, fees: fees, marginPct: marginPct };
+}
+
+// Min price to achieve 5% profit after Makro fees
+// Solve: price - 0.10*price - deliveryFee - cost >= 0.05 * cost
+// => 0.90*price - deliveryFee >= 1.05 * cost
+// => price >= (1.05*cost + deliveryFee) / 0.90
+function calcMinViablePrice(costPrice) {
+  if (!costPrice || costPrice <= 0) return null;
+  // Try with R50 delivery first (most products)
+  var p50  = (1.05 * costPrice + 50)  / 0.90;
+  var p120 = (1.05 * costPrice + 120) / 0.90;
+  var p200 = (1.05 * costPrice + 200) / 0.90;
+  // Use the correct bracket based on the resulting price
+  var price;
+  if (p50 < 1500)       price = p50;
+  else if (p120 <= 3000) price = p120;
+  else                   price = p200;
+  return Math.ceil(price); // round UP to whole number — never go below minimum
+}
+
+// Round price to nearest whole number
+function roundPrice(p) {
+  return Math.round(p);
+}
+
 function shortUrl(url) {
   try { return new URL(url).pathname.split('/').filter(Boolean).pop() || url; } catch(e) { return url; }
 }
@@ -1447,8 +1495,19 @@ function renderProducts() {
       <td><span class="price-cell ${p.status==='win'?'win':'lose'}">R ${(p.buybox_price||0).toFixed(2)}</span></td>
       <td>
         ${p.cost_price > 0
-          ? `<span style="font-family:'Space Mono',monospace;font-size:12px;color:#60a5fa">R ${p.cost_price.toFixed(2)}</span><br><span style="font-size:10px;color:var(--muted)">${p.cost_supplier||''}</span>`
-          : `<span style="color:var(--muted);font-size:10px">— sync costs</span>`}
+          ? `<div style="display:flex;align-items:center;gap:4px">
+               <span style="font-family:'Space Mono',monospace;font-size:12px;color:#60a5fa">R ${p.cost_price.toFixed(0)}</span>
+               <span style="font-size:10px;color:var(--muted)">${p.cost_supplier||''}</span>
+               <button class="action-btn" style="font-size:9px;padding:1px 5px" onclick="showCostInput(${realIdx})" title="Edit cost">✎</button>
+             </div>`
+          : `<button class="action-btn" style="font-size:10px;color:#60a5fa;border-color:#60a5fa44" onclick="showCostInput(${realIdx})">+ Enter Cost</button>`}
+        <div id="costInputWrap_${realIdx}" style="display:none;margin-top:4px">
+          <input type="number" step="0.01" min="0" id="costInputField_${realIdx}"
+            value="${p.cost_price||''}" placeholder="Cost R"
+            style="width:80px;background:var(--surface2);border:1px solid #60a5fa;color:#60a5fa;font-family:'Space Mono',monospace;font-size:11px;padding:3px 5px;border-radius:4px"
+            onkeydown="if(event.key==='Enter')saveCostInput(${realIdx})">
+          <button class="action-btn" style="font-size:10px" onclick="saveCostInput(${realIdx})">✓</button>
+        </div>
       </td>
       <td>
         <input type="number" step="1" min="0"
@@ -1469,9 +1528,31 @@ function renderProducts() {
         >
       </td>
       <td>
-        ${(p.cost_price > 0 && p.buybox_price > 0)
-          ? (() => { var m = ((p.buybox_price - p.cost_price) / p.buybox_price * 100); return `<span style="font-size:12px;color:${m >= 15 ? 'var(--accent)' : m >= 5 ? '#ffd60a' : '#ff9500'};font-family:'Space Mono',monospace">${m.toFixed(1)}%</span>`; })()
-          : '<span style="color:var(--muted);font-size:10px">—</span>'}
+        ${(() => {
+          var cost = p.cost_price;
+          if (!cost || cost <= 0) return '<span style="color:var(--muted);font-size:10px">—</span>';
+          var listing2 = listingsMap[p.fsn];
+          var myPr = listing2 ? listing2.myPrice : null;
+          var bbPr = p.buybox_price > 0 ? p.buybox_price : null;
+          var lines = [];
+          if (myPr) {
+            var r = calcProfit(myPr, cost);
+            if (r) {
+              var col = r.profit >= 0 ? (r.marginPct >= 5 ? 'var(--accent)' : '#ffd60a') : '#ff4d6d';
+              lines.push('<div style="font-size:10px;color:var(--muted)">My price:</div>');
+              lines.push('<div style="font-family:monospace;font-size:12px;color:' + col + '">R' + Math.round(r.profit) + ' (' + r.marginPct.toFixed(1) + '%)</div>');
+            }
+          }
+          if (bbPr && bbPr !== myPr) {
+            var rb = calcProfit(bbPr, cost);
+            if (rb) {
+              var colb = rb.profit >= 0 ? (rb.marginPct >= 5 ? 'var(--accent)' : '#ffd60a') : '#ff4d6d';
+              lines.push('<div style="font-size:10px;color:var(--muted);margin-top:3px">BuyBox:</div>');
+              lines.push('<div style="font-family:monospace;font-size:12px;color:' + colb + '">R' + Math.round(rb.profit) + ' (' + rb.marginPct.toFixed(1) + '%)</div>');
+            }
+          }
+          return lines.length ? lines.join('') : '<span style="color:var(--muted);font-size:10px">—</span>';
+        })()}
       </td>
       <td style="font-size:12px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(p.seller||'')}">${escHtml((p.seller||'Unknown').slice(0,20))}</td>
       <td><span class="status-pill ${statusClass}">${statusLabel}</span></td>
@@ -1588,7 +1669,7 @@ const GSHEET_ID = '1ISaEOPBElufeYh6eq6APtlFjeMvrKqlAwEd3F4K6rBw';
 // minCol/maxCol: 0-based index for min/max sell price (null = not present)
 const GSHEET_TABS = [
   { sheet: 'DCC',              skuCol: 0, costCol: 4, minCol: 5,    maxCol: null, supplierName: 'DCC' },
-  { sheet: 'Kolok',            skuCol: 2, costCol: 13, minCol: null, maxCol: null, supplierName: 'Kolok' },
+  { sheet: 'Kolok',            skuCol: 2, costCol: 13, minCol: 14,   maxCol: null, supplierName: 'Kolok' },
   { sheet: 'Tarsus',          skuCol: 0, costCol: 5, minCol: 6,    maxCol: null, supplierName: 'Tarsus' },
   { sheet: 'Rectron',         skuCol: 0, costCol: 5, minCol: 6,    maxCol: null, supplierName: 'Rectron' },
   { sheet: 'Esquire Products', skuCol: 0, costCol: 6, minCol: 7,    maxCol: null, supplierName: 'Esquire' },
@@ -1718,6 +1799,27 @@ function deleteProduct(idx) {
   saveProducts();
   renderProducts();
   updateProductCount();
+}
+
+function showCostInput(idx) {
+  var wrap = document.getElementById('costInputWrap_' + idx);
+  if (!wrap) return;
+  wrap.style.display = wrap.style.display === 'none' ? 'block' : 'none';
+  if (wrap.style.display === 'block') {
+    var f = document.getElementById('costInputField_' + idx);
+    if (f) { f.focus(); f.select(); }
+  }
+}
+
+function saveCostInput(idx) {
+  var f = document.getElementById('costInputField_' + idx);
+  if (!f) return;
+  var v = parseFloat(f.value);
+  if (isNaN(v) || v <= 0) { alert('Enter a valid cost price.'); return; }
+  state.products[idx].cost_price = v;
+  state.products[idx].cost_supplier = 'Manual';
+  saveProducts();
+  renderProducts();
 }
 
 function setProductPrice(idx, field, val) {
@@ -2326,15 +2428,18 @@ function calcNewPrice(myPrice, buyboxPrice, strategy, beatBy, floorPct, minPrice
   }
   newPrice = Math.max(newPrice, 0.01);
 
+  // Round to whole number — Makro prices should be whole Rands
+  newPrice = roundPrice(newPrice);
+
   // Apply min/max guards — return object so callers can detect clamping
-  const rawPrice = newPrice;
+  const priceBeforeClamp = newPrice;
   if (minPrice !== null && newPrice < minPrice) newPrice = minPrice;
   if (maxPrice !== null && newPrice > maxPrice) newPrice = maxPrice;
 
   return {
-    price:    Math.round(newPrice * 100) / 100,
-    clamped:  Math.round(rawPrice * 100) / 100 !== Math.round(newPrice * 100) / 100,
-    clampDir: rawPrice < (minPrice || 0) ? 'min' : 'max'
+    price:    Math.round(newPrice),
+    clamped:  Math.round(priceBeforeClamp) !== Math.round(newPrice),
+    clampDir: priceBeforeClamp < (minPrice || 0) ? 'min' : 'max'
   };
 }
 
@@ -2465,7 +2570,7 @@ function generatePriceUpdate() {
   const scrapedMap = {};
   state.products.forEach(function(p) { if (p.fsn) scrapedMap[p.fsn] = p; });
 
-  const priceMap = {};  // fsn → new selling price
+  const priceMap = {};  // fsn → { newPrice, sku, title, oldPrice }
   let updateCount = 0;
   let skippedClamped = 0;
   listings.forEach(function(l) {
@@ -2475,8 +2580,8 @@ function generatePriceUpdate() {
     if (winsOnly && scraped.status === 'win') return;
     const result = calcNewPrice(l.myPrice, scraped.buybox_price, strategy, beatBy, floorPct, minPrice, maxPrice);
     if (!result) return;
-    if (result.clamped) { skippedClamped++; return; }  // skip clamped — protect from mistakes
-    priceMap[l.fsn] = result.price;
+    if (result.clamped) { skippedClamped++; return; }
+    priceMap[l.fsn] = { newPrice: result.price, sku: l.sku, title: l.title, oldPrice: l.myPrice };
     updateCount++;
   });
 
@@ -2501,15 +2606,17 @@ function generatePriceUpdate() {
     // Row 0 = headers, Row 1 = descriptions, Row 2+ = data
     // Col index 4 = FSN, Col index 9 = Your Selling Price
     let changed = 0;
+    const changeLog = [];
     for (let r = 2; r < rows.length; r++) {
       const fsn = String(rows[r][4] || '').trim();
       if (fsn && priceMap[fsn] !== undefined) {
-        // Update the cell directly in the sheet object
+        const entry = priceMap[fsn];
         const cellAddr = XLSX.utils.encode_cell({ r: r, c: 9 });
         if (!sh[cellAddr]) sh[cellAddr] = {};
         sh[cellAddr].t = 'n';
-        sh[cellAddr].v = priceMap[fsn];
-        sh[cellAddr].w = String(priceMap[fsn]);
+        sh[cellAddr].v = entry.newPrice;
+        sh[cellAddr].w = String(entry.newPrice);
+        changeLog.push({ fsn, sku: entry.sku, title: entry.title, oldPrice: entry.oldPrice, newPrice: entry.newPrice });
         changed++;
       }
     }
@@ -2538,11 +2645,35 @@ function generatePriceUpdate() {
     XLSX.writeFile(wb, filename);
 
     document.getElementById('pricerResult').innerHTML =
-      '✅ <span style="color:var(--accent)">Downloaded <b>' + filename + '</b><br>' +
+      '✅ <span style="color:var(--accent)">Downloaded <b>' + filename + '</b> — ' +
       changed + ' prices updated.' +
       (skippedClamped ? ' <span style="color:#ff9500">' + skippedClamped + ' skipped (price guard).</span>' : '') +
       '</span><br>' +
-      '<span style="color:var(--muted)">Click <b>🚀 Open Seller Portal</b> to auto-upload.</span>';
+      '<span style="color:var(--muted)">Click <b>🚀 Open Seller Portal</b> to auto-upload.</span>' +
+      '<div style="margin-top:12px;max-height:260px;overflow-y:auto">' +
+      '<table style="width:100%;border-collapse:collapse;font-size:11px">' +
+      '<thead><tr style="color:var(--muted);border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface)">' +
+      '<th style="text-align:left;padding:5px 4px">SKU</th>' +
+      '<th style="text-align:left;padding:5px 4px">FSN</th>' +
+      '<th style="text-align:left;padding:5px 4px;max-width:160px">Product</th>' +
+      '<th style="text-align:right;padding:5px 4px">Old Price</th>' +
+      '<th style="text-align:right;padding:5px 4px">New Price</th>' +
+      '<th style="text-align:right;padding:5px 4px">Change</th>' +
+      '</tr></thead><tbody>' +
+      changeLog.map(function(c) {
+        var diff = c.newPrice - c.oldPrice;
+        var col  = diff < 0 ? '#ff9500' : 'var(--accent)';
+        var sign = diff > 0 ? '+' : '';
+        return '<tr style="border-bottom:1px solid var(--border)">' +
+          '<td style="padding:4px;font-family:monospace;color:#818cf8">' + escHtml(c.sku||'—') + '</td>' +
+          '<td style="padding:4px;font-family:monospace;font-size:10px;color:var(--muted)">' + escHtml(c.fsn||'—') + '</td>' +
+          '<td style="padding:4px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml(c.title) + '">' + escHtml((c.title||'').slice(0,28)) + '</td>' +
+          '<td style="text-align:right;padding:4px;color:var(--muted)">R' + Math.round(c.oldPrice) + '</td>' +
+          '<td style="text-align:right;padding:4px;color:var(--accent);font-weight:700">R' + Math.round(c.newPrice) + '</td>' +
+          '<td style="text-align:right;padding:4px;color:' + col + '">' + sign + 'R' + Math.abs(diff) + '</td>' +
+        '</tr>';
+      }).join('') +
+      '</tbody></table></div>';
 
     document.getElementById('portalUploadBtn').style.display = 'block';
     buildPricerPreview();
