@@ -1025,11 +1025,29 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
 
 <!-- BULK SKU IMPORT MODAL -->
 <div class="modal-backdrop" id="bulkSkuModal">
-  <div class="modal" style="width:560px">
+  <div class="modal" style="width:580px">
     <h3>🔗 Bulk SKU Import</h3>
-    <p style="font-size:13px;color:var(--muted);margin-bottom:14px">Paste a CSV with two columns: <span style="color:#818cf8">SKU</span> and <span style="color:var(--accent)">FSN</span> (one per line, comma-separated). Matches will be saved to all products with that FSN.</p>
-    <textarea id="bulkSkuInput" style="width:100%;height:160px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:'Space Mono',monospace;font-size:12px;padding:10px;border-radius:6px;resize:vertical;outline:none" placeholder="SKU,FSN&#10;ABC-001,INTHFFWCZ5WSYEPZ&#10;ABC-002,ABCDEFGHIJ123456"></textarea>
-    <div id="bulkSkuResult" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:14px">Upload a CSV or Excel file, or paste rows directly. Two columns required: <span style="color:#818cf8;font-family:monospace">SKU</span> and <span style="color:var(--accent);font-family:monospace">FSN</span>. Header row is auto-detected and skipped.</p>
+
+    <!-- File drop zone -->
+    <label id="bulkSkuDropZone" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;border:2px dashed var(--border);border-radius:8px;padding:20px;cursor:pointer;transition:border-color .2s;margin-bottom:10px;background:var(--surface2)" ondragover="event.preventDefault();this.style.borderColor='var(--accent)'" ondragleave="this.style.borderColor='var(--border)'" ondrop="bulkSkuDropped(event)">
+      <div style="font-size:28px">📂</div>
+      <div style="font-size:13px;color:var(--text)">Drop CSV or Excel file here, or <span style="color:var(--accent);text-decoration:underline">click to browse</span></div>
+      <div style="font-size:11px;color:var(--muted)">.csv, .xls, .xlsx accepted</div>
+      <input type="file" id="bulkSkuFile" accept=".csv,.xls,.xlsx" style="display:none" onchange="bulkSkuFileSelected(this)">
+    </label>
+
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <div style="flex:1;height:1px;background:var(--border)"></div>
+      <span style="font-size:11px;color:var(--muted)">OR PASTE BELOW</span>
+      <div style="flex:1;height:1px;background:var(--border)"></div>
+    </div>
+
+    <textarea id="bulkSkuInput" style="width:100%;height:120px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:'Space Mono',monospace;font-size:12px;padding:10px;border-radius:6px;resize:vertical;outline:none" placeholder="SKU,FSN&#10;ABC-001,INTHFFWCZ5WSYEPZ&#10;ABC-002,ABCDEFGHIJ123456"></textarea>
+
+    <div id="bulkSkuPreview" style="font-size:11px;color:var(--muted);margin-top:6px;font-family:monospace;min-height:18px"></div>
+    <div id="bulkSkuResult" style="font-size:12px;color:var(--muted);margin-top:6px"></div>
+
     <div class="modal-actions" style="margin-top:14px">
       <button class="btn-secondary" style="width:auto" onclick="document.getElementById('bulkSkuModal').classList.remove('show')">Cancel</button>
       <button class="btn-primary" style="width:auto;min-width:120px" onclick="saveBulkSkus()">💾 Import SKUs</button>
@@ -3306,38 +3324,143 @@ function showHistory(idx) {
 }
 
 // ============================================================
-// BULK SKU IMPORT
+// BULK SKU IMPORT — paste, CSV file, or Excel file
 // ============================================================
 function openBulkSkuModal() {
   document.getElementById('bulkSkuInput').value = '';
   document.getElementById('bulkSkuResult').textContent = '';
+  document.getElementById('bulkSkuPreview').textContent = '';
   document.getElementById('bulkSkuModal').classList.add('show');
+  // clicking the drop zone opens the file picker
+  document.getElementById('bulkSkuDropZone').onclick = function(e) {
+    if (e.target.tagName !== 'INPUT') document.getElementById('bulkSkuFile').click();
+  };
   setTimeout(function(){ document.getElementById('bulkSkuInput').focus(); }, 100);
+}
+
+function bulkSkuDropped(event) {
+  event.preventDefault();
+  document.getElementById('bulkSkuDropZone').style.borderColor = 'var(--border)';
+  var file = event.dataTransfer.files[0];
+  if (file) processBulkSkuFile(file);
+}
+
+function bulkSkuFileSelected(input) {
+  var file = input.files[0];
+  if (file) processBulkSkuFile(file);
+  input.value = ''; // reset so same file can be re-selected
+}
+
+function processBulkSkuFile(file) {
+  var name = file.name.toLowerCase();
+  document.getElementById('bulkSkuResult').textContent = '⏳ Reading file...';
+
+  if (name.endsWith('.csv')) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      var text = e.target.result;
+      document.getElementById('bulkSkuInput').value = text;
+      var pairs = parseBulkSkuText(text);
+      showBulkSkuPreview(pairs, file.name);
+    };
+    reader.readAsText(file);
+  } else if (name.endsWith('.xls') || name.endsWith('.xlsx')) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        var data = new Uint8Array(e.target.result);
+        var wb = XLSX.read(data, { type: 'array' });
+        var sh = wb.Sheets[wb.SheetNames[0]];
+        var rows = XLSX.utils.sheet_to_json(sh, { header: 1 });
+        // Convert to CSV text for the textarea
+        var csv = rows.map(function(r) { return (r[0]||'') + ',' + (r[1]||''); }).join('\n');
+        document.getElementById('bulkSkuInput').value = csv;
+        var pairs = parseBulkSkuText(csv);
+        showBulkSkuPreview(pairs, file.name);
+      } catch(err) {
+        document.getElementById('bulkSkuResult').textContent = '❌ Could not read Excel file: ' + err.message;
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  } else {
+    document.getElementById('bulkSkuResult').textContent = '❌ Unsupported file type. Use .csv, .xls or .xlsx.';
+  }
+}
+
+// Parse the text area content into [{sku, fsn}] pairs, auto-skipping headers
+function parseBulkSkuText(text) {
+  var lines = text.split('\n').map(function(l){ return l.trim(); }).filter(Boolean);
+  var pairs = [];
+  lines.forEach(function(line) {
+    // Support comma or tab separated
+    var parts = line.includes('\t') ? line.split('\t') : line.split(',');
+    if (parts.length < 2) return;
+    var a = parts[0].trim().replace(/^["']|["']$/g, '');
+    var b = parts[1].trim().replace(/^["']|["']$/g, '');
+    if (!a || !b) return;
+    // Skip header rows — FSN is uppercase alphanumeric 10-20 chars, SKU is shorter/mixed
+    var looksLikeFsnA = /^[A-Z0-9]{10,24}$/.test(a);
+    var looksLikeFsnB = /^[A-Z0-9]{10,24}$/.test(b);
+    // If neither looks like FSN, might be header — skip
+    if (!looksLikeFsnA && !looksLikeFsnB) return;
+    // Assign: whichever looks like FSN goes to fsn, the other to SKU
+    var sku, fsn;
+    if (looksLikeFsnB && !looksLikeFsnA) { sku = a; fsn = b; }
+    else if (looksLikeFsnA && !looksLikeFsnB) { sku = b; fsn = a; }
+    else {
+      // Both look alphanumeric — assume col 0 = SKU, col 1 = FSN (per stated format)
+      sku = a; fsn = b;
+    }
+    pairs.push({ sku: sku, fsn: fsn });
+  });
+  return pairs;
+}
+
+function showBulkSkuPreview(pairs, filename) {
+  var prevEl = document.getElementById('bulkSkuPreview');
+  var resEl  = document.getElementById('bulkSkuResult');
+  if (!pairs.length) {
+    resEl.textContent = '⚠ No valid SKU/FSN pairs found in ' + filename;
+    prevEl.textContent = '';
+    return;
+  }
+  // Count how many we'd match
+  var matchable = pairs.filter(function(p) {
+    return state.products.some(function(x){ return x.fsn === p.fsn; });
+  }).length;
+  prevEl.textContent = '📄 ' + filename + ' — ' + pairs.length + ' rows parsed, ' + matchable + ' match existing products';
+  resEl.textContent = '';
 }
 
 function saveBulkSkus() {
   var raw = document.getElementById('bulkSkuInput').value.trim();
   if (!raw) { document.getElementById('bulkSkuResult').textContent = '⚠ Nothing to import.'; return; }
+
+  var pairs = parseBulkSkuText(raw);
+  if (!pairs.length) {
+    document.getElementById('bulkSkuResult').textContent = '⚠ No valid SKU,FSN rows found. Check format.';
+    return;
+  }
+
   var map = {};
-  raw.split('\n').forEach(function(line) {
-    var parts = line.split(',');
-    if (parts.length < 2) return;
-    var sku = parts[0].trim(), fsn = parts[1].trim();
-    if (sku && fsn) map[fsn] = sku;
-  });
+  pairs.forEach(function(p) { map[p.fsn] = p.sku; });
+
   var matched = 0;
   state.products.forEach(function(p) {
     if (p.fsn && map[p.fsn]) { p.sku = map[p.fsn]; matched++; }
   });
+
   var listings = getListings();
   listings.forEach(function(l) { if (l.fsn && map[l.fsn]) l.sku = map[l.fsn]; });
   localStorage.setItem('makro_listings', JSON.stringify(listings));
   saveProducts();
-  document.getElementById('bulkSkuResult').innerHTML = '<span style="color:var(--accent)">✅ Matched SKUs for ' + matched + ' products.</span>';
+
+  document.getElementById('bulkSkuResult').innerHTML =
+    '<span style="color:var(--accent)">✅ Imported ' + pairs.length + ' rows — matched and saved SKUs for ' + matched + ' products.</span>';
   setTimeout(function() {
     document.getElementById('bulkSkuModal').classList.remove('show');
     renderProducts();
-  }, 1200);
+  }, 1400);
 }
 
 // ============================================================
