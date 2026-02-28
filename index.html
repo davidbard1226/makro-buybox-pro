@@ -619,12 +619,18 @@
     <div class="tab-content" id="tab-products">
 
       <div class="toolbar">
-        <input class="filter-input" id="prodSearch" placeholder="🔍 Search products..." oninput="renderProducts()">
-        <select class="filter-select" id="prodFilter" onchange="renderProducts()">
+        <input class="filter-input" id="prodSearch" placeholder="🔍 Search products..." oninput="prodPage=1;renderProducts()">
+        <select class="filter-select" id="prodFilter" onchange="prodPage=1;renderProducts()">
           <option value="all">All Status</option>
           <option value="win">Winning</option>
           <option value="lose">Losing</option>
           <option value="unknown">Unknown</option>
+        </select>
+        <select class="filter-select" id="prodPageSize" onchange="prodPage=1;renderProducts()" title="Products per page">
+          <option value="25">25 / page</option>
+          <option value="50">50 / page</option>
+          <option value="100">100 / page</option>
+          <option value="9999">All</option>
         </select>
         <div class="toolbar-right">
           <label class="btn-secondary" style="width:auto;padding:8px 16px;cursor:pointer" title="Import your Makro S_listing XLS file">
@@ -670,7 +676,8 @@
             </td></tr>
           </tbody>
         </table>
-      </div>
+      </div><!-- /table-wrap -->
+      <div id="prodPagination" style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:14px;font-size:13px"></div>
     </div><!-- /products -->
 
     <!-- ========== SCRAPER TAB ========== -->
@@ -719,6 +726,16 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
             <div class="config-field">
               <label>My Seller Name (for BuyBox detection)</label>
               <input class="config-input" id="sellerNameConfig" placeholder="e.g. BonoloOnline">
+            </div>
+
+            <div class="config-field">
+              <label>Parallel Tabs (simultaneous products)</label>
+              <select class="config-input" id="scrapeParallel">
+                <option value="1">1 tab — safest (default)</option>
+                <option value="2">2 tabs — faster</option>
+                <option value="3" selected>3 tabs — recommended max</option>
+              </select>
+              <div style="font-size:10px;color:var(--muted);margin-top:4px;line-height:1.5">3 tabs = ~3× faster. Each tab gets its own human delay so Makro sees normal browsing.</div>
             </div>
 
             <div class="config-field">
@@ -1118,6 +1135,7 @@ function syncSellerConfig() {
 // ============================================================
 let scrapeQueue = [];
 let scrapeIdx   = 0;
+let prodPage    = 1;
 
 function parseUrls() {
   const raw = document.getElementById('urlInput').value;
@@ -1185,7 +1203,8 @@ function startScraping() {
   updateProgress(0, urls.length);
 
   // Send queue to background service worker
-  window.postMessage({ type: 'START_QUEUE', urls: urls }, '*');
+  const concurrency = parseInt(document.getElementById('scrapeParallel').value) || 1;
+  window.postMessage({ type: 'START_QUEUE', urls: urls, concurrency: concurrency }, '*');
 }
 
 function stopScraping() {
@@ -1522,6 +1541,13 @@ function renderProducts() {
     return true;
   });
 
+  const pageSize  = parseInt(document.getElementById('prodPageSize').value) || 25;
+  const totalProds = prods.length;
+  const totalPages = Math.max(1, Math.ceil(totalProds / pageSize));
+  if (prodPage > totalPages) prodPage = totalPages;
+  const pageStart = (prodPage - 1) * pageSize;
+  const pageProds = prods.slice(pageStart, pageStart + pageSize);
+
   const tbody = document.getElementById('productsBody');
   if (prods.length === 0) {
     tbody.innerHTML = `<tr><td colspan="15"><div class="empty-state">
@@ -1532,7 +1558,7 @@ function renderProducts() {
     return;
   }
 
-  tbody.innerHTML = prods.map((p, i) => {
+  tbody.innerHTML = pageProds.map((p, i) => {
     const statusClass = p.status === 'win' ? 'win' : p.status === 'lose' ? 'lose' : 'unknown';
     const statusLabel = p.status === 'win' ? '✓ WIN' : p.status === 'lose' ? '✗ LOSE' : '? UNKNOWN';
     const t = p.lastChecked ? new Date(p.lastChecked).toLocaleString() : '—';
@@ -1633,6 +1659,25 @@ function renderProducts() {
     document.querySelectorAll('.row-check').forEach(c => {
       if (prevChecked.has(parseInt(c.dataset.idx))) c.checked = true;
     });
+  }
+
+  // ── PAGINATION BAR ────────────────────────────────────────────────────────
+  const pagEl = document.getElementById('prodPagination');
+  if (pagEl) {
+    if (totalPages <= 1) { pagEl.innerHTML = ''; }
+    else {
+      const btnStyle = (active) => `style="background:${active?'var(--accent)':'var(--surface2)'};color:${active?'#000':'var(--text)'};border:1px solid ${active?'var(--accent)':'var(--border)'};border-radius:5px;padding:5px 11px;cursor:pointer;font-size:12px;font-family:'Space Mono',monospace"`;
+      let html = `<span style="font-size:12px;color:var(--muted)">${pageStart+1}–${Math.min(pageStart+pageSize,totalProds)} of ${totalProds}</span> `;
+      html += `<button ${btnStyle(false)} onclick="prodPage=Math.max(1,prodPage-1);renderProducts()" ${prodPage===1?'disabled':''}>‹ Prev</button>`;
+      // show up to 7 page buttons
+      const startP = Math.max(1, prodPage - 3);
+      const endP   = Math.min(totalPages, startP + 6);
+      for (let pg = startP; pg <= endP; pg++) {
+        html += `<button ${btnStyle(pg===prodPage)} onclick="prodPage=${pg};renderProducts()">${pg}</button>`;
+      }
+      html += `<button ${btnStyle(false)} onclick="prodPage=Math.min(totalPages,prodPage+1);renderProducts()" ${prodPage===totalPages?'disabled':''}>Next ›</button>`;
+      pagEl.innerHTML = html;
+    }
   }
 }
 
@@ -2080,6 +2125,7 @@ function renderTrendChart(prods) {
 function renderPriceComp(prods) {
   const el = document.getElementById('priceCompBar');
   const empty = document.getElementById('emptyPriceComp');
+  if (!el) return;  // element not present — skip silently
   const p2 = prods.filter(p => p.buybox_price > 0);
   if (p2.length === 0) { el.style.display='none'; empty.style.display='flex'; return; }
   el.style.display = 'flex'; empty.style.display = 'none';
@@ -2100,6 +2146,7 @@ function renderPriceComp(prods) {
 // ── Status bar chart (now in Analytics tab) ──────────────────────────────
 function renderStatusBars(prods) {
   const el = document.getElementById('statusBarChartAnalytics');
+  if (!el) return;  // element removed from HTML — skip silently
   if (!el) return;
   if (!prods.length) { el.innerHTML = '<div style="color:var(--muted);padding:20px;font-size:13px">No products scraped yet.</div>'; return; }
   const maxPrice = Math.max(...prods.map(p => p.buybox_price || 0), 1);

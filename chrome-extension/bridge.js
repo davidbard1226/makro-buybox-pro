@@ -121,8 +121,9 @@
     }
 
     if (ev.data.type === 'START_QUEUE') {
+      // ev.data.concurrency forwarded to background so it knows how many parallel tabs to use
       safe(function() {
-        chrome.runtime.sendMessage({ action: 'queue_scrape', urls: ev.data.urls }, function(resp) {
+        chrome.runtime.sendMessage({ action: 'queue_scrape', urls: ev.data.urls, concurrency: ev.data.concurrency || 1 }, function(resp) {
           if (chrome.runtime.lastError) return;
           console.log('[Bridge] Queue started:', resp);
         });
