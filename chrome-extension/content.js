@@ -1,4 +1,4 @@
-// content.js v4 — Makro BuyBox Pro
+﻿// content.js v4 — Makro BuyBox Pro
 // Robust seller name extraction + correct price selector
 
 (function() {
@@ -116,10 +116,9 @@
         inStock: null
       };
 
-      // URL slug stored separately — NOT as SKU (real SKU comes from Makro Offers XLS via FSN match)
+      // SKU from URL path (itm... part)
       const skuMatch = window.location.pathname.match(/\/p\/([^/?#]+)/);
-      if (skuMatch) data.slug = skuMatch[1];
-      // sku stays null
+      if (skuMatch) data.sku = skuMatch[1];
 
       // FSN — try multiple sources in priority order
       // 1. pid= query param (present when clicking from Google ads)
@@ -239,20 +238,12 @@
     const run = function() {
       const d = scrapeProduct();
       saveProduct(d);
-      // Notify background — with retry in case service worker is waking up
-      function notifyBG(attempt) {
-        try {
-          chrome.runtime.sendMessage({ action: 'page_scraped', data: d }, function(resp) {
-            if (chrome.runtime.lastError) {
-              // SW may have been sleeping — retry once after 1.5s
-              if (attempt < 3) setTimeout(function() { notifyBG(attempt + 1); }, 1500);
-            }
-          });
-        } catch(e) {}
-      }
-      notifyBG(1);
+      // Notify background so queue can advance to next URL
+      try {
+        chrome.runtime.sendMessage({ action: 'page_scraped', data: d });
+      } catch(e) {}
     };
-    if (document.readyState === 'complete') setTimeout(run, 1800);
+    if (document.readyState === 'complete') setTimeout(run, 1500);
     else window.addEventListener('load', function() { setTimeout(run, 2000); });
   }
 
