@@ -112,6 +112,7 @@
   }
 
   function openNextUrl() {
+    console.log("[Bridge] openNextUrl called, queue:", queueUrls.length, "active:", queueActive);
     if (!queueActive || !queueUrls.length) {
       queueActive = false;
       window.postMessage({ type: 'QUEUE_FINISHED', done: queueDone, total: queueTotal }, '*');

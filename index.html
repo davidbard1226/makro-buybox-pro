@@ -1577,10 +1577,22 @@ function importListings(input) {
 // GOOGLE SHEET COST SYNC
 // ============================================================
 const GSHEET_ID = '1ISaEOPBElufeYh6eq6APtlFjeMvrKqlAwEd3F4K6rBw';
+// Tab names used as sheet= param (URL-encoded when fetching)
+// skuCol: 0-based column index for SKU/Code
+// costCol: 0-based column index for Cost Price
+// minCol/maxCol: 0-based index for min/max sell price (null = not present)
 const GSHEET_TABS = [
-  // Each tab: gid from the sheet URL, costCol=0-based column index for your cost, supplierName for display
-  // Column A (0)=SKU, Column D (3)=cost, Column N (13)=min, Column O (14)=max — adjust if needed
-  { gid: '2144903566', skuCol: 0, costCol: 3, minCol: 13, maxCol: 14, supplierName: 'Kolok' },
+  { sheet: 'DCC',              skuCol: 0, costCol: 4, minCol: 5,    maxCol: null, supplierName: 'DCC' },
+  { sheet: 'Kolok',            skuCol: 2, costCol: 13, minCol: null, maxCol: null, supplierName: 'Kolok' },
+  { sheet: 'Tarsus',          skuCol: 0, costCol: 5, minCol: 6,    maxCol: null, supplierName: 'Tarsus' },
+  { sheet: 'Rectron',         skuCol: 0, costCol: 5, minCol: 6,    maxCol: null, supplierName: 'Rectron' },
+  { sheet: 'Esquire Products', skuCol: 0, costCol: 6, minCol: 7,    maxCol: null, supplierName: 'Esquire' },
+  { sheet: 'Pinnacle',        skuCol: 0, costCol: 4, minCol: 5,    maxCol: null, supplierName: 'Pinnacle' },
+  { sheet: 'Mustek',          skuCol: 0, costCol: 5, minCol: 6,    maxCol: null, supplierName: 'Mustek' },
+  { sheet: 'Axiz',            skuCol: 0, costCol: 4, minCol: 5,    maxCol: null, supplierName: 'Axiz' },
+  { sheet: 'SMD',             skuCol: 0, costCol: 4, minCol: 5,    maxCol: null, supplierName: 'SMD' },
+  { sheet: 'VAST -Maynards',  skuCol: 0, costCol: 3, minCol: 4,    maxCol: null, supplierName: 'VAST-Maynards' },
+  { sheet: 'Bundles',         skuCol: 0, costCol: 3, minCol: null,  maxCol: null, supplierName: 'Bundles' },
 ];
 
 function parseCSV(text) {
@@ -1612,37 +1624,32 @@ async function syncCostsFromSheet() {
 
     for (var t = 0; t < GSHEET_TABS.length; t++) {
       var tab = GSHEET_TABS[t];
-      var url = 'https://docs.google.com/spreadsheets/d/' + GSHEET_ID + '/gviz/tq?tqx=out:csv&gid=' + tab.gid;
+      var url = 'https://docs.google.com/spreadsheets/d/' + GSHEET_ID + '/gviz/tq?tqx=out:csv&sheet=' + encodeURIComponent(tab.sheet);
       try {
         var resp = await fetch(url);
         if (!resp.ok) continue;
         var csv = await resp.text();
         if (!csv || csv.includes('<!DOCTYPE')) continue;
         var rows = parseCSV(csv);
-
-        // Auto-detect cost column from header if not set
-        var costCol = tab.costCol;
-        if (rows.length > 0 && costCol == null) {
-          var hdr = rows[0];
-          for (var h = 0; h < hdr.length; h++) {
-            if (/cost|price|sell|landed/i.test(hdr[h]) && !/sku|code|name/i.test(hdr[h])) { costCol = h; break; }
-          }
-          if (costCol == null) costCol = 3;
-        }
+        var tabMatches = 0;
 
         for (var r = 1; r < rows.length; r++) {
           var row = rows[r];
-          if (!row[0]) continue;
-          var sku = row[tab.skuCol != null ? tab.skuCol : 0].toString().trim().toLowerCase();
-          var cost = parseFloat((row[costCol] || '').toString().replace(/[R,\s]/g,''));
-          if (!sku || isNaN(cost) || cost <= 0) continue;
-          var minV = tab.minCol != null ? parseFloat((row[tab.minCol]||'').toString().replace(/[R,\s]/g,'')) : NaN;
-          var maxV = tab.maxCol != null ? parseFloat((row[tab.maxCol]||'').toString().replace(/[R,\s]/g,'')) : NaN;
+          var skuRaw = row[tab.skuCol] != null ? row[tab.skuCol].toString().trim() : '';
+          if (!skuRaw) continue;
+          var sku = skuRaw.toLowerCase();
+          var cost = parseFloat((row[tab.costCol] || '').toString().replace(/[R,\s]/g,''));
+          if (isNaN(cost) || cost <= 0) continue;
+          var minV = (tab.minCol != null && row[tab.minCol]) ? parseFloat(row[tab.minCol].toString().replace(/[R,\s]/g,'')) : NaN;
+          var maxV = (tab.maxCol != null && row[tab.maxCol]) ? parseFloat(row[tab.maxCol].toString().replace(/[R,\s]/g,'')) : NaN;
+          // Keep lowest cost if same SKU appears in multiple suppliers
           if (!lookup[sku] || cost < lookup[sku].cost) {
             lookup[sku] = { cost: cost, supplier: tab.supplierName,
               minPrice: isNaN(minV) ? null : minV, maxPrice: isNaN(maxV) ? null : maxV };
+            tabMatches++;
           }
         }
+        console.log('[SyncCosts] ' + tab.supplierName + ': ' + tabMatches + ' SKUs loaded');
       } catch(e) { console.warn('Tab fetch error', e); }
     }
 
@@ -1665,8 +1672,9 @@ async function syncCostsFromSheet() {
     renderProducts();
 
     var msg = '✅ ' + updated + ' product(s) updated with cost data.';
-    if (noSku > 0)   msg += ' ' + noSku + ' product(s) have no SKU yet — import listings first.';
-    if (noMatch.length > 0) msg += ' ' + noMatch.length + ' SKU(s) not found in sheet.';
+    if (noSku > 0)   msg += '\n⚠ ' + noSku + ' product(s) have no SKU — import listings first.';
+    if (noMatch.length > 0) msg += '\n📋 ' + noMatch.length + ' SKU(s) not found in any supplier sheet.';
+    msg += '\n\n💡 Total supplier SKUs loaded: ' + Object.keys(lookup).length;
     alert(msg);
 
   } catch(e) {
