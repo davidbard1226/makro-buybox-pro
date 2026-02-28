@@ -1051,8 +1051,13 @@ window.addEventListener('message', function(ev) {
   }
 
   if (d.type === 'QUEUE_ABORTED') {
-    log('info', '⚠ Queue stopped — tab was closed. ' + (d.done||0) + '/' + (d.total||0) + ' done.');
+    log('info', '⚠ Queue stopped. ' + (d.done||0) + '/' + (d.total||0) + ' done.');
     finishScraping();
+    return;
+  }
+
+  if (d.type === 'SCRAPER_LOG') {
+    log('info', d.msg || '');
     return;
   }
 });
@@ -1653,15 +1658,38 @@ async function syncCostsFromSheet() {
       } catch(e) { console.warn('Tab fetch error', e); }
     }
 
+    // Build fuzzy index: base SKU without brand prefixes or variant suffixes
+    var brandPfx = /^(hp|canon|epson|samsung|lexmark|brother|xerox|dell|lenovo|acer|asus|lg|sony|verbatim|logitech|intel|amd|wd|seagate|kingston|sandisk|corsair|hikvision|dahua|bosch)/i;
+    var fuzzy = {};
+    Object.keys(lookup).forEach(function(raw) {
+      var b = raw.toLowerCase().replace(/\s+/g,'').replace(/-[a-z0-9]{1,4}$/,'').replace(brandPfx,'');
+      if (!fuzzy[b]) fuzzy[b] = lookup[raw];
+    });
+
+    function findCost(sku) {
+      var k = sku.trim().toLowerCase().replace(/\s+/g,'');
+      if (lookup[k]) return lookup[k];                                   // exact
+      var ns = k.replace(/-[a-z0-9]{1,4}$/, '');
+      if (lookup[ns]) return lookup[ns];                                 // strip suffix
+      if (fuzzy[ns])  return fuzzy[ns];
+      var np = k.replace(brandPfx, '');
+      if (lookup[np]) return lookup[np];                                 // strip prefix
+      if (fuzzy[np])  return fuzzy[np];
+      var nsp = np.replace(/-[a-z0-9]{1,4}$/, '');
+      if (lookup[nsp]) return lookup[nsp];                               // strip both
+      if (fuzzy[nsp])  return fuzzy[nsp];
+      return null;
+    }
+
     var updated = 0, noSku = 0, noMatch = [];
     state.products.forEach(function(p) {
       if (!p.sku) { noSku++; return; }
-      var key = p.sku.trim().toLowerCase();
-      if (lookup[key]) {
-        p.cost_price    = lookup[key].cost;
-        p.cost_supplier = lookup[key].supplier;
-        if (lookup[key].minPrice != null) p.min_price = lookup[key].minPrice;
-        if (lookup[key].maxPrice != null) p.max_price = lookup[key].maxPrice;
+      var match = findCost(p.sku);
+      if (match) {
+        p.cost_price    = match.cost;
+        p.cost_supplier = match.supplier;
+        if (match.minPrice != null) p.min_price = match.minPrice;
+        if (match.maxPrice != null) p.max_price = match.maxPrice;
         updated++;
       } else {
         noMatch.push(p.sku);

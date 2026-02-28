@@ -1,16 +1,11 @@
-﻿// bridge.js v7 — no service worker needed, queue runs via tabs API from bridge
+﻿// bridge.js v8 — robust scraper queue, no safe() blocking on START_QUEUE
 (function() {
   'use strict';
 
   const STORAGE_KEY = 'makro_buybox_v2';
   let dead = false;
-  let failCount = 0;
-  const FAIL_THRESHOLD = 20;
   let syncInterval = null;
   let announceInterval = null;
-  let pollInterval = null;
-  let lastDone = -1;
-  let wasActive = false;
   let queueTabId = null;
   let queueUrls = [];
   let queueTotal = 0;
@@ -18,30 +13,23 @@
   let queueActive = false;
 
   function isAlive() {
-    try {
-      var ok = !!(chrome && chrome.runtime && chrome.runtime.id);
-      if (ok) { failCount = 0; return true; }
-      failCount++;
-      return false;
-    } catch(e) { failCount++; return false; }
+    try { return !!(chrome && chrome.runtime && chrome.runtime.id); } catch(e) { return false; }
   }
 
   function killAll() {
-    try { clearInterval(syncInterval); } catch(e) {}
-    try { clearInterval(announceInterval); } catch(e) {}
-    try { clearInterval(pollInterval); } catch(e) {}
-    syncInterval = announceInterval = pollInterval = null;
+    clearInterval(syncInterval);
+    clearInterval(announceInterval);
+    syncInterval = announceInterval = null;
     dead = true;
+    queueActive = false;
   }
 
+  // safe() only used for background/storage ops — NOT for queue control
   function safe(fn) {
     if (dead) return;
-    if (!isAlive()) { if (failCount >= FAIL_THRESHOLD) killAll(); return; }
+    if (!isAlive()) return;
     try { fn(); } catch(e) {
-      if (/context invalidated|extension context/i.test(e.message || '')) {
-        failCount++;
-        if (failCount >= FAIL_THRESHOLD) killAll();
-      }
+      if (/context invalidated|extension context/i.test(e.message || '')) killAll();
     }
   }
 
@@ -65,13 +53,10 @@
           var seller = p.buyBoxSeller || 'Unknown Seller';
           var price = parseFloat(p.buyBoxPrice) || 0;
           var entry = {
-            url: url,
-            fsn: p.fsn || '',
+            url: url, fsn: p.fsn || '',
             sku: (p.sku && !p.sku.startsWith('itm')) ? p.sku : '',
-            title: p.title || url,
-            buybox_price: price,
-            seller: seller,
-            status: 'unknown',
+            title: p.title || url, buybox_price: price,
+            seller: seller, status: 'unknown',
             lastChecked: p.timestamp || new Date().toISOString(),
             history: []
           };
@@ -100,9 +85,10 @@
     });
   }
 
-  // ── QUEUE via chrome.tabs ────────────────────────────────────────────────
+  // ── QUEUE ─────────────────────────────────────────────────────────────────
   function startQueue(urls) {
-    if (!urls.length) return;
+    if (!urls.length) { console.warn('[Bridge] startQueue called with 0 URLs'); return; }
+    console.log('[Bridge] startQueue', urls.length, 'URLs');
     queueUrls   = urls.slice();
     queueTotal  = urls.length;
     queueDone   = 0;
@@ -112,87 +98,122 @@
   }
 
   function openNextUrl() {
-    console.log("[Bridge] openNextUrl called, queue:", queueUrls.length, "active:", queueActive);
+    console.log('[Bridge] openNextUrl — queue remaining:', queueUrls.length, 'active:', queueActive);
     if (!queueActive || !queueUrls.length) {
       queueActive = false;
       window.postMessage({ type: 'QUEUE_FINISHED', done: queueDone, total: queueTotal }, '*');
       if (queueTabId) {
-        safe(function() { chrome.tabs.remove(queueTabId, function() {}); });
+        try { chrome.tabs.remove(queueTabId, function() {}); } catch(e) {}
         queueTabId = null;
       }
       return;
     }
+
+    if (!isAlive()) {
+      console.error('[Bridge] Extension context dead — cannot open tab');
+      window.postMessage({ type: 'QUEUE_ABORTED', done: queueDone, total: queueTotal }, '*');
+      return;
+    }
+
     var url = queueUrls.shift();
-    safe(function() {
+    console.log('[Bridge] Opening tab for:', url.slice(0, 80));
+
+    try {
       if (queueTabId) {
-        chrome.tabs.update(queueTabId, { url: url, active: false }, function() {
-          if (chrome.runtime.lastError) {
-            // tab gone, create new
+        chrome.tabs.get(queueTabId, function(tab) {
+          if (chrome.runtime.lastError || !tab) {
             queueTabId = null;
-            chrome.tabs.create({ url: url, active: false }, function(tab) {
-              queueTabId = tab.id;
-              waitForScrape();
-            });
+            createNewTab(url);
           } else {
-            waitForScrape();
+            chrome.tabs.update(queueTabId, { url: url, active: false }, function() {
+              if (chrome.runtime.lastError) { queueTabId = null; createNewTab(url); return; }
+              console.log('[Bridge] Tab updated:', queueTabId);
+              safetyTimeout(queueTabId);
+            });
           }
         });
       } else {
-        chrome.tabs.create({ url: url, active: false }, function(tab) {
-          queueTabId = tab.id;
-          waitForScrape();
-        });
+        createNewTab(url);
       }
-    });
+    } catch(e) {
+      console.error('[Bridge] tab error:', e);
+      advanceQueue();
+    }
   }
 
-  function waitForScrape() {
-    // Wait up to 18s for content.js to report back via storage change
-    // Safety: advance after 18s regardless
+  function createNewTab(url) {
+    try {
+      chrome.tabs.create({ url: url, active: false }, function(tab) {
+        if (chrome.runtime.lastError || !tab) {
+          console.error('[Bridge] tabs.create failed:', chrome.runtime.lastError);
+          advanceQueue();
+          return;
+        }
+        console.log('[Bridge] Tab created id:', tab.id, url.slice(0,60));
+        queueTabId = tab.id;
+        safetyTimeout(tab.id);
+      });
+    } catch(e) {
+      console.error('[Bridge] tabs.create threw:', e);
+      advanceQueue();
+    }
+  }
+
+  function advanceQueue() {
+    if (!queueActive) return;
+    queueDone++;
+    window.postMessage({ type: 'QUEUE_PROGRESS', done: queueDone, total: queueTotal, data: null }, '*');
+    syncProducts();
+    var delay = 3000 + Math.floor(Math.random() * 3000);
+    setTimeout(openNextUrl, delay);
+  }
+
+  function safetyTimeout(tabId) {
     setTimeout(function() {
-      if (!queueActive) return;
-      queueDone++;
-      window.postMessage({ type: 'QUEUE_PROGRESS', done: queueDone, total: queueTotal, data: null }, '*');
-      syncProducts();
-      var delay = 3000 + Math.floor(Math.random() * 3000);
-      setTimeout(openNextUrl, delay);
-    }, 18000);
+      if (!queueActive || queueTabId !== tabId) return;
+      console.log('[Bridge] Safety timeout fired for tab', tabId);
+      advanceQueue();
+    }, 20000);
   }
 
   function stopQueue() {
     queueActive = false;
     queueUrls   = [];
     if (queueTabId) {
-      safe(function() { chrome.tabs.remove(queueTabId, function() {}); });
+      try { chrome.tabs.remove(queueTabId, function() {}); } catch(e) {}
       queueTabId = null;
     }
     window.postMessage({ type: 'QUEUE_ABORTED', done: queueDone, total: queueTotal }, '*');
   }
 
-  // ── STORAGE CHANGE — instant product sync ─────────────────────────────────
+  // ── STORAGE CHANGE — advances queue when content.js saves data ────────────
   safe(function() {
     chrome.storage.onChanged.addListener(function(changes) {
-      if (changes.buybox_products) {
-        setTimeout(function() {
-          syncProducts();
-          if (queueActive) {
-            // Content script saved data — advance queue early
-            queueDone++;
-            window.postMessage({ type: 'QUEUE_PROGRESS', done: queueDone, total: queueTotal, data: null }, '*');
-            var delay = 3000 + Math.floor(Math.random() * 3000);
-            setTimeout(openNextUrl, delay);
-          }
-        }, 500);
-      }
+      if (!changes.buybox_products) return;
+      setTimeout(function() {
+        syncProducts();
+        if (queueActive) {
+          console.log('[Bridge] storage.onChanged — advancing queue');
+          advanceQueue();
+        }
+      }, 600);
     });
   });
 
-  // ── WINDOW MESSAGES ──────────────────────────────────────────────────────
+  // ── WINDOW MESSAGES ───────────────────────────────────────────────────────
   window.addEventListener('message', function(ev) {
-    if (!ev.data || !ev.data.type || dead) return;
-    if (ev.data.type === 'START_QUEUE')    { safe(function() { startQueue(ev.data.urls || []); }); }
-    if (ev.data.type === 'STOP_QUEUE')     { safe(function() { stopQueue(); }); }
-    if (ev.data.type === 'REQUEST_EXTENSION') announce();
+    if (!ev.data || !ev.data.type) return;
+
+    if (ev.data.type === 'START_QUEUE') {
+      // Direct call — NOT wrapped in safe() so it always runs
+      if (dead) { console.warn('[Bridge] dead — reloading extension needed'); return; }
+      startQueue(ev.data.urls || []);
+      return;
+    }
+
+    if (ev.data.type === 'STOP_QUEUE') { stopQueue(); return; }
+    if (ev.data.type === 'REQUEST_EXTENSION') { announce(); return; }
+
     if (ev.data.type === 'SAVE_PORTAL_FILE') {
       safe(function() {
         chrome.storage.local.set({ portal_upload_file: ev.data.base64, portal_upload_filename: ev.data.filename });
@@ -202,8 +223,8 @@
 
   announce();
   syncProducts();
-  announceInterval = setInterval(announce,      4000);
-  syncInterval     = setInterval(syncProducts,  6000);
+  announceInterval = setInterval(announce,     4000);
+  syncInterval     = setInterval(syncProducts, 6000);
 
-  console.log('[BuyBox Bridge v7] Active — no service worker needed');
+  console.log('[BuyBox Bridge v8] Active');
 })();
