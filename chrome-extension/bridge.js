@@ -109,6 +109,17 @@
   window.addEventListener('message', function(ev) {
     if (!ev.data || !ev.data.type || dead) return;
 
+    if (ev.data.type === 'SAVE_PORTAL_FILE') {
+      safe(function() {
+        chrome.storage.local.set({
+          portal_upload_file: ev.data.base64,
+          portal_upload_filename: ev.data.filename
+        }, function() {
+          console.log('[Bridge] Portal file saved to chrome.storage:', ev.data.filename);
+        });
+      });
+    }
+
     if (ev.data.type === 'START_QUEUE') {
       safe(function() {
         chrome.runtime.sendMessage({ action: 'queue_scrape', urls: ev.data.urls }, function(resp) {
@@ -127,14 +138,17 @@
     if (ev.data.type === 'REQUEST_EXTENSION') announce();
   });
 
-  // Forward scrape_done and queue_finished from background → dashboard
+  // Forward scrape_done, queue_finished, queue_aborted from background → dashboard
   safe(function() {
     chrome.runtime.onMessage.addListener(function(msg) {
       if (msg.action === 'scrape_done') {
-        window.postMessage({ type: 'QUEUE_PROGRESS', data: msg.data }, '*');
+        window.postMessage({ type: 'QUEUE_PROGRESS', data: msg.data, done: msg.done, total: msg.total }, '*');
       }
       if (msg.action === 'queue_finished') {
-        window.postMessage({ type: 'QUEUE_FINISHED' }, '*');
+        window.postMessage({ type: 'QUEUE_FINISHED', done: msg.done, total: msg.total }, '*');
+      }
+      if (msg.action === 'queue_aborted') {
+        window.postMessage({ type: 'QUEUE_ABORTED', done: msg.done, total: msg.total }, '*');
       }
     });
   });
