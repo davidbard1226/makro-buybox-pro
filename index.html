@@ -3392,25 +3392,28 @@ function parseBulkSkuText(text) {
   var lines = text.split('\n').map(function(l){ return l.trim(); }).filter(Boolean);
   var pairs = [];
   lines.forEach(function(line) {
-    // Support comma or tab separated
-    var parts = line.includes('\t') ? line.split('\t') : line.split(',');
+    // Support: comma, tab, or 2+ spaces as delimiter
+    var parts;
+    if (line.includes('\t')) {
+      parts = line.split('\t');
+    } else if (line.includes(',')) {
+      parts = line.split(',');
+    } else {
+      // Split on 2 or more whitespace characters (handles space-padded columns)
+      parts = line.split(/\s{2,}/);
+    }
     if (parts.length < 2) return;
     var a = parts[0].trim().replace(/^["']|["']$/g, '');
     var b = parts[1].trim().replace(/^["']|["']$/g, '');
     if (!a || !b) return;
-    // Skip header rows — FSN is uppercase alphanumeric 10-20 chars, SKU is shorter/mixed
+    // Skip header rows — FSN is uppercase alphanumeric 10-20 chars
     var looksLikeFsnA = /^[A-Z0-9]{10,24}$/.test(a);
     var looksLikeFsnB = /^[A-Z0-9]{10,24}$/.test(b);
-    // If neither looks like FSN, might be header — skip
     if (!looksLikeFsnA && !looksLikeFsnB) return;
-    // Assign: whichever looks like FSN goes to fsn, the other to SKU
     var sku, fsn;
     if (looksLikeFsnB && !looksLikeFsnA) { sku = a; fsn = b; }
     else if (looksLikeFsnA && !looksLikeFsnB) { sku = b; fsn = a; }
-    else {
-      // Both look alphanumeric — assume col 0 = SKU, col 1 = FSN (per stated format)
-      sku = a; fsn = b;
-    }
+    else { sku = a; fsn = b; }
     pairs.push({ sku: sku, fsn: fsn });
   });
   return pairs;
