@@ -1178,6 +1178,10 @@ function loadProducts() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) state.products = JSON.parse(raw);
   } catch(e) { state.products = []; }
+
+  // ── DEDUPLICATE by FSN: keep the richest entry (most fields filled) ──────
+  state.products = deduplicateProducts(state.products);
+
   // Backfill max_price for any product that has min but no max
   var changed = false;
   state.products.forEach(function(p) {
@@ -1187,6 +1191,53 @@ function loadProducts() {
     }
   });
   if (changed) saveProducts();
+}
+
+// Merge duplicate FSN entries — keep the one with the most useful data,
+// then copy any non-null fields from the other into it.
+function deduplicateProducts(products) {
+  var seen = {}; // fsn → index in result
+  var result = [];
+  products.forEach(function(p) {
+    var key = (p.fsn || '').trim().toUpperCase();
+    if (!key) {
+      // No FSN — keep as-is, can't dedupe without a key
+      result.push(p);
+      return;
+    }
+    if (key in seen) {
+      // Merge: copy non-empty fields from p into the existing entry
+      var existing = result[seen[key]];
+      var fields = ['sku','title','url','seller','status','buybox_price','cost_price',
+                    'min_price','max_price','cost_supplier','lastChecked','pending_price',
+                    'pending_updated','history'];
+      fields.forEach(function(f) {
+        if (f === 'history') {
+          // Merge history arrays, dedupe by ts
+          var h1 = existing.history || [];
+          var h2 = p.history || [];
+          var allH = h1.concat(h2);
+          var hSeen = {};
+          existing.history = allH.filter(function(h) {
+            if (hSeen[h.ts]) return false;
+            hSeen[h.ts] = true; return true;
+          }).sort(function(a,b){ return new Date(a.ts)-new Date(b.ts); }).slice(-30);
+        } else if (!existing[f] && p[f]) {
+          existing[f] = p[f]; // fill in missing fields from duplicate
+        } else if (f === 'lastChecked' && p[f] > (existing[f]||'')) {
+          // Keep the more recent scrape data
+          existing[f] = p[f];
+          if (p.buybox_price) existing.buybox_price = p.buybox_price;
+          if (p.seller)       existing.seller       = p.seller;
+          if (p.status)       existing.status       = p.status;
+        }
+      });
+    } else {
+      seen[key] = result.length;
+      result.push(Object.assign({}, p));
+    }
+  });
+  return result;
 }
 
 function getMySellerName() {
@@ -2918,7 +2969,7 @@ document.getElementById('sellerNameConfig').addEventListener('change', function(
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return;
     try {
-      const fresh = JSON.parse(raw);
+      const fresh = deduplicateProducts(JSON.parse(raw));
       if (fresh.length !== lastProductCount || currentScrape !== lastScrapeTime) {
         lastProductCount = fresh.length;
         lastScrapeTime = currentScrape;
