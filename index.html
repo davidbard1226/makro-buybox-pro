@@ -3876,7 +3876,7 @@ function applyAutoScrape() {
     showStatus(nextRun);
   }, 1000);
 
-  _autoScrapeTimer = setInterval(function() {
+  function runScrape() {
     _autoScrapeRun++;
     if (!state.extReady) {
       log('info', '⏸ Auto-scrape skipped — extension offline.');
@@ -3893,9 +3893,9 @@ function applyAutoScrape() {
       return;
     }
 
-    var losses  = state.products.filter(function(p){ return p.status === 'lose'; }).length;
-    var wins    = state.products.filter(function(p){ return p.status === 'win';  }).length;
-    var mode    = (document.getElementById('autoScrapeMode')||{}).value || 'smart';
+    var losses = state.products.filter(function(p){ return p.status === 'lose'; }).length;
+    var wins   = state.products.filter(function(p){ return p.status === 'win';  }).length;
+    var mode   = (document.getElementById('autoScrapeMode')||{}).value || 'smart';
 
     log('info', '🤖 Auto-scrape #' + _autoScrapeRun + ' started — ' + urls.length + ' products' +
       (mode === 'smart' ? ' (' + losses + ' losses first, then ' + wins + ' wins)' : ' [' + mode + ']'));
@@ -3906,13 +3906,32 @@ function applyAutoScrape() {
     scrapeQueue = urls; scrapeIdx = 0; state.scraping = true;
     document.getElementById('progressSection').style.display = 'block';
     updateProgress(0, urls.length);
-
-    // Switch to scraper tab so user can see progress
     switchTab('scraper');
 
     nextRun = Date.now() + mins * 60000;
     showStatus(nextRun);
-  }, mins * 60000);
+  }
+
+  // Run immediately if overdue (last scrape was longer ago than the interval)
+  // Otherwise wait for the normal interval
+  var lastScrape = localStorage.getItem('makro_last_scrape');
+  var msSinceLast = lastScrape ? (Date.now() - new Date(lastScrape).getTime()) : Infinity;
+  var msInterval = mins * 60000;
+
+  if (msSinceLast >= msInterval) {
+    // Overdue — run after a short delay to let the page finish loading
+    setTimeout(runScrape, 5000);
+    nextRun = Date.now() + 5000;
+  } else {
+    // Schedule for when it's actually due
+    var msUntilNext = msInterval - msSinceLast;
+    nextRun = Date.now() + msUntilNext;
+    setTimeout(function() {
+      runScrape();
+    }, msUntilNext);
+  }
+
+  _autoScrapeTimer = setInterval(runScrape, msInterval);
 }
 
 function openPortalUpload() {
