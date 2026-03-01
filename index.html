@@ -751,6 +751,19 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
             </div>
 
             <div class="config-field">
+              <label>Min Profit % (after Makro fees)</label>
+              <div style="display:flex;align-items:center;gap:8px">
+                <input type="range" id="minProfitSlider" min="3" max="30" step="1" value="7"
+                  style="flex:1;accent-color:var(--accent)"
+                  oninput="updateMinProfitDisplay(this.value)">
+                <span id="minProfitDisplay" style="font-family:'Space Mono',monospace;font-size:13px;color:var(--accent);width:36px;text-align:right">7%</span>
+              </div>
+              <div style="font-size:10px;color:var(--muted);margin-top:4px;line-height:1.5">
+                Min price = this profit after Makro's 10% + delivery fee. Applied when auto-calculating floor price from cost.
+              </div>
+            </div>
+
+            <div class="config-field">
               <label>Auto-Scrape Schedule</label>
               <select class="config-input" id="autoScrapeInterval">
                 <option value="0">Off (manual only)</option>
@@ -1000,6 +1013,7 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
         <div class="card-title" style="margin:0">📋 PRICE CHANGE HISTORY</div>
         <button class="btn-secondary" style="width:auto;padding:6px 14px;font-size:12px" onclick="exportPriceLog()">⬇ Export CSV</button>
         <button class="btn-secondary" style="width:auto;padding:6px 14px;font-size:12px;color:#ff9500;border-color:#ff950044" onclick="clearPriceLog()">🗑 Clear Log</button>
+        <button class="btn-secondary" style="width:auto;padding:6px 14px;font-size:12px;color:var(--accent);border-color:#00e5a044" onclick="addTestLogEntry()">+ Add Test Entry</button>
         <span id="priceLogCount" style="font-size:12px;color:var(--muted);margin-left:auto"></span>
       </div>
       <div class="card">
@@ -1063,6 +1077,12 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
 
     <div style="display:grid;gap:14px">
       <div>
+        <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:5px">FSN (Makro Product ID)</label>
+        <input id="editFsnInput" type="text" placeholder="e.g. INTHFFWCZ5WSYEPZ"
+          style="width:100%;background:var(--surface2);border:1px solid #f59e0b;color:#f59e0b;font-family:'Space Mono',monospace;font-size:13px;padding:8px 10px;border-radius:6px;outline:none">
+        <div style="font-size:10px;color:var(--muted);margin-top:4px">⚠ Changing FSN relinks this product — make sure it matches exactly</div>
+      </div>
+      <div>
         <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:5px">SKU (Seller Product Code)</label>
         <input id="editSkuInput" type="text" placeholder="e.g. ABC-1234"
           style="width:100%;background:var(--surface2);border:1px solid #818cf8;color:#818cf8;font-family:'Space Mono',monospace;font-size:13px;padding:8px 10px;border-radius:6px;outline:none">
@@ -1074,10 +1094,28 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
         <div id="editCostHint" style="font-size:11px;color:var(--muted);margin-top:5px"></div>
       </div>
       <div>
-        <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:5px">Min Price (R) — override auto-calculated floor</label>
-        <input id="editMinInput" type="number" step="1" min="0" placeholder="Auto-calculated from cost"
+        <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:5px">Min Price (R) — floor after Makro fees</label>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+          <span style="font-size:11px;color:var(--muted)">Min profit %:</span>
+          <select id="editMinProfitPct" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:12px;padding:3px 6px;border-radius:4px;outline:none" onchange="updateEditCalcPreview()">
+            <option value="5">5%</option>
+            <option value="7" selected>7%</option>
+            <option value="10">10%</option>
+            <option value="12">12%</option>
+            <option value="15">15%</option>
+            <option value="20">20%</option>
+          </select>
+          <span style="font-size:11px;color:var(--muted)">or override:</span>
+        </div>
+        <input id="editMinInput" type="number" step="1" min="0" placeholder="Auto-calculated from cost + profit %"
           style="width:100%;background:var(--surface2);border:1px solid var(--accent3);color:var(--accent3);font-family:'Space Mono',monospace;font-size:13px;padding:8px 10px;border-radius:6px;outline:none">
-        <div id="editMinHint" style="font-size:11px;color:var(--muted);margin-top:5px">Leave blank to auto-calculate from cost + Makro fees + 5% profit</div>
+        <div id="editMinHint" style="font-size:11px;color:var(--muted);margin-top:5px">Leave blank to auto-calculate</div>
+      </div>
+      <div>
+        <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:5px">Max Price (R) — auto = min price × 1.20</label>
+        <input id="editMaxInput" type="number" step="1" min="0" placeholder="Auto = Min Price + 20%"
+          style="width:100%;background:var(--surface2);border:1px solid #a78bfa;color:#a78bfa;font-family:'Space Mono',monospace;font-size:13px;padding:8px 10px;border-radius:6px;outline:none">
+        <div id="editMaxHint" style="font-size:11px;color:var(--muted);margin-top:5px">Leave blank to auto-set to 20% above min price</div>
       </div>
     </div>
 
@@ -1413,6 +1451,8 @@ function handleQueueProgress(d) {
     autoReprice(prod);
 
     // ── PRICE LOG ENTRY ───────────────────────────────────────────────────
+    var listings = getListings();
+    var listingMatch = listings.find(function(l){ return l.fsn === prod.fsn; });
     addPriceLogEntry({
       ts: new Date().toISOString(),
       title: prod.title || prod.url,
@@ -1421,7 +1461,7 @@ function handleQueueProgress(d) {
       status: status,
       buybox_price: price,
       seller: seller,
-      my_price: (getListings().find(function(l){return l.fsn===prod.fsn;}) || {}).myPrice || null,
+      my_price: listingMatch ? listingMatch.myPrice : null,
       pending_price: prod.pending_price || null
     });
 
@@ -1507,18 +1547,26 @@ function calcProfit(sellingPrice, costPrice) {
 // Solve: price - 0.10*price - deliveryFee - cost >= 0.05 * cost
 // => 0.90*price - deliveryFee >= 1.05 * cost
 // => price >= (1.05*cost + deliveryFee) / 0.90
+function getMinProfitPct() {
+  var v = parseFloat(localStorage.getItem('min_profit_pct'));
+  return (!isNaN(v) && v > 0) ? v / 100 : 0.07; // default 7%
+}
+
+// Min price to achieve target profit % after Makro fees
+// Solve: price - 0.10*price - deliveryFee - cost >= pct * cost
+// => 0.90*price >= (1+pct)*cost + deliveryFee
+// => price >= ((1+pct)*cost + deliveryFee) / 0.90
 function calcMinViablePrice(costPrice) {
   if (!costPrice || costPrice <= 0) return null;
-  // Try with R50 delivery first (most products)
-  var p50  = (1.05 * costPrice + 50)  / 0.90;
-  var p120 = (1.05 * costPrice + 120) / 0.90;
-  var p200 = (1.05 * costPrice + 200) / 0.90;
-  // Use the correct bracket based on the resulting price
+  var pct = 1 + getMinProfitPct(); // e.g. 1.07
+  var p50  = (pct * costPrice + 50)  / 0.90;
+  var p120 = (pct * costPrice + 120) / 0.90;
+  var p200 = (pct * costPrice + 200) / 0.90;
   var price;
-  if (p50 < 1500)       price = p50;
+  if (p50 < 1500)        price = p50;
   else if (p120 <= 3000) price = p120;
   else                   price = p200;
-  return Math.ceil(price); // round UP to whole number — never go below minimum
+  return Math.ceil(price);
 }
 
 // Round price to nearest whole number
@@ -1538,10 +1586,11 @@ function autoReprice(prod) {
   var minPrice = prod.min_price;
   if (!minPrice || minPrice <= 0) return;      // no min price set — can't reprice safely
 
+  var maxPrice = prod.max_price || null;
+
   var targetPrice = roundPrice(buybox - 1);   // beat by R1, rounded to whole number
-  if (targetPrice < minPrice) {
-    targetPrice = minPrice;                    // floor — never go below min
-  }
+  if (targetPrice < minPrice) targetPrice = minPrice;   // never below floor
+  if (maxPrice && targetPrice > maxPrice) targetPrice = maxPrice; // never above ceiling
 
   // Update the listing's myPrice
   var listings = getListings();
@@ -1780,7 +1829,17 @@ function renderProducts() {
         <div class="prod-title">${escHtml((p.title||'Unknown').slice(0,55))}</div>
         <a class="prod-url" href="${escHtml(p.url)}" target="_blank" rel="noopener">${escHtml(p.sku || shortUrl(p.url))}</a>
       </td>
-      <td><span style="font-family:'Space Mono',monospace;font-size:11px;color:var(--muted)">${escHtml(p.fsn||'—')}</span></td>
+      <td>
+        <input type="text"
+          value="${escHtml(p.fsn||'')}"
+          placeholder="— enter FSN"
+          title="Makro FSN / product ID — click to edit"
+          style="width:160px;background:transparent;border:1px solid transparent;color:var(--muted);font-family:'Space Mono',monospace;font-size:11px;padding:2px 4px;border-radius:4px;outline:none;cursor:pointer"
+          onfocus="this.style.borderColor='var(--border)';this.style.background='var(--surface2)'"
+          onblur="this.style.borderColor='transparent';this.style.background='transparent';setProductPriceSilent(${realIdx},'fsn',this.value)"
+          onkeydown="if(event.key==='Enter')this.blur()"
+        >
+      </td>
       <td>
         ${p.sku
           ? `<span style="font-family:'Space Mono',monospace;font-size:12px;color:#818cf8;font-weight:600">${escHtml(p.sku)}</span>
@@ -2082,11 +2141,15 @@ async function syncCostsFromSheet() {
       if (match) {
         p.cost_price    = match.cost;
         p.cost_supplier = match.supplier;
-        // Always auto-calculate min price from Makro fee structure + 5% min profit
-        // This overrides whatever the supplier sheet says — our floor is always fee-aware
+        // Always auto-calculate min price from Makro fee structure + configured min profit
         p.min_price = calcMinViablePrice(match.cost);
-        // Only use supplier max if they provide one
-        if (match.maxPrice != null) p.max_price = match.maxPrice;
+        // Only use supplier max if they provide one, otherwise auto-calc 20% above selling
+        if (match.maxPrice != null) {
+          p.max_price = match.maxPrice;
+        } else if (!p.max_price) {
+          var autoMax = calcAutoMaxPrice(p);
+          if (autoMax) p.max_price = autoMax;
+        }
         updated++;
       } else {
         noMatch.push(p.sku);
@@ -2133,9 +2196,15 @@ function openEditModal(idx) {
   if (!p) return;
 
   document.getElementById('editModalTitle').textContent = (p.title || p.url || '').slice(0, 60);
+  document.getElementById('editFsnInput').value  = p.fsn || '';
   document.getElementById('editSkuInput').value  = p.sku || '';
   document.getElementById('editCostInput').value = p.cost_price > 0 ? p.cost_price : '';
   document.getElementById('editMinInput').value  = p.min_price != null ? p.min_price : '';
+  document.getElementById('editMaxInput').value  = p.max_price != null ? p.max_price : '';
+
+  // Set profit pct selector to saved global pref
+  var savedPct = parseFloat(localStorage.getItem('min_profit_pct')) || 7;
+  document.getElementById('editMinProfitPct').value = savedPct;
 
   updateEditCalcPreview();
 
@@ -2145,23 +2214,48 @@ function openEditModal(idx) {
     if (f) f.focus();
   }, 100);
 
-  // Live preview when cost changes
   document.getElementById('editCostInput').oninput = updateEditCalcPreview;
+  document.getElementById('editMinProfitPct').onchange = updateEditCalcPreview;
+  document.getElementById('editMinInput').oninput = updateEditCalcPreview;
 }
 
 function updateEditCalcPreview() {
   var cost = parseFloat(document.getElementById('editCostInput').value);
+  var pct  = parseFloat(document.getElementById('editMinProfitPct').value) || 7;
+  // Save pct as global preference
+  localStorage.setItem('min_profit_pct', pct);
+
   var preview = document.getElementById('editCalcPreview');
-  if (!cost || cost <= 0) { preview.innerHTML = ''; return; }
+  var minHint = document.getElementById('editMinHint');
+  var maxHint = document.getElementById('editMaxHint');
+
+  if (!cost || cost <= 0) {
+    preview.innerHTML = '';
+    if (minHint) minHint.textContent = 'Enter cost price to auto-calculate';
+    return;
+  }
+
   var autoMin = calcMinViablePrice(cost);
-  var fees = makroFees(autoMin);
-  var profit = autoMin - fees - cost;
+  var fees    = makroFees(autoMin);
+  var profit  = autoMin - fees - cost;
+  var profitPct = (profit / autoMin * 100).toFixed(1);
+  var autoMax = Math.round(autoMin * 1.20);
+
+  // Check if user has manually set a min
+  var manualMin = parseFloat(document.getElementById('editMinInput').value);
+  var effectiveMin = (!isNaN(manualMin) && manualMin > 0) ? manualMin : autoMin;
+  var effectiveMax = Math.round(effectiveMin * 1.20);
+
   preview.innerHTML =
-    '<strong style="color:var(--accent)">Auto min price preview at this cost:</strong><br>' +
-    'Cost: <span style="color:#60a5fa">R' + cost.toFixed(0) + '</span> &nbsp;|&nbsp; ' +
-    'Makro fees at min price: <span style="color:#ff9500">R' + fees.toFixed(0) + '</span> &nbsp;|&nbsp; ' +
-    'Your profit: <span style="color:var(--accent)">R' + profit.toFixed(0) + ' (5%)</span><br>' +
-    '→ Auto min price = <strong style="color:var(--accent3)">R' + autoMin + '</strong> &nbsp;(override above if needed)';
+    '<strong style="color:var(--accent)">Price calculation at ' + pct + '% min profit:</strong><br>' +
+    'Cost: <span style="color:#60a5fa">R' + cost.toFixed(0) + '</span> &nbsp;·&nbsp; ' +
+    'Makro fees: <span style="color:#ff9500">R' + fees.toFixed(0) + '</span> &nbsp;·&nbsp; ' +
+    'Profit at floor: <span style="color:var(--accent)">R' + profit.toFixed(0) + ' (' + profitPct + '%)</span><br>' +
+    '→ <strong style="color:var(--accent3)">Min = R' + autoMin + '</strong> &nbsp;&nbsp; ' +
+    '<strong style="color:#a78bfa">Max = R' + effectiveMax + '</strong> <span style="color:var(--muted)">(20% above min)</span>';
+
+  if (minHint) minHint.textContent = 'Auto: R' + autoMin + ' — override by typing above';
+  if (maxHint) maxHint.textContent = 'Auto: R' + effectiveMax + ' — override by typing above';
 }
 
 function closeEditModal() {
@@ -2169,27 +2263,48 @@ function closeEditModal() {
   _editModalIdx = null;
 }
 
+function calcAutoMaxPrice(minPrice) {
+  if (!minPrice || minPrice <= 0) return null;
+  return Math.round(minPrice * 1.20);
+}
+
 function saveEditModal() {
   var idx = _editModalIdx;
   if (idx === null || !state.products[idx]) return;
   var p = state.products[idx];
 
+  var fsn  = document.getElementById('editFsnInput').value.trim().toUpperCase();
   var sku  = document.getElementById('editSkuInput').value.trim();
   var cost = parseFloat(document.getElementById('editCostInput').value);
   var min  = document.getElementById('editMinInput').value.trim();
+  var max  = document.getElementById('editMaxInput').value.trim();
+  var pct  = parseFloat(document.getElementById('editMinProfitPct').value) || 7;
 
+  // Save profit % preference globally
+  localStorage.setItem('min_profit_pct', pct);
+
+  if (fsn)  p.fsn = fsn;
   if (sku)  p.sku = sku;
+
   if (!isNaN(cost) && cost > 0) {
     p.cost_price    = cost;
     p.cost_supplier = p.cost_supplier || 'Manual';
-    // Auto-recalc min price from Makro fees unless user set one manually
-    if (!min) {
-      p.min_price = calcMinViablePrice(cost);
-    }
+    // Auto-recalc min price unless user provided one
+    if (!min) p.min_price = calcMinViablePrice(cost);
   }
+
   if (min !== '') {
     var minVal = parseFloat(min);
-    if (!isNaN(minVal)) p.min_price = roundPrice(minVal);
+    if (!isNaN(minVal) && minVal > 0) p.min_price = roundPrice(minVal);
+  }
+
+  // Auto-calc max = 20% above min price, unless manually overridden
+  if (max !== '') {
+    var maxVal = parseFloat(max);
+    if (!isNaN(maxVal) && maxVal > 0) p.max_price = roundPrice(maxVal);
+  } else if (p.min_price) {
+    p.max_price = calcAutoMaxPrice(p.min_price);
+  }
   }
 
   saveProducts();
@@ -2199,11 +2314,17 @@ function saveEditModal() {
 
 // ── SAVE PRICE FIELDS WITHOUT RE-RENDER ───────────────────────────────────
 function setProductPriceSilent(idx, field, val) {
-  var v = val === '' ? null : parseFloat(val);
-  if (val !== '' && isNaN(v)) return;
-  state.products[idx][field] = v;
+  if (idx < 0 || idx >= state.products.length) return;
+  // String fields — save as-is
+  var stringFields = ['fsn', 'sku', 'title', 'url', 'seller', 'status'];
+  if (stringFields.includes(field)) {
+    state.products[idx][field] = val.trim();
+  } else {
+    var v = val === '' ? null : parseFloat(val);
+    if (val !== '' && isNaN(v)) return;
+    state.products[idx][field] = v;
+  }
   saveProducts();
-  // No re-render — the input itself already shows the new value
 }
 
 // Legacy wrapper — kept for any remaining calls
@@ -2246,9 +2367,10 @@ function updateProductCount() {
 
 function exportCSV() {
   if (state.products.length === 0) { alert('No products to export.'); return; }
-  const headers = ['Title', 'URL', 'FSN', 'BuyBox Price', 'Seller', 'Status', 'Last Checked'];
+  const headers = ['Title', 'SKU', 'FSN', 'BuyBox Price', 'Seller', 'Status', 'Cost Price', 'Min Price', 'Max Price', 'Last Checked'];
   const rows = state.products.map(p => [
-    p.title, p.url, p.fsn, p.buybox_price, p.seller, p.status, p.lastChecked
+    p.title, p.sku, p.fsn, p.buybox_price, p.seller, p.status,
+    p.cost_price || '', p.min_price || '', p.max_price || '', p.lastChecked
   ].map(v => '"' + String(v||'').replace(/"/g,'""') + '"'));
   const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
@@ -2745,6 +2867,7 @@ document.getElementById('sellerNameConfig').addEventListener('change', function(
   });
 
   loadWaSettings();
+  loadMinProfitSetting();
   initAutoScrape();
 
   // Load saved seller name
@@ -3139,6 +3262,21 @@ function loadWaSettings() {
   if (eEl) eEl.checked = localStorage.getItem('wa_enabled') === '1';
 }
 
+function updateMinProfitDisplay(val) {
+  var n = parseInt(val);
+  var el = document.getElementById('minProfitDisplay');
+  if (el) el.textContent = n + '%';
+  localStorage.setItem('min_profit_pct', n);
+}
+
+function loadMinProfitSetting() {
+  var saved = parseFloat(localStorage.getItem('min_profit_pct')) || 7;
+  var slider = document.getElementById('minProfitSlider');
+  var display = document.getElementById('minProfitDisplay');
+  if (slider) slider.value = saved;
+  if (display) display.textContent = saved + '%';
+}
+
 var _waLastSent = {};
 function sendWhatsAppAlert(prod, buyboxPrice, seller) {
   if (localStorage.getItem('wa_enabled') !== '1') return;
@@ -3192,7 +3330,45 @@ function addPriceLogEntry(entry) {
   localStorage.setItem(PRICE_LOG_KEY, JSON.stringify(log));
 }
 
+function addTestLogEntry() {
+  addPriceLogEntry({
+    ts: new Date().toISOString(),
+    title: 'Test Product — Storage Check',
+    fsn: 'TESTFSN123456',
+    sku: 'TEST-SKU-001',
+    status: 'lose',
+    buybox_price: 999.00,
+    seller: 'TestCompetitor',
+    my_price: 1050.00,
+    pending_price: 998
+  });
+  renderPriceLog();
+}
+
 function renderPriceLog() {
+  // Backfill from product history on first ever open
+  if (!localStorage.getItem(PRICE_LOG_KEY)) {
+    var backfill = [];
+    state.products.forEach(function(p) {
+      (p.history || []).forEach(function(h) {
+        backfill.push({
+          ts: h.ts,
+          title: p.title || p.url || '',
+          fsn: p.fsn || '',
+          sku: p.sku || '',
+          status: h.status,
+          buybox_price: h.price,
+          seller: h.seller || '',
+          my_price: null,
+          pending_price: null
+        });
+      });
+    });
+    if (backfill.length) {
+      backfill.sort(function(a,b){ return new Date(b.ts) - new Date(a.ts); });
+      localStorage.setItem(PRICE_LOG_KEY, JSON.stringify(backfill.slice(0,2000)));
+    }
+  }
   var log = getPriceLog();
   var el = document.getElementById('priceLogTable');
   var countEl = document.getElementById('priceLogCount');
