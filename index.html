@@ -764,15 +764,25 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
             </div>
 
             <div class="config-field">
-              <label>Auto-Scrape Schedule</label>
+              <label>🕐 Auto-Scrape Schedule</label>
               <select class="config-input" id="autoScrapeInterval">
                 <option value="0">Off (manual only)</option>
-                <option value="60">Every 1 hour</option>
+                <option value="60" selected>Every 1 hour</option>
                 <option value="240">Every 4 hours</option>
                 <option value="480">Every 8 hours</option>
                 <option value="720">Every 12 hours</option>
               </select>
-              <div id="autoScrapeStatus" style="font-size:10px;color:var(--muted);margin-top:4px"></div>
+
+              <div style="margin-top:8px">
+                <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:1px">Scrape Order</label>
+                <select class="config-input" id="autoScrapeMode">
+                  <option value="smart">🧠 Smart — losses first, then wins</option>
+                  <option value="losses">🔴 Losses only (fastest)</option>
+                  <option value="all">🔄 All products</option>
+                </select>
+              </div>
+
+              <div id="autoScrapeStatus" style="font-size:10px;color:var(--accent);margin-top:6px;line-height:1.6"></div>
             </div>
 
             <div class="config-field">
@@ -3664,16 +3674,56 @@ function saveBulkSkus() {
 // AUTO-SCRAPE SCHEDULER
 // ============================================================
 var _autoScrapeTimer = null;
+var _autoScrapeRun = 0; // tracks cycle count
 
 function initAutoScrape() {
   var sel = document.getElementById('autoScrapeInterval');
+  var modeEl = document.getElementById('autoScrapeMode');
   if (!sel) return;
-  sel.value = localStorage.getItem('auto_scrape_interval') || '0';
+  sel.value  = localStorage.getItem('auto_scrape_interval') || '60';
+  if (modeEl) modeEl.value = localStorage.getItem('auto_scrape_mode') || 'smart';
   applyAutoScrape();
   sel.addEventListener('change', function() {
     localStorage.setItem('auto_scrape_interval', sel.value);
     applyAutoScrape();
   });
+  if (modeEl) modeEl.addEventListener('change', function() {
+    localStorage.setItem('auto_scrape_mode', modeEl.value);
+    applyAutoScrape();
+  });
+}
+
+function buildAutoScrapeQueue() {
+  var mode = (document.getElementById('autoScrapeMode') || {}).value
+          || localStorage.getItem('auto_scrape_mode') || 'smart';
+
+  var losses  = state.products.filter(function(p){ return p.status === 'lose' && p.url; });
+  var wins    = state.products.filter(function(p){ return p.status === 'win'  && p.url; });
+  var unknown = state.products.filter(function(p){ return p.status !== 'lose' && p.status !== 'win' && p.url; });
+
+  // Sort each group: oldest lastChecked first so stale data gets refreshed first
+  function byAge(a, b) {
+    return new Date(a.lastChecked||0) - new Date(b.lastChecked||0);
+  }
+  losses.sort(byAge);
+  wins.sort(byAge);
+  unknown.sort(byAge);
+
+  var urls;
+  if (mode === 'losses') {
+    urls = losses.map(function(p){ return p.url; });
+    if (!urls.length) {
+      // Nothing to lose — scrape everything to refresh
+      urls = state.products.filter(function(p){ return p.url; }).sort(byAge).map(function(p){ return p.url; });
+    }
+  } else if (mode === 'all') {
+    urls = state.products.filter(function(p){ return p.url; }).sort(byAge).map(function(p){ return p.url; });
+  } else {
+    // Smart: losses first, then unknown, then wins — all included
+    urls = losses.concat(unknown).concat(wins).map(function(p){ return p.url; });
+  }
+
+  return urls.filter(function(u, i, a){ return u && a.indexOf(u) === i; }); // dedupe
 }
 
 function applyAutoScrape() {
@@ -3681,23 +3731,62 @@ function applyAutoScrape() {
   var sel = document.getElementById('autoScrapeInterval');
   var statusEl = document.getElementById('autoScrapeStatus');
   var mins = sel ? parseInt(sel.value) : 0;
-  if (!mins) { if (statusEl) statusEl.textContent = ''; return; }
-  var showNext = function() {
+  if (!mins) {
+    if (statusEl) statusEl.textContent = 'Auto-scrape off.';
+    return;
+  }
+
+  function showStatus(nextMs) {
     if (!statusEl) return;
-    statusEl.textContent = 'Next auto-scrape: ' + new Date(Date.now() + mins*60000).toLocaleTimeString();
-  };
-  showNext();
+    var losses = state.products.filter(function(p){ return p.status === 'lose'; }).length;
+    var wins   = state.products.filter(function(p){ return p.status === 'win';  }).length;
+    var mode   = (document.getElementById('autoScrapeMode')||{}).value || 'smart';
+    var modeLabel = mode === 'losses' ? 'losses only' : mode === 'all' ? 'all products' : 'smart (losses first)';
+    statusEl.innerHTML =
+      '⏰ Next run: <strong>' + new Date(nextMs).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) + '</strong>' +
+      ' &nbsp;·&nbsp; Mode: ' + modeLabel +
+      '<br>Queue will have <span style="color:#ff4d6d">' + losses + ' losses</span> + <span style="color:var(--accent)">' + wins + ' wins</span>';
+  }
+
+  var nextRun = Date.now() + mins * 60000;
+  showStatus(nextRun);
+
   _autoScrapeTimer = setInterval(function() {
-    var urls = state.products.map(function(p){ return p.url; }).filter(Boolean);
-    if (!urls.length || !state.extReady) return;
+    _autoScrapeRun++;
+    if (!state.extReady) {
+      log('info', '⏸ Auto-scrape skipped — extension offline.');
+      nextRun = Date.now() + mins * 60000;
+      showStatus(nextRun);
+      return;
+    }
+
+    var urls = buildAutoScrapeQueue();
+    if (!urls.length) {
+      log('info', '⏸ Auto-scrape skipped — no products with URLs.');
+      nextRun = Date.now() + mins * 60000;
+      showStatus(nextRun);
+      return;
+    }
+
+    var losses  = state.products.filter(function(p){ return p.status === 'lose'; }).length;
+    var wins    = state.products.filter(function(p){ return p.status === 'win';  }).length;
+    var mode    = (document.getElementById('autoScrapeMode')||{}).value || 'smart';
+
+    log('info', '🤖 Auto-scrape #' + _autoScrapeRun + ' started — ' + urls.length + ' products' +
+      (mode === 'smart' ? ' (' + losses + ' losses first, then ' + wins + ' wins)' : ' [' + mode + ']'));
+
     document.getElementById('urlInput').value = urls.join('\n');
     var concurrency = parseInt((document.getElementById('scrapeParallel')||{}).value||'3');
     window.postMessage({ type: 'START_QUEUE', urls: urls, concurrency: concurrency }, '*');
     scrapeQueue = urls; scrapeIdx = 0; state.scraping = true;
     document.getElementById('progressSection').style.display = 'block';
     updateProgress(0, urls.length);
-    log('info', '🕐 Auto-scrape started (' + urls.length + ' products)');
-    showNext();
+
+    // Switch to scraper tab so user can see progress
+    switchTab('scraper');
+
+    nextRun = Date.now() + mins * 60000;
+    showStatus(nextRun);
   }, mins * 60000);
 }
 
