@@ -1168,6 +1168,15 @@ function loadProducts() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) state.products = JSON.parse(raw);
   } catch(e) { state.products = []; }
+  // Backfill max_price for any product that has min but no max
+  var changed = false;
+  state.products.forEach(function(p) {
+    if (!p.max_price && p.min_price > 0) {
+      p.max_price = Math.round(p.min_price * 1.20);
+      changed = true;
+    }
+  });
+  if (changed) saveProducts();
 }
 
 function getMySellerName() {
@@ -1770,6 +1779,16 @@ function renderProducts() {
     const raw = localStorage.getItem('makro_listings');
     if (raw) JSON.parse(raw).forEach(l => { listingsMap[l.fsn] = l; });
   } catch(e) {}
+
+  // Auto-populate max_price for any product missing it
+  var maxNeedsSave = false;
+  state.products.forEach(function(p) {
+    if (!p.max_price && p.min_price > 0) {
+      p.max_price = Math.round(p.min_price * 1.20);
+      maxNeedsSave = true;
+    }
+  });
+  if (maxNeedsSave) saveProducts();
 
   let prods = state.products.filter(p => {
     if (filter === 'win' && p.status !== 'win') return false;
