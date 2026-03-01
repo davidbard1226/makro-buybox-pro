@@ -1182,6 +1182,16 @@ function loadProducts() {
   // ── DEDUPLICATE by FSN: keep the richest entry (most fields filled) ──────
   state.products = deduplicateProducts(state.products);
 
+  // ── STRIP bad itm... values incorrectly stored as SKU from old scraper ───
+  var skuFixed = false;
+  state.products.forEach(function(p) {
+    if (p.sku && (p.sku.startsWith('itm') || p.sku.startsWith('ITM'))) {
+      p.sku = '';
+      skuFixed = true;
+    }
+  });
+  if (skuFixed) saveProducts();
+
   // Backfill max_price for any product that has min but no max
   var changed = false;
   state.products.forEach(function(p) {
@@ -1223,7 +1233,17 @@ function deduplicateProducts(products) {
             hSeen[h.ts] = true; return true;
           }).sort(function(a,b){ return new Date(a.ts)-new Date(b.ts); }).slice(-30);
         } else if (!existing[f] && p[f]) {
-          existing[f] = p[f]; // fill in missing fields from duplicate
+          // SKU special case: prefer a real SKU over an itm... placeholder
+          if (f === 'sku') {
+            var eBad = !existing.sku || /^itm/i.test(existing.sku);
+            var pGood = p.sku && !/^itm/i.test(p.sku);
+            if (eBad && pGood) existing.sku = p.sku;
+          } else {
+            existing[f] = p[f]; // fill in missing fields from duplicate
+          }
+        } else if (f === 'sku' && /^itm/i.test(existing.sku) && p.sku && !/^itm/i.test(p.sku)) {
+          // Overwrite bad itm SKU with a real one even if existing field wasn't empty
+          existing.sku = p.sku;
         } else if (f === 'lastChecked' && p[f] > (existing[f]||'')) {
           // Keep the more recent scrape data
           existing[f] = p[f];
