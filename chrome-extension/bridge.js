@@ -49,6 +49,10 @@
   }
 
   // ── SYNC chrome.storage → dashboard localStorage ──────────────────────────
+  function getDeletedSet() {
+    try { return JSON.parse(localStorage.getItem('makro_deleted') || '[]'); } catch(e) { return []; }
+  }
+
   function syncToLocalStorage() {
     safe(function() {
       chrome.storage.local.get(['buybox_products'], function(r) {
@@ -57,6 +61,9 @@
           const raw = r.buybox_products || [];
           if (raw.length === 0) return;
 
+          // Load deleted blocklist — URLs and FSNs the user has explicitly removed
+          const deleted = getDeletedSet();
+
           let existing = [];
           try {
             const saved = localStorage.getItem(STORAGE_KEY);
@@ -64,11 +71,15 @@
           } catch(e) {}
 
           raw.forEach(function(p) {
-            const url = p.url;
+            const url = p.url || '';
+            const fsn = (p.fsn || '').toUpperCase();
+
+            // Skip if this URL or FSN was explicitly deleted by the user
+            if (deleted.includes(url) || (fsn && deleted.includes(fsn))) return;
+
             const idx = existing.findIndex(function(e) { return e.url === url; });
             const seller = p.buyBoxSeller || 'Unknown Seller';
             const price  = parseFloat(p.buyBoxPrice) || 0;
-            const fsn    = p.fsn || '';
             const sku    = p.sku || '';
 
             const entry = {
@@ -108,6 +119,25 @@
   // ── MESSAGE HANDLER ───────────────────────────────────────────────────────
   window.addEventListener('message', function(ev) {
     if (!ev.data || !ev.data.type || dead) return;
+
+    if (ev.data.type === 'DELETE_PRODUCT') {
+      // Add URL and FSN to the deleted blocklist so sync never restores it
+      safe(function() {
+        const deleted = JSON.parse(localStorage.getItem('makro_deleted') || '[]');
+        if (ev.data.url && !deleted.includes(ev.data.url)) deleted.push(ev.data.url);
+        if (ev.data.fsn && !deleted.includes(ev.data.fsn)) deleted.push(ev.data.fsn.toUpperCase());
+        localStorage.setItem('makro_deleted', JSON.stringify(deleted));
+
+        // Also remove from chrome.storage.local so it won't resurface
+        chrome.storage.local.get(['buybox_products'], function(r) {
+          if (chrome.runtime.lastError) return;
+          const prods = (r.buybox_products || []).filter(function(p) {
+            return p.url !== ev.data.url && (p.fsn || '').toUpperCase() !== (ev.data.fsn || '').toUpperCase();
+          });
+          chrome.storage.local.set({ buybox_products: prods });
+        });
+      });
+    }
 
     if (ev.data.type === 'SAVE_PORTAL_FILE') {
       safe(function() {

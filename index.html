@@ -2062,7 +2062,18 @@ function deleteSelected() {
     .filter(i => !isNaN(i) && i >= 0 && i < state.products.length);
   if (idxs.length === 0) { alert('Tick at least one product to delete.'); return; }
   if (!confirm('Delete ' + idxs.length + ' selected product(s)?')) return;
-  // Sort descending so splicing doesn't shift indexes
+
+  // Add all to deleted blocklist
+  var deleted = [];
+  try { deleted = JSON.parse(localStorage.getItem('makro_deleted') || '[]'); } catch(e) {}
+  idxs.forEach(function(i) {
+    var p = state.products[i];
+    if (p.url && !deleted.includes(p.url)) deleted.push(p.url);
+    if (p.fsn && !deleted.includes(p.fsn.toUpperCase())) deleted.push(p.fsn.toUpperCase());
+    window.postMessage({ type: 'DELETE_PRODUCT', url: p.url, fsn: p.fsn || '' }, '*');
+  });
+  localStorage.setItem('makro_deleted', JSON.stringify(deleted));
+
   idxs.sort((a,b) => b-a).forEach(i => state.products.splice(i, 1));
   saveProducts(); renderProducts(); updateProductCount(); renderDashboard();
   document.getElementById('selectAll').checked = false;
@@ -2278,8 +2289,20 @@ function deleteProduct(idx) {
     alert('Could not find that product — try refreshing the page.');
     return;
   }
-  var title = (state.products[idx].title || state.products[idx].url || 'this product').slice(0, 60);
+  var p = state.products[idx];
+  var title = (p.title || p.url || 'this product').slice(0, 60);
   if (!confirm('Delete "' + title + '"?')) return;
+
+  // Write URL and FSN to deleted blocklist so bridge never restores it
+  var deleted = [];
+  try { deleted = JSON.parse(localStorage.getItem('makro_deleted') || '[]'); } catch(e) {}
+  if (p.url  && !deleted.includes(p.url))  deleted.push(p.url);
+  if (p.fsn  && !deleted.includes(p.fsn.toUpperCase())) deleted.push(p.fsn.toUpperCase());
+  localStorage.setItem('makro_deleted', JSON.stringify(deleted));
+
+  // Tell bridge to remove from chrome.storage.local too
+  window.postMessage({ type: 'DELETE_PRODUCT', url: p.url, fsn: p.fsn || '' }, '*');
+
   state.products.splice(idx, 1);
   saveProducts();
   renderProducts();
@@ -2990,10 +3013,16 @@ document.getElementById('sellerNameConfig').addEventListener('change', function(
     if (!raw) return;
     try {
       const fresh = deduplicateProducts(JSON.parse(raw));
-      if (fresh.length !== lastProductCount || currentScrape !== lastScrapeTime) {
-        lastProductCount = fresh.length;
+      // Filter out any products the user has explicitly deleted
+      var deletedSet = [];
+      try { deletedSet = JSON.parse(localStorage.getItem('makro_deleted') || '[]'); } catch(e) {}
+      const cleaned = deletedSet.length ? fresh.filter(function(p) {
+        return !deletedSet.includes(p.url) && !deletedSet.includes((p.fsn||'').toUpperCase());
+      }) : fresh;
+      if (cleaned.length !== lastProductCount || currentScrape !== lastScrapeTime) {
+        lastProductCount = cleaned.length;
         lastScrapeTime = currentScrape;
-        state.products = fresh;
+        state.products = cleaned;
         reEvaluateStatuses();
         saveProducts();
         updateProductCount();
