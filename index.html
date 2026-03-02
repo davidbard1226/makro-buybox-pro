@@ -3876,6 +3876,32 @@ function applyAutoScrape() {
     showStatus(nextRun);
   }, 1000);
 
+  // If overdue (last scrape > interval ago), fire once after 8s to let extension connect
+  var _lastScrapeTs = localStorage.getItem('makro_last_scrape');
+  var _msSinceLast = _lastScrapeTs ? (Date.now() - new Date(_lastScrapeTs).getTime()) : Infinity;
+  if (_msSinceLast >= mins * 60000) {
+    setTimeout(function() {
+      nextRun = Date.now() + mins * 60000;
+      _autoScrapeTimer && window.postMessage && (function() {
+        if (!state.extReady) { log('info', '⏸ Auto-scrape skipped — extension offline.'); return; }
+        var _urls = buildAutoScrapeQueue();
+        if (!_urls.length) { log('info', '⏸ Auto-scrape skipped — no products.'); return; }
+        _autoScrapeRun++;
+        log('info', '🤖 Auto-scrape #' + _autoScrapeRun + ' (overdue run) — ' + _urls.length + ' products');
+        document.getElementById('urlInput').value = _urls.join('\n');
+        var _c = parseInt((document.getElementById('scrapeParallel')||{}).value||'3');
+        window.postMessage({ type: 'START_QUEUE', urls: _urls, concurrency: _c }, '*');
+        scrapeQueue = _urls; scrapeIdx = 0; state.scraping = true;
+        document.getElementById('progressSection').style.display = 'block';
+        updateProgress(0, _urls.length);
+        switchTab('scraper');
+        showStatus(nextRun);
+      })();
+    }, 8000);
+    nextRun = Date.now() + 8000;
+    showStatus(nextRun);
+  }
+
   _autoScrapeTimer = setInterval(function() {
     _autoScrapeRun++;
     if (!state.extReady) {
