@@ -786,21 +786,18 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
             </div>
 
             <div class="config-field">
-              <label>✈️ Telegram Alerts</label>
-              <input class="config-input" id="tgBotToken" placeholder="Bot Token (from @BotFather)" style="margin-bottom:6px">
-              <input class="config-input" id="tgChatId" placeholder="Your Chat ID" style="margin-bottom:6px">
-              <div style="font-size:10px;color:var(--muted);line-height:1.7;margin-bottom:6px">
-                <b style="color:var(--text)">Setup (2 min):</b><br>
-                1. Open Telegram → search <b>@BotFather</b> → send <code>/newbot</code> → copy your <b>Bot Token</b><br>
-                2. Send any message to your new bot<br>
-                3. Open <span style="color:var(--accent)">api.telegram.org/bot<b>TOKEN</b>/getUpdates</span> → copy your <b>chat id</b><br>
+              <label>📱 WhatsApp Alerts (via CallMeBot)</label>
+              <input class="config-input" id="waPhone" placeholder="+27821234567" style="margin-bottom:6px">
+              <input class="config-input" id="waApiKey" placeholder="CallMeBot API key" style="margin-bottom:4px">
+              <div style="font-size:10px;color:var(--muted);line-height:1.6">
+                Get free API key: wa.me/34693281308 → send "I allow callmebot to send me messages"<br>
                 Alerts fire when you <span style="color:#ff9500">lose the BuyBox</span> after a scrape.
               </div>
-              <div style="display:flex;gap:8px;align-items:center">
+              <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
                 <label style="font-size:11px;display:flex;align-items:center;gap:4px;cursor:pointer;color:var(--muted)">
-                  <input type="checkbox" id="tgEnabled" style="width:14px;height:14px"> Enable alerts
+                  <input type="checkbox" id="waEnabled" style="width:14px;height:14px"> Enable alerts
                 </label>
-                <button class="action-btn" style="font-size:10px;color:var(--accent)" onclick="testTelegram()">📨 Test</button>
+                <button class="action-btn" style="font-size:10px;color:var(--accent)" onclick="testWhatsApp()">Test</button>
               </div>
             </div>
 
@@ -1559,7 +1556,7 @@ function handleQueueProgress(d) {
     });
 
     // ── WHATSAPP ALERT on BuyBox loss ────────────────────────────────────
-    if (status === 'lose') sendTelegramAlert(prod, price, seller);
+    if (status === 'lose') sendWhatsAppAlert(prod, price, seller);
 
     log(isWin ? 'ok' : 'err',
       (isWin ? '✓ WIN ' : '✗ LOSE') + ' | R' + price.toFixed(2) + ' | ' + seller.slice(0,30) +
@@ -2991,7 +2988,7 @@ document.getElementById('sellerNameConfig').addEventListener('change', function(
     }
   });
 
-  loadTgSettings();
+  loadWaSettings();
   loadMinProfitSetting();
   initAutoScrape();
 
@@ -3373,68 +3370,27 @@ function sendFileToPortal() {
 }
 
 // ============================================================
-// TELEGRAM ALERTS
+// WHATSAPP ALERTS via CallMeBot
 // ============================================================
-function saveTgSettings() {
-  var token  = (document.getElementById('tgBotToken') || {}).value || '';
-  var chatId = (document.getElementById('tgChatId')   || {}).value || '';
-  var enabled= !!(document.getElementById('tgEnabled') || {}).checked;
-  if (token)  localStorage.setItem('tg_token',   token);
-  if (chatId) localStorage.setItem('tg_chat_id', chatId);
-  localStorage.setItem('tg_enabled', enabled ? '1' : '0');
+function saveWaSettings() {
+  var phone  = (document.getElementById('waPhone')  || {}).value || '';
+  var apiKey = (document.getElementById('waApiKey') || {}).value || '';
+  var enabled= !!(document.getElementById('waEnabled') || {}).checked;
+  if (phone)  localStorage.setItem('wa_phone',   phone);
+  if (apiKey) localStorage.setItem('wa_apikey',  apiKey);
+  localStorage.setItem('wa_enabled', enabled ? '1' : '0');
 }
 
-function loadTgSettings() {
-  var tEl = document.getElementById('tgBotToken');
-  var cEl = document.getElementById('tgChatId');
-  var eEl = document.getElementById('tgEnabled');
-  if (tEl) tEl.value   = localStorage.getItem('tg_token')   || '';
-  if (cEl) cEl.value   = localStorage.getItem('tg_chat_id') || '';
-  if (eEl) eEl.checked = localStorage.getItem('tg_enabled') === '1';
+function loadWaSettings() {
+  var pEl = document.getElementById('waPhone');
+  var aEl = document.getElementById('waApiKey');
+  var eEl = document.getElementById('waEnabled');
+  if (pEl) pEl.value   = localStorage.getItem('wa_phone')   || '';
+  if (aEl) aEl.value   = localStorage.getItem('wa_apikey')  || '';
+  if (eEl) eEl.checked = localStorage.getItem('wa_enabled') === '1';
 }
 
-var _tgLastAlert = {};
-function sendTelegramAlert(prod, buyboxPrice, seller) {
-  if (localStorage.getItem('tg_enabled') !== '1') return;
-  var token  = localStorage.getItem('tg_token')   || '';
-  var chatId = localStorage.getItem('tg_chat_id') || '';
-  if (!token || !chatId) return;
-  var key = prod.fsn || prod.url;
-  var now = Date.now();
-  if (_tgLastAlert[key] && now - _tgLastAlert[key] < 30 * 60 * 1000) return;
-  _tgLastAlert[key] = now;
-  var msg =
-    '🔴 *BuyBox LOST!*\n' +
-    (prod.title || prod.url || '').slice(0, 60) + '\n\n' +
-    '🏷 Competitor: ' + seller + '\n' +
-    '💸 Their price: R' + buyboxPrice.toFixed(2) + '\n' +
-    (prod.pending_price ? '✅ Auto-repriced to: R' + prod.pending_price + '\n' : '') +
-    '🕐 ' + new Date().toLocaleTimeString('en-ZA');
-  fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text: msg, parse_mode: 'Markdown' })
-  }).catch(function(){});
-}
-
-function testTelegram() {
-  saveTgSettings();
-  var token  = localStorage.getItem('tg_token')   || '';
-  var chatId = localStorage.getItem('tg_chat_id') || '';
-  if (!token || !chatId) { alert('Enter your Bot Token and Chat ID first.'); return; }
-  fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text: '✅ *Makro BuyBox Pro* — Telegram alerts are working!', parse_mode: 'Markdown' })
-  })
-  .then(function(r){ return r.json(); })
-  .then(function(j){ alert(j.ok ? '✅ Message sent! Check Telegram.' : '❌ Failed: ' + (j.description || 'Check token and chat ID')); })
-  .catch(function(e){ alert('❌ Error: ' + e.message); });
-}
-
-document.addEventListener('change', function(e) {
-  if (e.target && ['tgBotToken','tgChatId','tgEnabled'].includes(e.target.id)) saveTgSettings();
-});
+function updateMinProfitDisplay(val) {
   var n = parseInt(val);
   var el = document.getElementById('minProfitDisplay');
   if (el) el.textContent = n + '%';
@@ -3449,7 +3405,46 @@ function loadMinProfitSetting() {
   if (display) display.textContent = saved + '%';
 }
 
-function updateMinProfitDisplay(val) {
+var _waLastSent = {};
+function sendWhatsAppAlert(prod, buyboxPrice, seller) {
+  if (localStorage.getItem('wa_enabled') !== '1') return;
+  var phone  = localStorage.getItem('wa_phone')  || '';
+  var apiKey = localStorage.getItem('wa_apikey') || '';
+  if (!phone || !apiKey) return;
+  var key = prod.fsn || prod.url;
+  var now = Date.now();
+  if (_waLastSent[key] && now - _waLastSent[key] < 30 * 60 * 1000) return;
+  _waLastSent[key] = now;
+  var title = (prod.title || prod.url || '').slice(0, 50);
+  var msg = '🔴 BuyBox LOST!\n' + title + '\nCompetitor: ' + seller.slice(0,30) +
+    '\nTheir price: R' + buyboxPrice.toFixed(2) +
+    (prod.pending_price ? '\nAuto-repriced to: R' + prod.pending_price : '') +
+    '\nTime: ' + new Date().toLocaleTimeString();
+  var url = 'https://api.callmebot.com/whatsapp.php?phone=' + encodeURIComponent(phone) +
+            '&text=' + encodeURIComponent(msg) + '&apikey=' + encodeURIComponent(apiKey);
+  fetch(url).catch(function(){});
+}
+
+function testWhatsApp() {
+  saveWaSettings();
+  var phone  = localStorage.getItem('wa_phone')  || '';
+  var apiKey = localStorage.getItem('wa_apikey') || '';
+  if (!phone || !apiKey) { alert('Enter your phone number and API key first.'); return; }
+  var url = 'https://api.callmebot.com/whatsapp.php?phone=' + encodeURIComponent(phone) +
+            '&text=' + encodeURIComponent('✅ Makro BuyBox Pro: WhatsApp alerts working!') +
+            '&apikey=' + encodeURIComponent(apiKey);
+  fetch(url)
+    .then(function(r){ alert(r.ok ? '✅ Test message sent! Check WhatsApp.' : '❌ Failed — status: ' + r.status + '\nCheck phone format (+27...) and API key.'); })
+    .catch(function(){ alert('❌ Network error. Make sure the extension allows external requests.'); });
+}
+
+document.addEventListener('change', function(e) {
+  if (e.target && ['waPhone','waApiKey','waEnabled'].includes(e.target.id)) saveWaSettings();
+});
+
+// ============================================================
+// PRICE CHANGE LOG
+// ============================================================
 var PRICE_LOG_KEY = 'makro_price_log';
 
 function getPriceLog() {
@@ -3785,16 +3780,9 @@ function initAutoScrape() {
   var sel = document.getElementById('autoScrapeInterval');
   var modeEl = document.getElementById('autoScrapeMode');
   if (!sel) return;
-
-  // Migrate old 'off' default (0) to new default (60 min)
-  var saved = localStorage.getItem('auto_scrape_interval');
-  if (!saved || saved === '0') saved = '60';
-  localStorage.setItem('auto_scrape_interval', saved);
-
-  sel.value = saved;
+  sel.value  = localStorage.getItem('auto_scrape_interval') || '60';
   if (modeEl) modeEl.value = localStorage.getItem('auto_scrape_mode') || 'smart';
   applyAutoScrape();
-
   sel.addEventListener('change', function() {
     localStorage.setItem('auto_scrape_interval', sel.value);
     applyAutoScrape();
@@ -3853,54 +3841,15 @@ function applyAutoScrape() {
     var losses = state.products.filter(function(p){ return p.status === 'lose'; }).length;
     var wins   = state.products.filter(function(p){ return p.status === 'win';  }).length;
     var mode   = (document.getElementById('autoScrapeMode')||{}).value || 'smart';
-    var modeLabel = mode === 'losses' ? 'losses only' : mode === 'all' ? 'all products' : 'losses first';
-    var secsLeft = Math.max(0, Math.round((nextMs - Date.now()) / 1000));
-    var minsLeft = Math.floor(secsLeft / 60);
-    var secsPart = secsLeft % 60;
-    var countdown = minsLeft > 0
-      ? minsLeft + 'm ' + secsPart + 's'
-      : secsPart + 's';
+    var modeLabel = mode === 'losses' ? 'losses only' : mode === 'all' ? 'all products' : 'smart (losses first)';
     statusEl.innerHTML =
-      '🟢 Running · Next in <strong style="color:var(--accent)">' + countdown + '</strong>' +
-      ' &nbsp;·&nbsp; ' + modeLabel +
-      '<br><span style="color:#ff4d6d">' + losses + ' losing</span> · <span style="color:var(--accent)">' + wins + ' winning</span> · ' +
-      (losses + wins) + ' total';
+      '⏰ Next run: <strong>' + new Date(nextMs).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) + '</strong>' +
+      ' &nbsp;·&nbsp; Mode: ' + modeLabel +
+      '<br>Queue will have <span style="color:#ff4d6d">' + losses + ' losses</span> + <span style="color:var(--accent)">' + wins + ' wins</span>';
   }
 
   var nextRun = Date.now() + mins * 60000;
   showStatus(nextRun);
-
-  // Live countdown ticker — updates every second
-  var _countdownTick = setInterval(function() {
-    if (!_autoScrapeTimer) { clearInterval(_countdownTick); return; }
-    showStatus(nextRun);
-  }, 1000);
-
-  // If overdue (last scrape > interval ago), fire once after 8s to let extension connect
-  var _lastScrapeTs = localStorage.getItem('makro_last_scrape');
-  var _msSinceLast = _lastScrapeTs ? (Date.now() - new Date(_lastScrapeTs).getTime()) : Infinity;
-  if (_msSinceLast >= mins * 60000) {
-    setTimeout(function() {
-      nextRun = Date.now() + mins * 60000;
-      _autoScrapeTimer && window.postMessage && (function() {
-        if (!state.extReady) { log('info', '⏸ Auto-scrape skipped — extension offline.'); return; }
-        var _urls = buildAutoScrapeQueue();
-        if (!_urls.length) { log('info', '⏸ Auto-scrape skipped — no products.'); return; }
-        _autoScrapeRun++;
-        log('info', '🤖 Auto-scrape #' + _autoScrapeRun + ' (overdue run) — ' + _urls.length + ' products');
-        document.getElementById('urlInput').value = _urls.join('\n');
-        var _c = parseInt((document.getElementById('scrapeParallel')||{}).value||'3');
-        window.postMessage({ type: 'START_QUEUE', urls: _urls, concurrency: _c }, '*');
-        scrapeQueue = _urls; scrapeIdx = 0; state.scraping = true;
-        document.getElementById('progressSection').style.display = 'block';
-        updateProgress(0, _urls.length);
-        switchTab('scraper');
-        showStatus(nextRun);
-      })();
-    }, 8000);
-    nextRun = Date.now() + 8000;
-    showStatus(nextRun);
-  }
 
   _autoScrapeTimer = setInterval(function() {
     _autoScrapeRun++;
