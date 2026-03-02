@@ -1,4 +1,4 @@
-// background.js v7 — parallel tab scraping (up to 3 concurrent tabs)
+// background.js v8 — up to 5 concurrent tabs, optimised delays
 
 chrome.runtime.onInstalled.addListener(function() {
   chrome.storage.local.get(['buybox_products'], function(r) {
@@ -16,9 +16,9 @@ let scrapeWinId  = null;   // one shared window all tabs live in
 // activeTabs: Map<tabId, { url, timeoutId, waitingForLoad }>
 let activeTabs   = new Map();
 
-// ── HUMAN-LIKE DELAY: 4-9 seconds per slot ───────────────────────────────
+// ── HUMAN-LIKE DELAY: 2-4 seconds per slot ───────────────────────────────
 function humanDelay() {
-  return 4000 + Math.floor(Math.random() * 5000);
+  return 2000 + Math.floor(Math.random() * 2000);
 }
 
 // ── MESSAGE HANDLER ───────────────────────────────────────────────────────
@@ -30,7 +30,7 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
     queue        = [...(msg.urls || [])];
     totalUrls    = queue.length;
     doneCount    = 0;
-    concurrency  = Math.min(Math.max(parseInt(msg.concurrency) || 1, 1), 3);
+    concurrency  = Math.min(Math.max(parseInt(msg.concurrency) || 1, 1), 5);
     active       = true;
     scrapeWinId  = null;
     activeTabs.clear();
@@ -104,7 +104,7 @@ function openScrapeWindow() {
     for (let i = 1; i < concurrency; i++) {
       if (queue.length === 0) break;
       const url = queue.shift();
-      const delay = i * 1500;   // stagger by 1.5s per slot
+      const delay = i * 800;   // stagger by 0.8s per slot
       setTimeout(function() {
         if (!active || !scrapeWinId) return;
         chrome.tabs.create({ windowId: scrapeWinId, url: url, active: false }, function(tab) {
