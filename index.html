@@ -1319,7 +1319,25 @@ window.addEventListener('message', function(ev) {
   }
 
   if (d.type === 'PRODUCTS_UPDATED') {
+    // ── Preserve manually-set fields before reloading from localStorage ──
+    // Bridge writes scraped data which won't have SKU/cost/min/max the user set manually.
+    var memMap = {};
+    state.products.forEach(function(p) {
+      var key = (p.fsn||'').toUpperCase() || p.url;
+      if (key) memMap[key] = p;
+    });
     loadProducts();
+    // Merge manual fields back in — never let a bridge write wipe them
+    state.products.forEach(function(p) {
+      var key = (p.fsn||'').toUpperCase() || p.url;
+      var mem = memMap[key];
+      if (!mem) return;
+      if (mem.sku && !/^itm/i.test(mem.sku) && (!p.sku || /^itm/i.test(p.sku))) p.sku = mem.sku;
+      if (mem.cost_price > 0 && !(p.cost_price > 0)) { p.cost_price = mem.cost_price; p.cost_supplier = mem.cost_supplier; }
+      if (mem.min_price > 0 && !(p.min_price > 0)) p.min_price = mem.min_price;
+      if (mem.max_price > 0 && !(p.max_price > 0)) p.max_price = mem.max_price;
+    });
+    saveProducts();
     reEvaluateStatuses();
     saveProducts();
     updateProductCount();
