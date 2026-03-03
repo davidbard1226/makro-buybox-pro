@@ -637,14 +637,24 @@
           </div>
         </div>
 
-        <!-- RECENT ACTIVITY -->
-        <div class="card">
-          <div class="card-title">Recent Activity</div>
-          <div id="recentList">
-            <div class="empty-state" style="padding:20px">
-              <div class="empty-text">No activity yet.</div>
+        <!-- ACTION PANEL: Easy Wins + Today's Performance -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+
+          <!-- EASY WINS -->
+          <div class="card">
+            <div class="card-title" style="display:flex;align-items:center;justify-content:space-between">
+              <span>🎯 Easy Wins — Losses Within R50</span>
+              <span id="easyWinCount" style="font-family:'Space Mono',monospace;font-size:11px;color:var(--accent)"></span>
             </div>
+            <div id="easyWinList"><div style="color:var(--muted);font-size:13px;padding:12px 0">No close losses yet — scrape products to see opportunities.</div></div>
           </div>
+
+          <!-- TODAY'S PERFORMANCE -->
+          <div class="card">
+            <div class="card-title">📅 Today's Performance</div>
+            <div id="todayPerf"><div style="color:var(--muted);font-size:13px;padding:12px 0">Scrape products today to see performance.</div></div>
+          </div>
+
         </div>
       </div>
 
@@ -1863,6 +1873,108 @@ function renderDashboard() {
         <div style="font-family:'Space Mono',monospace;font-size:13px;font-weight:700;color:${color}">R${(p.buybox_price||0).toFixed(2)}</div>
       </div>`;
     }).join('');
+  }
+
+  // ── EASY WINS: losses where gap to buybox ≤ R50 ─────────────────────────
+  var ewListings = getListings();
+  var listMap  = {};
+  ewListings.forEach(function(l) { if (l.fsn) listMap[l.fsn] = l; });
+
+  var easyWins = [];
+  prods.forEach(function(p) {
+    if (p.status !== 'lose' || !p.buybox_price) return;
+    var l = listMap[p.fsn];
+    var myPrice = l ? l.myPrice : null;
+    if (!myPrice) return;
+    var gap = myPrice - p.buybox_price;
+    if (gap > 0 && gap <= 50) easyWins.push({ p: p, myPrice: myPrice, gap: gap });
+  });
+  easyWins.sort(function(a, b) { return a.gap - b.gap; });
+
+  var ewEl = document.getElementById('easyWinList');
+  var ewCount = document.getElementById('easyWinCount');
+  if (ewCount) ewCount.textContent = easyWins.length ? easyWins.length + ' opportunities' : '';
+  if (ewEl) {
+    if (!easyWins.length) {
+      ewEl.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:12px 0">No close losses — either you\'re winning or gap is >R50.</div>';
+    } else {
+      ewEl.innerHTML = easyWins.slice(0, 6).map(function(e) {
+        var beatPrice = e.p.buybox_price - 1;
+        var minP = e.p.min_price || 0;
+        var canBeat = beatPrice >= minP;
+        return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + escHtml(e.p.title) + '">' + escHtml((e.p.title||'').slice(0,38)) + '</div>' +
+            '<div style="font-size:11px;color:var(--muted);margin-top:2px">' +
+              'My: <span style="color:#ff9500">R' + e.myPrice.toFixed(0) + '</span> · ' +
+              'BuyBox: <span style="color:var(--accent)">R' + e.p.buybox_price.toFixed(0) + '</span> · ' +
+              'Gap: <span style="color:#ffd60a">R' + e.gap.toFixed(0) + '</span>' +
+            '</div>' +
+          '</div>' +
+          '<div style="text-align:right;flex-shrink:0">' +
+            (canBeat
+              ? '<span style="font-family:monospace;font-size:12px;color:var(--accent);font-weight:700">→ R' + beatPrice + '</span>'
+              : '<span style="font-size:10px;color:var(--muted)">below min<br>R' + minP.toFixed(0) + '</span>') +
+          '</div>' +
+        '</div>';
+      }).join('');
+    }
+  }
+
+  // ── TODAY'S PERFORMANCE ───────────────────────────────────────────────────
+  var todayStr = new Date().toISOString().slice(0, 10);
+  var todayWins = 0, todayLoses = 0, todayChecked = 0;
+  var competitorToday = {};
+  prods.forEach(function(p) {
+    (p.history || []).forEach(function(h) {
+      if (!h.ts || h.ts.slice(0, 10) !== todayStr) return;
+      todayChecked++;
+      if (h.status === 'win') todayWins++;
+      else if (h.status === 'lose') {
+        todayLoses++;
+        if (h.seller && h.seller !== 'Unknown Seller') {
+          competitorToday[h.seller] = (competitorToday[h.seller] || 0) + 1;
+        }
+      }
+    });
+  });
+
+  var topComp = Object.entries(competitorToday).sort(function(a, b) { return b[1] - a[1]; }).slice(0, 3);
+  var todayRate = todayChecked ? Math.round(todayWins / todayChecked * 100) : null;
+
+  var tpEl = document.getElementById('todayPerf');
+  if (tpEl) {
+    if (!todayChecked) {
+      tpEl.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:12px 0">No scrapes yet today. Run the scraper to see today\'s results.</div>';
+    } else {
+      var rateCol = todayRate >= 50 ? 'var(--accent)' : todayRate >= 25 ? '#ffd60a' : '#ff4d6d';
+      tpEl.innerHTML =
+        '<div style="display:flex;gap:20px;margin-bottom:14px">' +
+          '<div style="text-align:center">' +
+            '<div style="font-family:\'Bebas Neue\',sans-serif;font-size:36px;color:var(--accent);line-height:1">' + todayWins + '</div>' +
+            '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Wins</div>' +
+          '</div>' +
+          '<div style="text-align:center">' +
+            '<div style="font-family:\'Bebas Neue\',sans-serif;font-size:36px;color:#ff4d6d;line-height:1">' + todayLoses + '</div>' +
+            '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Losses</div>' +
+          '</div>' +
+          '<div style="text-align:center">' +
+            '<div style="font-family:\'Bebas Neue\',sans-serif;font-size:36px;color:' + rateCol + ';line-height:1">' + (todayRate !== null ? todayRate + '%' : '—') + '</div>' +
+            '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Win Rate</div>' +
+          '</div>' +
+          '<div style="text-align:center">' +
+            '<div style="font-family:\'Bebas Neue\',sans-serif;font-size:36px;color:var(--muted);line-height:1">' + todayChecked + '</div>' +
+            '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Checked</div>' +
+          '</div>' +
+        '</div>' +
+        (topComp.length ? '<div style="font-size:11px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px">Top competitors stealing today</div>' +
+          topComp.map(function(c) {
+            return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">' +
+              '<div style="flex:1;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--accent2)">' + escHtml(c[0]) + '</div>' +
+              '<div style="font-family:monospace;font-size:12px;color:var(--muted)">' + c[1] + ' losses</div>' +
+            '</div>';
+          }).join('') : '<div style="font-size:12px;color:var(--accent)">✓ No losses to competitors today!</div>');
+    }
   }
 
   // Warning cards
