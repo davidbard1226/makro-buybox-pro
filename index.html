@@ -1654,16 +1654,19 @@ function getMinProfitPct() {
   return (!isNaN(v) && v > 0) ? v / 100 : 0.07; // default 7%
 }
 
-// Min price to achieve target profit % after Makro fees
-// Solve: price - 0.10*price - deliveryFee - cost >= pct * cost
-// => 0.90*price >= (1+pct)*cost + deliveryFee
-// => price >= ((1+pct)*cost + deliveryFee) / 0.90
+// Min price to achieve target profit margin % of selling price after Makro fees
+// Makro takes: 10% commission + delivery fee (R50/<1500, R120/1500-3000, R200/>3000)
+// Solve: price × (1 - 0.10 - profitPct) = cost + deliveryFee
+// => price = (cost + deliveryFee) / (1 - 0.10 - profitPct)
+// e.g. 7% margin: price = (cost + 50) / 0.83
 function calcMinViablePrice(costPrice) {
   if (!costPrice || costPrice <= 0) return null;
-  var pct = 1 + getMinProfitPct(); // e.g. 1.07
-  var p50  = (pct * costPrice + 50)  / 0.90;
-  var p120 = (pct * costPrice + 120) / 0.90;
-  var p200 = (pct * costPrice + 200) / 0.90;
+  var pct = getMinProfitPct(); // e.g. 0.07
+  var divisor = 1 - 0.10 - pct; // e.g. 0.83 for 7%
+  if (divisor <= 0) return null; // sanity check
+  var p50  = (costPrice + 50)  / divisor;
+  var p120 = (costPrice + 120) / divisor;
+  var p200 = (costPrice + 200) / divisor;
   var price;
   if (p50 < 1500)        price = p50;
   else if (p120 <= 3000) price = p120;
