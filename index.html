@@ -2559,17 +2559,6 @@ function exportUnmatchedCSV() {
   a.click();
   alert('📥 Exported ' + unmatched.length + ' unmatched products.\n\nFill in the "SKU (fill this in)" column, then use 🔗 Bulk SKU Import to re-upload.');
 }
-  const rows = state.products.map(p => [
-    p.title, p.sku, p.fsn, p.buybox_price, p.seller, p.status,
-    p.cost_price || '', p.min_price || '', p.max_price || '', p.lastChecked
-  ].map(v => '"' + String(v||'').replace(/"/g,'""') + '"'));
-  const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
-  const blob = new Blob([csv], { type: 'text/csv' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'makro-buybox-' + new Date().toISOString().slice(0,10) + '.csv';
-  a.click();
-}
 
 // ============================================================
 // ANALYTICS
