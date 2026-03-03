@@ -742,16 +742,12 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
 
             <div class="config-field">
               <label>Parallel Tabs (simultaneous products)</label>
-              <select class="config-input" id="scrapeParallel" onchange="localStorage.setItem('scrape_parallel', this.value)">
-                <option value="1">1 tab — safest</option>
-                <option value="2">2 tabs — moderate</option>
-                <option value="3">3 tabs — fast</option>
-                <option value="4">4 tabs — faster</option>
-                <option value="5" selected>5 tabs — max speed</option>
+              <select class="config-input" id="scrapeParallel">
+                <option value="1">1 tab — safest (default)</option>
+                <option value="2">2 tabs — faster</option>
+                <option value="3" selected>3 tabs — recommended max</option>
               </select>
-              <div style="font-size:10px;color:var(--muted);margin-top:4px;line-height:1.5">
-                5 tabs ≈ <strong style="color:var(--accent)">~750 products/hour</strong>. Each tab uses a 2-4s human delay. Increase if Makro never blocks you.
-              </div>
+              <div style="font-size:10px;color:var(--muted);margin-top:4px;line-height:1.5">3 tabs = ~3× faster. Each tab gets its own human delay so Makro sees normal browsing.</div>
             </div>
 
             <div class="config-field">
@@ -1491,8 +1487,7 @@ function startScraping() {
   updateProgress(0, urls.length);
 
   // Send queue to background service worker
-  const concurrency = parseInt(document.getElementById('scrapeParallel').value) || 5;
-  localStorage.setItem('scrape_parallel', concurrency);
+  const concurrency = parseInt(document.getElementById('scrapeParallel').value) || 1;
   window.postMessage({ type: 'START_QUEUE', urls: urls, concurrency: concurrency }, '*');
 }
 
@@ -2993,11 +2988,8 @@ document.getElementById('sellerNameConfig').addEventListener('change', function(
     }
   });
 
-  loadTgSettings();
+  loadWaSettings();
   loadMinProfitSetting();
-  var savedParallel = localStorage.getItem('scrape_parallel') || '5';
-  var pEl = document.getElementById('scrapeParallel');
-  if (pEl) pEl.value = savedParallel;
   initAutoScrape();
 
   // Load saved seller name
@@ -3860,13 +3852,6 @@ function applyAutoScrape() {
   showStatus(nextRun);
 
   _autoScrapeTimer = setInterval(function() {
-    // If previous cycle is still running, skip this tick — don't interrupt it
-    if (state.scraping) {
-      log('info', '⏭ Auto-scrape tick skipped — previous cycle still running.');
-      nextRun = Date.now() + mins * 60000;
-      showStatus(nextRun);
-      return;
-    }
     _autoScrapeRun++;
     if (!state.extReady) {
       log('info', '⏸ Auto-scrape skipped — extension offline.');
@@ -3891,7 +3876,7 @@ function applyAutoScrape() {
       (mode === 'smart' ? ' (' + losses + ' losses first, then ' + wins + ' wins)' : ' [' + mode + ']'));
 
     document.getElementById('urlInput').value = urls.join('\n');
-    var concurrency = parseInt(localStorage.getItem('scrape_parallel') || (document.getElementById('scrapeParallel')||{}).value || '5');
+    var concurrency = parseInt((document.getElementById('scrapeParallel')||{}).value||'3');
     window.postMessage({ type: 'START_QUEUE', urls: urls, concurrency: concurrency }, '*');
     scrapeQueue = urls; scrapeIdx = 0; state.scraping = true;
     document.getElementById('progressSection').style.display = 'block';
