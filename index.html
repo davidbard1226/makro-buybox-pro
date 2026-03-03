@@ -636,6 +636,8 @@
           <option value="win">Winning</option>
           <option value="lose">Losing</option>
           <option value="unknown">Unknown</option>
+          <option value="no-sku">⚠ No SKU matched</option>
+          <option value="no-cost">⚠ No Cost price</option>
         </select>
         <select class="filter-select" id="prodPageSize" onchange="prodPage=1;renderProducts()" title="Products per page">
           <option value="25">25 / page</option>
@@ -649,10 +651,12 @@
             <input type="file" id="listingsFileInput" accept=".xls,.xlsx,.csv" style="display:none" onchange="importListings(this)">
           </label>
           <button class="btn-secondary" id="syncCostsBtn" style="width:auto;padding:8px 16px;color:#60a5fa;border-color:rgba(96,165,250,0.4)" onclick="syncCostsFromSheet()" title="Fetch cost prices from Google Sheet by matching SKU">📊 Sync Costs</button>
+          <button class="btn-secondary" style="width:auto;padding:8px 16px;color:#00e5a0;border-color:rgba(0,229,160,0.3)" onclick="recalcAllMinPrices()" title="Recalculate all min prices using current profit % setting">🔄 Recalc Min Prices</button>
           <button class="btn-secondary" style="width:auto;padding:8px 16px;color:#818cf8;border-color:#818cf844" onclick="openBulkSkuModal()" title="Bulk import SKU → FSN mappings">🔗 Bulk SKU Import</button>
           <button class="btn-secondary" style="width:auto;padding:8px 16px" onclick="refreshSelected()">↻ Refresh Selected</button>
           <button class="btn-secondary danger" style="width:auto;padding:8px 16px;color:#ff9500;border-color:#ff950044" onclick="deleteSelected()">🗑 Delete Selected</button>
           <button class="btn-secondary" style="width:auto;padding:8px 16px" onclick="exportCSV()">⬇ Export CSV</button>
+          <button class="btn-secondary" style="width:auto;padding:8px 16px;color:#ffd60a;border-color:rgba(255,214,10,0.4)" onclick="exportUnmatchedCSV()" title="Export products with no SKU match so you can fix and re-upload">⬇ Export Unmatched</button>
           <button class="btn-secondary" style="width:auto;padding:8px 16px" onclick="clearAllConfirm()">🗑 Clear All</button>
         </div>
       </div>
@@ -1883,6 +1887,8 @@ function renderProducts() {
     if (filter === 'win' && p.status !== 'win') return false;
     if (filter === 'lose' && p.status !== 'lose') return false;
     if (filter === 'unknown' && p.status !== 'unknown' && p.status) return false;
+    if (filter === 'no-sku' && p.sku) return false;
+    if (filter === 'no-cost' && p.cost_price > 0) return false;
     const titleOk = (p.title||'').toLowerCase().includes(search);
     const sellerOk = (p.seller||'').toLowerCase().includes(search);
     const fsnOk = (p.fsn||'').toLowerCase().includes(search);
@@ -2260,14 +2266,14 @@ async function syncCostsFromSheet() {
       if (match) {
         p.cost_price    = match.cost;
         p.cost_supplier = match.supplier;
-        // Always auto-calculate min price from Makro fee structure + configured min profit
+        // Always recalculate min price from current profit % setting + cost
         p.min_price = calcMinViablePrice(match.cost);
-        // Only use supplier max if they provide one, otherwise auto-calc 20% above selling
+        // Only use supplier max if they provide one, otherwise auto-calc 20% above min
         if (match.maxPrice != null) {
           p.max_price = match.maxPrice;
-        } else if (!p.max_price) {
-          var autoMax = calcAutoMaxPrice(p);
-          if (autoMax) p.max_price = autoMax;
+        } else {
+          // Always refresh max when re-syncing costs
+          p.max_price = calcAutoMaxPrice(p.min_price);
         }
         updated++;
       } else {
@@ -2279,8 +2285,8 @@ async function syncCostsFromSheet() {
     renderProducts();
 
     var msg = '✅ ' + updated + ' product(s) updated with cost data.';
-    if (noSku > 0)   msg += '\n⚠ ' + noSku + ' product(s) have no SKU — import listings first.';
-    if (noMatch.length > 0) msg += '\n📋 ' + noMatch.length + ' SKU(s) not found in any supplier sheet.';
+    if (noSku > 0)   msg += '\n⚠ ' + noSku + ' product(s) have no SKU — use 🔗 Bulk SKU Import or ⬇ Export Unmatched to fix.';
+    if (noMatch.length > 0) msg += '\n📋 ' + noMatch.length + ' SKU(s) not found in any supplier sheet:\n' + noMatch.slice(0,10).join(', ') + (noMatch.length > 10 ? '...' : '');
     msg += '\n\n💡 Total supplier SKUs loaded: ' + Object.keys(lookup).length;
     alert(msg);
 
@@ -2289,6 +2295,26 @@ async function syncCostsFromSheet() {
   } finally {
     btn.disabled = false;
     btn.textContent = '📊 Sync Costs';
+  }
+}
+
+// Recalculate min (and max) prices for all products that have a cost price,
+// using the current min_profit_pct setting. Call after changing the profit % slider.
+function recalcAllMinPrices() {
+  var pct = getMinProfitPct() * 100;
+  var updated = 0;
+  state.products.forEach(function(p) {
+    if (!p.cost_price || p.cost_price <= 0) return;
+    p.min_price = calcMinViablePrice(p.cost_price);
+    p.max_price = calcAutoMaxPrice(p.min_price);
+    updated++;
+  });
+  if (updated > 0) {
+    saveProducts();
+    renderProducts();
+    alert('✅ Recalculated min/max prices for ' + updated + ' products at ' + pct.toFixed(0) + '% min profit.');
+  } else {
+    alert('⚠ No products with cost prices found — sync costs first.');
   }
 }
 
@@ -2424,6 +2450,11 @@ function saveEditModal() {
     if (!min) p.min_price = calcMinViablePrice(cost);
   }
 
+  // If product has a cost but min_price is missing or zero, always auto-calc it
+  if (p.cost_price > 0 && (!p.min_price || p.min_price <= 0)) {
+    p.min_price = calcMinViablePrice(p.cost_price);
+  }
+
   if (min !== '') {
     var minVal = parseFloat(min);
     if (!isNaN(minVal) && minVal > 0) p.min_price = roundPrice(minVal);
@@ -2498,6 +2529,36 @@ function updateProductCount() {
 function exportCSV() {
   if (state.products.length === 0) { alert('No products to export.'); return; }
   const headers = ['Title', 'SKU', 'FSN', 'BuyBox Price', 'Seller', 'Status', 'Cost Price', 'Min Price', 'Max Price', 'Last Checked'];
+  const rows = state.products.map(p => [
+    p.title, p.sku, p.fsn, p.buybox_price, p.seller, p.status,
+    p.cost_price || '', p.min_price || '', p.max_price || '', p.lastChecked
+  ].map(v => '"' + String(v||'').replace(/"/g,'""') + '"'));
+  const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'makro-buybox-' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+}
+
+// Export products with no SKU match so the user can fix & re-upload
+function exportUnmatchedCSV() {
+  var unmatched = state.products.filter(function(p) { return !p.sku; });
+  if (unmatched.length === 0) { alert('✅ All products have a matched SKU — nothing to export!'); return; }
+  // Headers: FSN (to find the product), Title (for reference), blank SKU column for user to fill
+  var headers = ['FSN', 'Title', 'SKU (fill this in)', 'BuyBox Price', 'Status', 'Last Checked'];
+  var rows = unmatched.map(function(p) {
+    return [p.fsn||'', p.title||'', '', p.buybox_price||'', p.status||'', p.lastChecked||'']
+      .map(function(v){ return '"' + String(v).replace(/"/g,'""') + '"'; });
+  });
+  var csv = [headers.map(function(h){ return '"'+h+'"'; }), ...rows].map(function(r){ return r.join(','); }).join('\n');
+  var blob = new Blob([csv], { type: 'text/csv' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'makro-unmatched-skus-' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+  alert('📥 Exported ' + unmatched.length + ' unmatched products.\n\nFill in the "SKU (fill this in)" column, then use 🔗 Bulk SKU Import to re-upload.');
+}
   const rows = state.products.map(p => [
     p.title, p.sku, p.fsn, p.buybox_price, p.seller, p.status,
     p.cost_price || '', p.min_price || '', p.max_price || '', p.lastChecked
@@ -3033,6 +3094,30 @@ document.getElementById('sellerNameConfig').addEventListener('change', function(
       if (cleaned.length !== lastProductCount || currentScrape !== lastScrapeTime) {
         lastProductCount = cleaned.length;
         lastScrapeTime = currentScrape;
+
+        // ── PRESERVE manually-set SKU, cost, min/max price from in-memory state ──
+        // The bridge may write stale data without these fields — never let a
+        // localStorage reload wipe fields the user just typed in.
+        var memMap = {};
+        state.products.forEach(function(p) {
+          var key = (p.fsn||'').toUpperCase() || p.url;
+          if (key) memMap[key] = p;
+        });
+        cleaned.forEach(function(p) {
+          var key = (p.fsn||'').toUpperCase() || p.url;
+          var mem = memMap[key];
+          if (!mem) return;
+          // Keep manual SKU if bridge gives nothing or a bad itm... slug
+          if (mem.sku && !/^itm/i.test(mem.sku) && (!p.sku || /^itm/i.test(p.sku))) p.sku = mem.sku;
+          // Keep cost + pricing if already set in memory
+          if (mem.cost_price > 0 && !(p.cost_price > 0)) {
+            p.cost_price    = mem.cost_price;
+            p.cost_supplier = mem.cost_supplier;
+          }
+          if (mem.min_price > 0 && !(p.min_price > 0)) p.min_price = mem.min_price;
+          if (mem.max_price > 0 && !(p.max_price > 0)) p.max_price = mem.max_price;
+        });
+
         state.products = cleaned;
         reEvaluateStatuses();
         saveProducts();
