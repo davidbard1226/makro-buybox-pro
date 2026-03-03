@@ -586,6 +586,30 @@
           </div>
         </div>
 
+        <!-- WARNING CARDS ROW -->
+        <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-top:-8px;margin-bottom:16px" id="warningCards">
+          <div class="stat-card" style="padding:14px 18px;cursor:pointer;border-color:rgba(129,140,248,0.3)" onclick="switchTab('products');document.getElementById('prodFilter').value='no-sku';renderProducts()">
+            <div class="stat-label" style="color:#818cf8">⚠ Unmatched SKUs</div>
+            <div class="stat-value" id="w-nosku" style="font-size:28px;color:#818cf8">0</div>
+            <div class="stat-sub">click to filter → fix SKUs</div>
+          </div>
+          <div class="stat-card" style="padding:14px 18px;cursor:pointer;border-color:rgba(96,165,250,0.3)" onclick="switchTab('products');document.getElementById('prodFilter').value='no-cost';renderProducts()">
+            <div class="stat-label" style="color:#60a5fa">⚠ Missing Cost Price</div>
+            <div class="stat-value" id="w-nocost" style="font-size:28px;color:#60a5fa">0</div>
+            <div class="stat-sub">click to filter → enter costs</div>
+          </div>
+          <div class="stat-card" style="padding:14px 18px;cursor:pointer;border-color:rgba(255,214,10,0.3)" onclick="switchTab('pricer')">
+            <div class="stat-label" style="color:var(--accent3)">🔄 Pending Reprices</div>
+            <div class="stat-value" id="w-pending" style="font-size:28px;color:var(--accent3)">0</div>
+            <div class="stat-sub">click → go to Price Updater</div>
+          </div>
+          <div class="stat-card" style="padding:14px 18px;cursor:pointer;border-color:rgba(255,77,109,0.3)" onclick="switchTab('products');document.getElementById('prodFilter').value='lose';renderProducts()">
+            <div class="stat-label" style="color:#ff4d6d">🔴 Losing BuyBox</div>
+            <div class="stat-value" id="w-losing" style="font-size:28px;color:#ff4d6d">0</div>
+            <div class="stat-sub">click to filter losses</div>
+          </div>
+        </div>
+
         <div class="chart-row">
           <!-- DONUT only on dashboard now — status bar moved to Analytics -->
           <div class="card" style="grid-column:1/-1">
@@ -630,7 +654,7 @@
     <div class="tab-content" id="tab-products">
 
       <div class="toolbar">
-        <input class="filter-input" id="prodSearch" placeholder="🔍 Search products..." oninput="prodPage=1;renderProducts()">
+        <input class="filter-input" id="prodSearch" placeholder="🔍 Search or paste Makro URL to add..." oninput="prodPage=1;renderProducts();handleSearchInput(this.value)">
         <select class="filter-select" id="prodFilter" onchange="prodPage=1;renderProducts()">
           <option value="all">All Status</option>
           <option value="win">Winning</option>
@@ -645,6 +669,8 @@
           <option value="100">100 / page</option>
           <option value="9999">All</option>
         </select>
+        <span id="filteredCount" style="font-size:12px;color:var(--muted);white-space:nowrap"></span>
+        <button id="addProductBtn" class="btn-primary" style="display:none;width:auto;padding:8px 16px;font-size:13px" onclick="addProductFromSearch()">＋ Add Product</button>
         <div class="toolbar-right">
           <label class="btn-secondary" style="width:auto;padding:8px 16px;cursor:pointer" title="Import your Makro S_listing XLS file">
             📂 Import Listings
@@ -1838,6 +1864,19 @@ function renderDashboard() {
       </div>`;
     }).join('');
   }
+
+  // Warning cards
+  var noSku     = prods.filter(function(p){ return !p.sku; }).length;
+  var noCost    = prods.filter(function(p){ return !(p.cost_price > 0); }).length;
+  var pending   = prods.filter(function(p){ return p.pending_price != null; }).length;
+  var wNoSku    = document.getElementById('w-nosku');
+  var wNoCost   = document.getElementById('w-nocost');
+  var wPending  = document.getElementById('w-pending');
+  var wLosing   = document.getElementById('w-losing');
+  if (wNoSku)   { wNoSku.textContent   = noSku;  wNoSku.closest('.stat-card').style.display   = noSku   > 0 ? '' : 'none'; }
+  if (wNoCost)  { wNoCost.textContent  = noCost; wNoCost.closest('.stat-card').style.display  = noCost  > 0 ? '' : 'none'; }
+  if (wPending) { wPending.textContent = pending; wPending.closest('.stat-card').style.display = pending > 0 ? '' : 'none'; }
+  if (wLosing)  { wLosing.textContent  = loses;  wLosing.closest('.stat-card').style.display  = loses   > 0 ? '' : 'none'; }
 }
 
 function drawDonut(wins, loses, unk) {
@@ -1924,6 +1963,18 @@ function renderProducts() {
   if (prodPage > totalPages) prodPage = totalPages;
   const pageStart = (prodPage - 1) * pageSize;
   const pageProds = prods.slice(pageStart, pageStart + pageSize);
+
+  // Update filtered count in toolbar
+  var countEl = document.getElementById('filteredCount');
+  if (countEl) {
+    var filterVal = document.getElementById('prodFilter').value;
+    var searchVal = (document.getElementById('prodSearch').value||'').trim();
+    if (filterVal !== 'all' || searchVal) {
+      countEl.textContent = totalProds + ' of ' + state.products.length + ' products';
+    } else {
+      countEl.textContent = '';
+    }
+  }
 
   const tbody = document.getElementById('productsBody');
 
@@ -2519,6 +2570,48 @@ function showCostInput(idx) { openEditModal(idx); }
 function saveCostInput(idx) { saveEditModal(); }
 
 
+
+// ── ADD PRODUCT FROM SEARCH BAR ──────────────────────────────────────────
+function handleSearchInput(val) {
+  var btn = document.getElementById('addProductBtn');
+  var isUrl = val.trim().startsWith('http') && val.trim().includes('makro.co.za');
+  if (btn) btn.style.display = isUrl ? 'flex' : 'none';
+}
+
+function addProductFromSearch() {
+  var url = (document.getElementById('prodSearch').value || '').trim();
+  if (!url.startsWith('http') || !url.includes('makro.co.za')) {
+    alert('Please paste a valid makro.co.za product URL.');
+    return;
+  }
+  // Check not already tracked
+  var exists = state.products.some(function(p) { return p.url === url; });
+  if (exists) {
+    alert('⚠ This product is already in your list.');
+    return;
+  }
+  // Add as a stub — scraper will fill in the rest
+  var stub = {
+    url: url,
+    fsn: '', sku: '', title: url,
+    buybox_price: 0, seller: '', status: 'unknown',
+    lastChecked: null, history: []
+  };
+  state.products.push(stub);
+  saveProducts();
+  renderProducts();
+  updateProductCount();
+  // Clear search and hide button
+  document.getElementById('prodSearch').value = '';
+  document.getElementById('addProductBtn').style.display = 'none';
+  // Ask if they want to scrape it now
+  if (state.extReady && confirm('✅ Product added! Scrape it now to get BuyBox data?')) {
+    switchTab('scraper');
+    document.getElementById('urlInput').value = url;
+    document.getElementById('urlCount').textContent = '1 URL detected';
+    setTimeout(startScraping, 200);
+  }
+}
 
 function rescrapeOne(idx) {
   if (!state.extReady) { alert('Extension not connected.'); return; }
