@@ -2042,17 +2042,21 @@ function renderDashboard() {
   if (wPending) { wPending.textContent = pending; wPending.closest('.stat-card').style.display = pending > 0 ? '' : 'none'; }
   if (wLosing)  { wLosing.textContent  = loses;  wLosing.closest('.stat-card').style.display  = loses   > 0 ? '' : 'none'; }
 
-  renderProfitSummary(prods);
+  // Always use state.products directly to avoid stale reference issues
+  var liveProds = state.products || [];
+  renderProfitSummary(liveProds);
   renderStockRisk();
-  renderScrapeHealth(prods);
-  renderCompIntel(prods);
+  renderScrapeHealth(liveProds);
+  renderCompIntel(liveProds);
+  renderEasyWins(liveProds);
+  renderTodayPerf(liveProds);
 }
 
 // ── PROFITABILITY SUMMARY ─────────────────────────────────────────────────
 function renderProfitSummary(prods) {
   var el = document.getElementById('profitSummary');
   if (!el) return;
-  var priced = prods.filter(function(p){ return p.cost_price > 0 && p.min_price > 0; });
+  var priced = prods.filter(function(p){ return p.cost_price > 0; });
   if (!priced.length) { el.innerHTML = '<div style="color:var(--muted);font-size:13px">Sync costs to see profitability.</div>'; return; }
 
   var listings = getListings(); var lmap = {};
@@ -2163,6 +2167,80 @@ function renderScrapeHealth(prods) {
       '</div>';
     }).join('') +
     (staleTotal > 0 ? '<div style="font-size:11px;color:var(--muted);margin-top:6px">Click ⚡ Scrape Losses to refresh stale data</div>' : '');
+}
+
+// ── EASY WINS ─────────────────────────────────────────────────────────────
+function renderEasyWins(prods) {
+  var el = document.getElementById('easyWinList');
+  if (!el) return;
+  var losses = prods.filter(function(p){
+    return p.status === 'lose' && p.buybox_price > 0 && p.min_price > 0;
+  });
+  var close = losses.filter(function(p){
+    var listings = getListings();
+    var l = listings.find(function(x){ return x.fsn === p.fsn; });
+    var myP = l ? l.myPrice : null;
+    var gap = myP ? (myP - p.buybox_price) : (p.min_price - p.buybox_price);
+    return gap >= 0 && gap <= 50;
+  }).sort(function(a,b){
+    var la = getListings().find(function(x){ return x.fsn===a.fsn; });
+    var lb = getListings().find(function(x){ return x.fsn===b.fsn; });
+    var ga = (la?la.myPrice:a.min_price) - a.buybox_price;
+    var gb = (lb?lb.myPrice:b.min_price) - b.buybox_price;
+    return ga - gb;
+  });
+  if (!close.length) {
+    el.innerHTML = losses.length
+      ? '<div style="font-size:12px;color:var(--muted);padding:8px 0">No losses within R50 of BuyBox — competitors are pricing well below your floor.</div>'
+      : '<div style="font-size:12px;color:var(--accent);padding:8px 0">✓ No current losses to report.</div>';
+    return;
+  }
+  el.innerHTML = close.slice(0,6).map(function(p){
+    var l = getListings().find(function(x){ return x.fsn===p.fsn; });
+    var myP = l ? l.myPrice : p.min_price;
+    var gap = myP - p.buybox_price;
+    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border)">' +
+      '<div style="font-size:11px;color:var(--text);flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:200px">' + (p.title||p.url||'').slice(0,40) + '</div>' +
+      '<div style="font-family:monospace;font-size:12px;color:#ffd60a;margin-left:8px">R' + gap.toFixed(0) + ' gap</div>' +
+      '<div style="font-size:10px;color:var(--muted);margin-left:8px">BB: R' + p.buybox_price.toFixed(0) + '</div>' +
+    '</div>';
+  }).join('') +
+  (close.length > 6 ? '<div style="font-size:10px;color:var(--muted);margin-top:6px">+' + (close.length-6) + ' more close losses</div>' : '');
+}
+
+// ── TODAY'S PERFORMANCE ───────────────────────────────────────────────────
+function renderTodayPerf(prods) {
+  var el = document.getElementById('todayPerf');
+  if (!el) return;
+  var todayStr = new Date().toLocaleDateString('en-ZA');
+  var scrapedToday = prods.filter(function(p){
+    return p.lastChecked && new Date(p.lastChecked).toLocaleDateString('en-ZA') === todayStr;
+  });
+  if (!scrapedToday.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px 0">Scrape products today to see performance.</div>';
+    return;
+  }
+  var wins = scrapedToday.filter(function(p){ return p.status==='win'; }).length;
+  var losses = scrapedToday.filter(function(p){ return p.status==='lose'; }).length;
+  var unknown = scrapedToday.filter(function(p){ return p.status==='unknown'||!p.status; }).length;
+  var winRate = Math.round(wins / scrapedToday.length * 100);
+  var col = winRate >= 60 ? 'var(--accent)' : winRate >= 40 ? '#ffd60a' : '#ff4d6d';
+  el.innerHTML =
+    '<div style="display:flex;gap:12px;margin-bottom:8px">' +
+      '<div style="text-align:center;flex:1;background:var(--surface2);border-radius:8px;padding:8px">' +
+        '<div style="font-family:\'Bebas Neue\',sans-serif;font-size:26px;color:'+col+'">' + winRate + '%</div>' +
+        '<div style="font-size:9px;color:var(--muted);text-transform:uppercase">Win rate today</div>' +
+      '</div>' +
+      '<div style="text-align:center;flex:1;background:var(--surface2);border-radius:8px;padding:8px">' +
+        '<div style="font-family:\'Bebas Neue\',sans-serif;font-size:26px;color:var(--text)">' + scrapedToday.length + '</div>' +
+        '<div style="font-size:9px;color:var(--muted);text-transform:uppercase">Scraped today</div>' +
+      '</div>' +
+    '</div>' +
+    '<div style="display:flex;gap:8px;font-size:11px">' +
+      '<span style="color:var(--accent)">✓ ' + wins + ' wins</span>' +
+      '<span style="color:#ff4d6d">✗ ' + losses + ' losses</span>' +
+      (unknown ? '<span style="color:var(--muted)">? ' + unknown + ' unknown</span>' : '') +
+    '</div>';
 }
 
 // ── COMPETITOR INTEL ──────────────────────────────────────────────────────
