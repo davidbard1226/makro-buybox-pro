@@ -1780,7 +1780,22 @@ function autoReprice(prod) {
   if (prod.status === 'win') return;           // already winning — don't touch price
 
   var minPrice = prod.min_price;
-  if (!minPrice || minPrice <= 0) return;      // no min price set — can't reprice safely
+
+  // Always recalculate min from cost if cost is set — ensures min is never stale
+  if (prod.cost_price > 0) {
+    var freshMin = calcMinViablePrice(prod.cost_price);
+    if (freshMin && freshMin > 0) {
+      // If stored min differs from fresh calc, update it
+      if (!minPrice || minPrice < freshMin) {
+        minPrice = freshMin;
+        prod.min_price = freshMin;
+        // Also update max to match
+        prod.max_price = Math.round(freshMin * 1.20);
+      }
+    }
+  }
+
+  if (!minPrice || minPrice <= 0) return;      // no min price — can't reprice safely
 
   var maxPrice = prod.max_price || null;
 
