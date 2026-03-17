@@ -174,9 +174,24 @@ window.addEventListener('message', function(ev) {
       if (mem.min_price > 0 && !(p.min_price > 0)) p.min_price = mem.min_price;
       if (mem.max_price > 0 && !(p.max_price > 0)) p.max_price = mem.max_price;
     });
-    saveProducts();
-    reEvaluateStatuses();
-    saveProducts();
+      // Preserve statuses before we re-evaluate so we know what changed
+      var oldStatusMap = {};
+      state.products.forEach(function(p) { if (p.url) oldStatusMap[p.url] = p.status; });
+
+      reEvaluateStatuses();
+      
+      // Trigger alerts and auto-repricing for products that are newly identified as losing
+      state.products.forEach(function(p) {
+        if (p.url && p.status === 'lose') {
+          // If it wasn't a loss before, or we haven't checked it lately, process it
+          if (oldStatusMap[p.url] !== 'lose') {
+            autoReprice(p);
+            sendTelegramAlert(p, p.buybox_price || 0, p.seller || 'Unknown Seller');
+          }
+        }
+      });
+
+      saveProducts();
     updateProductCount();
     renderDashboard();
     const anyChecked = document.querySelectorAll('.row-check:checked').length > 0;
@@ -544,7 +559,22 @@ function autoReprice(prod) {
   if (prod.status === 'win') return;           // already winning — don't touch price
 
   var minPrice = prod.min_price;
-  if (!minPrice || minPrice <= 0) return;      // no min price set — can't reprice safely
+
+  // Always recalculate min from cost if cost is set — ensures min is never stale
+  if (prod.cost_price > 0) {
+    var freshMin = calcMinViablePrice(prod.cost_price);
+    if (freshMin && freshMin > 0) {
+      // If stored min differs from fresh calc, update it
+      if (!minPrice || minPrice < freshMin) {
+        minPrice = freshMin;
+        prod.min_price = freshMin;
+        // Also update max to match
+        prod.max_price = Math.round(freshMin * 1.20);
+      }
+    }
+  }
+
+  if (!minPrice || minPrice <= 0) return;      // no min price — can't reprice safely
 
   var maxPrice = prod.max_price || null;
 
@@ -790,6 +820,270 @@ function renderDashboard() {
   if (wNoCost)  { wNoCost.textContent  = noCost; wNoCost.closest('.stat-card').style.display  = noCost  > 0 ? '' : 'none'; }
   if (wPending) { wPending.textContent = pending; wPending.closest('.stat-card').style.display = pending > 0 ? '' : 'none'; }
   if (wLosing)  { wLosing.textContent  = loses;  wLosing.closest('.stat-card').style.display  = loses   > 0 ? '' : 'none'; }
+
+  // Always use state.products directly to avoid stale reference issues
+  var liveProds = state.products || [];
+  renderProfitSummary(liveProds);
+  renderStockRisk();
+  renderScrapeHealth(liveProds);
+  renderCompIntel(liveProds);
+  renderEasyWins(liveProds);
+  renderTodayPerf(liveProds);
+}
+
+// ── PROFITABILITY SUMMARY ─────────────────────────────────────────────────
+function renderProfitSummary(prods) {
+  var el = document.getElementById('profitSummary');
+  if (!el) return;
+  var priced = prods.filter(function(p){ return p.cost_price > 0; });
+  if (!priced.length) { el.innerHTML = '<div style="color:var(--muted);font-size:13px">Sync costs to see profitability.</div>'; return; }
+
+  var listings = getListings(); var lmap = {};
+  listings.forEach(function(l){ if(l.fsn) lmap[l.fsn]=l; });
+
+  var totalPotProfit=0, totalActProfit=0, atRisk=0, belowMin=0;
+  priced.forEach(function(p){
+    var l = lmap[p.fsn];
+    var myP = l ? l.myPrice : null;
+    var bbP = p.buybox_price > 0 ? p.buybox_price : null;
+    // Potential profit = if we won buybox at min price
+    var potR = calcProfit(p.min_price, p.cost_price);
+    if (potR) totalPotProfit += potR.profit;
+    // Actual profit = at current my price
+    if (myP) {
+      var actR = calcProfit(myP, p.cost_price);
+      if (actR) { totalActProfit += actR.profit; if(actR.marginPct < 0) atRisk++; }
+      if (myP < p.min_price) belowMin++;
+    }
+  });
+
+  var gap = totalPotProfit - totalActProfit;
+  el.innerHTML =
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">' +
+      '<div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">' +
+        '<div style="font-family:\'Bebas Neue\',sans-serif;font-size:28px;color:var(--accent)">R'+Math.round(totalPotProfit).toLocaleString()+'</div>' +
+        '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Potential profit</div>' +
+      '</div>' +
+      '<div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">' +
+        '<div style="font-family:\'Bebas Neue\',sans-serif;font-size:28px;color:'+(gap>0?'#ff9500':'var(--accent)')+'">R'+Math.round(totalActProfit).toLocaleString()+'</div>' +
+        '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Current actual</div>' +
+      '</div>' +
+    '</div>' +
+    (gap > 0 ? '<div style="font-size:12px;color:#ff9500;margin-bottom:6px">⚠ R'+Math.round(gap).toLocaleString()+' profit gap from losing buyboxes</div>' : '') +
+    (atRisk > 0 ? '<div style="font-size:12px;color:#ff4d6d">🔴 '+atRisk+' products selling at a loss</div>' : '') +
+    (belowMin > 0 ? '<div style="font-size:12px;color:#ffd60a">⚠ '+belowMin+' products priced below min floor</div>' : '') +
+    (atRisk===0&&belowMin===0&&gap===0 ? '<div style="font-size:12px;color:var(--accent)">✓ All products profitable</div>' : '') +
+    '<div style="font-size:11px;color:var(--muted);margin-top:6px">Based on '+priced.length+' products with cost data</div>';
+}
+
+// ── STOCK-OUT RISK ────────────────────────────────────────────────────────
+function renderStockRisk() {
+  var el = document.getElementById('stockRiskList');
+  var cntEl = document.getElementById('stockRiskCount');
+  if (!el) return;
+  var listings = getListings();
+  if (!listings.length) { el.innerHTML = '<div style="color:var(--muted);font-size:13px">Import listings to see stock levels.</div>'; return; }
+
+  var scrapedMap = {}; state.products.forEach(function(p){ if(p.fsn) scrapedMap[p.fsn]=p; });
+  // Only show winning products with low stock — losing buybox with low stock is less urgent
+  var risks = listings.filter(function(l){ return l.myStock <= 5 && scrapedMap[l.fsn] && scrapedMap[l.fsn].status==='win'; })
+    .sort(function(a,b){ return a.myStock - b.myStock; });
+  var allLow = listings.filter(function(l){ return l.myStock <= 5; }).length;
+
+  if (cntEl) cntEl.textContent = risks.length ? risks.length+' winning at risk' : '';
+  if (!risks.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--accent)">✓ All winning products well stocked</div>' +
+      (allLow > 0 ? '<div style="font-size:11px;color:var(--muted);margin-top:4px">'+allLow+' low-stock products not currently winning buybox</div>' : '');
+    return;
+  }
+  el.innerHTML = risks.slice(0,5).map(function(l){
+    var col = l.myStock === 0 ? '#ff4d6d' : l.myStock <= 2 ? '#ff9500' : '#ffd60a';
+    var label = l.myStock === 0 ? '🔴 OUT' : l.myStock <= 2 ? '🟠 '+l.myStock+' left' : '🟡 '+l.myStock+' left';
+    return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">' +
+      '<div style="flex:1;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+escHtml(l.title)+'">'+escHtml((l.title||l.sku||'').slice(0,32))+'</div>' +
+      '<div style="font-family:monospace;font-size:11px;font-weight:700;color:'+col+';white-space:nowrap">'+label+'</div>' +
+    '</div>';
+  }).join('');
+}
+
+// ── SCRAPE HEALTH ─────────────────────────────────────────────────────────
+function renderScrapeHealth(prods) {
+  var el = document.getElementById('scrapeHealth');
+  if (!el || !prods.length) { if(el) el.innerHTML='<div style="color:var(--muted);font-size:13px">No products yet.</div>'; return; }
+  var now = Date.now();
+  var fresh=0, stale24=0, stale48=0, stale72=0, never=0;
+  prods.forEach(function(p){
+    if (!p.lastChecked) { never++; return; }
+    var age = (now - new Date(p.lastChecked).getTime()) / 3600000; // hours
+    if (age < 24) fresh++;
+    else if (age < 48) stale24++;
+    else if (age < 72) stale48++;
+    else stale72++;
+  });
+  var total = prods.length;
+  var bars = [
+    { label:'< 24h',  count:fresh,   col:'var(--accent)' },
+    { label:'24–48h', count:stale24, col:'#ffd60a' },
+    { label:'48–72h', count:stale48, col:'#ff9500' },
+    { label:'72h+',   count:stale72, col:'#ff4d6d' },
+    { label:'Never',  count:never,   col:'var(--muted)' },
+  ].filter(function(b){ return b.count>0; });
+
+  var staleTotal = stale24+stale48+stale72+never;
+  el.innerHTML =
+    '<div style="font-size:12px;margin-bottom:10px">' +
+      '<span style="color:var(--accent);font-weight:600">'+fresh+'</span><span style="color:var(--muted)"> fresh · </span>' +
+      '<span style="color:#ff9500;font-weight:600">'+staleTotal+'</span><span style="color:var(--muted)"> stale of '+total+'</span>' +
+    '</div>' +
+    bars.map(function(b){
+      var pct = (b.count/total*100).toFixed(0);
+      return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">' +
+        '<div style="width:50px;font-size:10px;color:var(--muted);text-align:right">'+b.label+'</div>' +
+        '<div style="flex:1;height:14px;background:var(--surface2);border-radius:3px;overflow:hidden">' +
+          '<div style="width:'+pct+'%;height:100%;background:'+b.col+';border-radius:3px"></div>' +
+        '</div>' +
+        '<div style="width:28px;font-family:monospace;font-size:11px;color:'+b.col+'">'+b.count+'</div>' +
+      '</div>';
+    }).join('') +
+    (staleTotal > 0 ? '<div style="font-size:11px;color:var(--muted);margin-top:6px">Click ⚡ Scrape Losses to refresh stale data</div>' : '');
+}
+
+// ── EASY WINS ─────────────────────────────────────────────────────────────
+function renderEasyWins(prods) {
+  var el = document.getElementById('easyWinList');
+  if (!el) return;
+  var losses = prods.filter(function(p){
+    return p.status === 'lose' && p.buybox_price > 0 && p.min_price > 0;
+  });
+  var close = losses.filter(function(p){
+    var listings = getListings();
+    var l = listings.find(function(x){ return x.fsn === p.fsn; });
+    var myP = l ? l.myPrice : null;
+    var gap = myP ? (myP - p.buybox_price) : (p.min_price - p.buybox_price);
+    return gap >= 0 && gap <= 50;
+  }).sort(function(a,b){
+    var la = getListings().find(function(x){ return x.fsn===a.fsn; });
+    var lb = getListings().find(function(x){ return x.fsn===b.fsn; });
+    var ga = (la?la.myPrice:a.min_price) - a.buybox_price;
+    var gb = (lb?lb.myPrice:b.min_price) - b.buybox_price;
+    return ga - gb;
+  });
+  if (!close.length) {
+    el.innerHTML = losses.length
+      ? '<div style="font-size:12px;color:var(--muted);padding:8px 0">No losses within R50 of BuyBox — competitors are pricing well below your floor.</div>'
+      : '<div style="font-size:12px;color:var(--accent);padding:8px 0">✓ No current losses to report.</div>';
+    return;
+  }
+  el.innerHTML = close.slice(0,6).map(function(p){
+    var l = getListings().find(function(x){ return x.fsn===p.fsn; });
+    var myP = l ? l.myPrice : p.min_price;
+    var gap = myP - p.buybox_price;
+    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border)">' +
+      '<div style="font-size:11px;color:var(--text);flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:200px">' + (p.title||p.url||'').slice(0,40) + '</div>' +
+      '<div style="font-family:monospace;font-size:12px;color:#ffd60a;margin-left:8px">R' + gap.toFixed(0) + ' gap</div>' +
+      '<div style="font-size:10px;color:var(--muted);margin-left:8px">BB: R' + p.buybox_price.toFixed(0) + '</div>' +
+    '</div>';
+  }).join('') +
+  (close.length > 6 ? '<div style="font-size:10px;color:var(--muted);margin-top:6px">+' + (close.length-6) + ' more close losses</div>' : '');
+}
+
+// ── TODAY'S PERFORMANCE ───────────────────────────────────────────────────
+function renderTodayPerf(prods) {
+  var el = document.getElementById('todayPerf');
+  if (!el) return;
+  var todayStr = new Date().toLocaleDateString('en-ZA');
+  var scrapedToday = prods.filter(function(p){
+    return p.lastChecked && new Date(p.lastChecked).toLocaleDateString('en-ZA') === todayStr;
+  });
+  if (!scrapedToday.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px 0">Scrape products today to see performance.</div>';
+    return;
+  }
+  var wins = scrapedToday.filter(function(p){ return p.status==='win'; }).length;
+  var losses = scrapedToday.filter(function(p){ return p.status==='lose'; }).length;
+  var unknown = scrapedToday.filter(function(p){ return p.status==='unknown'||!p.status; }).length;
+  var winRate = Math.round(wins / scrapedToday.length * 100);
+  var col = winRate >= 60 ? 'var(--accent)' : winRate >= 40 ? '#ffd60a' : '#ff4d6d';
+  el.innerHTML =
+    '<div style="display:flex;gap:12px;margin-bottom:8px">' +
+      '<div style="text-align:center;flex:1;background:var(--surface2);border-radius:8px;padding:8px">' +
+        '<div style="font-family:\'Bebas Neue\',sans-serif;font-size:26px;color:'+col+'">' + winRate + '%</div>' +
+        '<div style="font-size:9px;color:var(--muted);text-transform:uppercase">Win rate today</div>' +
+      '</div>' +
+      '<div style="text-align:center;flex:1;background:var(--surface2);border-radius:8px;padding:8px">' +
+        '<div style="font-family:\'Bebas Neue\',sans-serif;font-size:26px;color:var(--text)">' + scrapedToday.length + '</div>' +
+        '<div style="font-size:9px;color:var(--muted);text-transform:uppercase">Scraped today</div>' +
+      '</div>' +
+    '</div>' +
+    '<div style="display:flex;gap:8px;font-size:11px">' +
+      '<span style="color:var(--accent)">✓ ' + wins + ' wins</span>' +
+      '<span style="color:#ff4d6d">✗ ' + losses + ' losses</span>' +
+      (unknown ? '<span style="color:var(--muted)">? ' + unknown + ' unknown</span>' : '') +
+    '</div>';
+}
+
+// ── COMPETITOR INTEL ──────────────────────────────────────────────────────
+function renderCompIntel(prods) {
+  var el = document.getElementById('compIntel');
+  if (!el) return;
+  var myName = getMySellerName().toLowerCase();
+  var compData = {};
+  prods.forEach(function(p){
+    if (!p.seller || p.seller==='Unknown Seller') return;
+    var isMe = p.seller.toLowerCase().includes(myName) || myName.includes(p.seller.toLowerCase().slice(0,6));
+    if (isMe) return;
+    if (!compData[p.seller]) compData[p.seller] = { wins:0, totalUndercut:0, undercutCount:0 };
+    if (p.status==='lose') {
+      compData[p.seller].wins++;
+      // How much they undercut me
+      var listings = getListings(); var lmap={};
+      listings.forEach(function(l){ if(l.fsn) lmap[l.fsn]=l; });
+      var l = lmap[p.fsn];
+      if (l && l.myPrice && p.buybox_price>0) {
+        var undercut = l.myPrice - p.buybox_price;
+        if (undercut > 0) { compData[p.seller].totalUndercut += undercut; compData[p.seller].undercutCount++; }
+      }
+    }
+  });
+
+  var sorted = Object.entries(compData).filter(function(e){ return e[1].wins>0; })
+    .sort(function(a,b){ return b[1].wins - a[1].wins; }).slice(0,5);
+
+  if (!sorted.length) { el.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:8px 0">No competitor data yet — scrape products first.</div>'; return; }
+
+  el.innerHTML = sorted.map(function(e, i){
+    var name=e[0], d=e[1];
+    var avgUndercut = d.undercutCount ? 'R'+(d.totalUndercut/d.undercutCount).toFixed(0)+' avg undercut' : '';
+    var col = i===0 ? '#ff4d6d' : i===1 ? '#ff9500' : '#ffd60a';
+    return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">' +
+      '<div style="width:18px;height:18px;border-radius:50%;background:'+col+';display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#000;flex-shrink:0">'+(i+1)+'</div>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--accent2)" title="'+escHtml(name)+'">'+escHtml(name.slice(0,25))+'</div>' +
+        (avgUndercut ? '<div style="font-size:10px;color:var(--muted)">'+avgUndercut+'</div>' : '') +
+      '</div>' +
+      '<div style="font-family:monospace;font-size:12px;font-weight:700;color:'+col+';white-space:nowrap">'+d.wins+' wins</div>' +
+    '</div>';
+  }).join('');
+}
+
+// ── ONE-CLICK SCRAPE ALL LOSSES ───────────────────────────────────────────
+function scrapeAllLosses() {
+  if (!state.extReady) { alert('Extension not connected — please reload the extension first.'); return; }
+  var losses = state.products.filter(function(p){ return p.status==='lose' && p.url; });
+  var stale  = state.products.filter(function(p){
+    if (!p.url) return false;
+    if (!p.lastChecked) return true;
+    return (Date.now() - new Date(p.lastChecked).getTime()) > 24*3600000;
+  });
+  // Dedupe: losses first, then stale wins/unknowns
+  var urlSet = new Set(losses.map(function(p){ return p.url; }));
+  stale.forEach(function(p){ urlSet.add(p.url); });
+  var urls = Array.from(urlSet);
+  if (!urls.length) { alert('No products need scraping right now.'); return; }
+  switchTab('scraper');
+  document.getElementById('urlInput').value = urls.join('\n');
+  document.getElementById('urlCount').textContent = urls.length + ' URLs loaded';
+  setTimeout(startScraping, 200);
 }
 
 function drawDonut(wins, loses, unk) {
@@ -1805,6 +2099,7 @@ function renderStatusBars(prods) {
 // ── Competitor breakdown — FULL names, show % share, avg price ────────────
 function renderCompetitors(prods) {
   const el = document.getElementById('compBreakdown');
+  if (!el) return;
   const sellerData = {};
   prods.forEach(function(p) {
     if (!p.seller || p.seller === 'Unknown Seller') return;
@@ -2298,6 +2593,11 @@ function buildPricerPreview() {
       '⚠️ <b style="color:#ff9500">' + clampedRows.length + ' product' + (clampedRows.length > 1 ? 's' : '') + ' clamped by price guard</b> — ' +
       'these will be <b>skipped</b> from the upload file to protect you from pricing mistakes.<br>' +
       '<span style="color:var(--muted)">Adjust your Min/Max guards or strategy if you want to include them.</span></div>';
+      
+    // Trigger Telegram alert for clamped products
+    if (typeof sendTelegramClampedAlert === 'function') {
+      sendTelegramClampedAlert(clampedRows.length, okRows.length);
+    }
   }
 
   html += '<div style="margin-bottom:8px;font-size:12px">' +
@@ -2313,8 +2613,8 @@ function buildPricerPreview() {
     '<th style="text-align:right;padding:6px 4px">Change</th>' +
     '</tr></thead><tbody>';
 
-  // Show OK rows first, then clamped (faded)
-  const displayRows = okRows.concat(clampedRows).slice(0, 50);
+  // Show clamped rows FIRST so they aren't hidden by the 50-item limit
+  const displayRows = clampedRows.concat(okRows).slice(0, 50);
   displayRows.forEach(function(r) {
     const change      = r.newPrice - r.myPrice;
     const changeColor = r.clamped ? '#ff9500' : (change < 0 ? '#ff9500' : 'var(--accent)');
@@ -2376,6 +2676,7 @@ function generatePriceUpdate() {
   const priceMap = {};  // fsn → { newPrice, sku, title, oldPrice }
   let updateCount = 0;
   let skippedNoCost = 0;
+  let skippedClamped = 0;
   listings.forEach(function(l) {
     const scraped = scrapedMap[l.fsn];
     if (!scraped) return;
@@ -2564,42 +2865,102 @@ function loadMinProfitSetting() {
 }
 
 var _tgLastAlert = {};
+
+function escTgHtml(str) {
+  return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 function sendTelegramAlert(prod, buyboxPrice, seller) {
-  if (localStorage.getItem('tg_enabled') !== '1') return;
-  var token  = localStorage.getItem('tg_token')   || '';
-  var chatId = localStorage.getItem('tg_chat_id') || '';
-  if (!token || !chatId) return;
-  var key = prod.fsn || prod.url;
-  var now = Date.now();
-  if (_tgLastAlert[key] && now - _tgLastAlert[key] < 30 * 60 * 1000) return;
-  _tgLastAlert[key] = now;
-  var msg =
-    '🔴 *BuyBox LOST!*\n' +
-    (prod.title || prod.url || '').slice(0, 60) + '\n\n' +
-    '🏷 Competitor: ' + seller + '\n' +
-    '💸 Their price: R' + buyboxPrice.toFixed(2) + '\n' +
-    (prod.pending_price ? '✅ Auto-repriced to: R' + prod.pending_price + '\n' : '') +
-    '🕐 ' + new Date().toLocaleTimeString('en-ZA');
-  fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text: msg, parse_mode: 'Markdown' })
-  }).catch(function(){});
+  try {
+    if (localStorage.getItem('tg_enabled') !== '1') return;
+    var token  = (localStorage.getItem('tg_token') || '').trim();
+    var chatId = (localStorage.getItem('tg_chat_id') || '').trim();
+    if (!token || !chatId) return;
+    var key = prod.fsn || prod.url;
+    var now = Date.now();
+    if (_tgLastAlert[key] && now - _tgLastAlert[key] < 5 * 60 * 1000) return;
+    _tgLastAlert[key] = now;
+    
+    try { if (typeof log === 'function') log('info', '📨 Telegram Alert Sent: ' + String(prod.title || prod.url || '').slice(0, 30)); } catch(e){}
+
+    var msg =
+      '🔴 <b>BuyBox LOST!</b>\n' +
+      escTgHtml(String(prod.title || prod.url || '').slice(0, 60)) + '\n\n' +
+      '🏷 Competitor: ' + escTgHtml(seller) + '\n' +
+      '💸 Their price: R' + (buyboxPrice || 0).toFixed(2) + '\n' +
+      (prod.pending_price ? '✅ Auto-repriced to: R' + prod.pending_price + '\n' : '') +
+      '🕐 ' + new Date().toLocaleTimeString('en-ZA');
+      
+    fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text: msg, parse_mode: 'HTML' })
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+      if (!data.ok) {
+        if (typeof log === 'function') log('err', '❌ Telegram API Error: ' + (data.description || 'Unknown error'));
+        console.error('Telegram API Error:', data);
+      }
+    })
+    .catch(function(err) {
+      if (typeof log === 'function') log('err', '❌ Telegram Net Error: ' + err.message);
+      console.error('Telegram Net Error:', err);
+    });
+  } catch (e) {
+    console.error('Error in sendTelegramAlert:', e);
+  }
+}
+
+var _tgLastClampAlert = 0;
+function sendTelegramClampedAlert(clampedCount, okCount) {
+  try {
+    if (clampedCount <= 0 || localStorage.getItem('tg_enabled') !== '1') return;
+    var token  = (localStorage.getItem('tg_token') || '').trim();
+    var chatId = (localStorage.getItem('tg_chat_id') || '').trim();
+    if (!token || !chatId) return;
+    
+    var now = Date.now();
+    if (now - _tgLastClampAlert < 5 * 60 * 1000) return; // Max 1 clamp alert per 5 minutes
+    _tgLastClampAlert = now;
+
+    var msg =
+      '⚠️ <b>Products Clamped by Price Guard</b>\n\n' +
+      '<b>' + clampedCount + ' products</b> were clamped and skipped from your upload file to protect against pricing mistakes.\n\n' +
+      '✅ ' + okCount + ' products are ready to update.\n\n' +
+      '<i>Adjust your Min/Max guards on the dashboard if you want to include them.</i>';
+      
+    fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text: msg, parse_mode: 'HTML' })
+    }).catch(function(){});
+  } catch (e) {
+    console.error('Error in sendTelegramClampedAlert:', e);
+  }
 }
 
 function testTelegram() {
-  saveTgSettings();
-  var token  = localStorage.getItem('tg_token')   || '';
-  var chatId = localStorage.getItem('tg_chat_id') || '';
-  if (!token || !chatId) { alert('Enter your Bot Token and Chat ID first.'); return; }
-  fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text: '✅ *Makro BuyBox Pro* — Telegram alerts working!', parse_mode: 'Markdown' })
-  })
-  .then(function(r){ return r.json(); })
-  .then(function(j){ alert(j.ok ? '✅ Sent! Check Telegram.' : '❌ Failed: ' + (j.description || 'Check token and chat ID')); })
-  .catch(function(e){ alert('❌ Error: ' + e.message); });
+  try {
+    saveTgSettings();
+    if (localStorage.getItem('tg_enabled') !== '1') {
+      alert('Please check the "Enable alerts" checkbox first!');
+      return;
+    }
+    var token  = (localStorage.getItem('tg_token') || '').trim();
+    var chatId = (localStorage.getItem('tg_chat_id') || '').trim();
+    if (!token || !chatId) { alert('Enter your Bot Token and Chat ID first.'); return; }
+    fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text: '✅ <b>Makro BuyBox Pro</b> — Telegram alerts working!', parse_mode: 'HTML' })
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(j){ alert(j.ok ? '✅ Sent! Check Telegram.' : '❌ Failed: ' + (j.description || 'Check token and chat ID')); })
+    .catch(function(e){ alert('❌ Network Error: ' + e.message); });
+  } catch (e) {
+    alert('❌ Internal Error: ' + e.message);
+  }
 }
 
 document.addEventListener('change', function(e) {

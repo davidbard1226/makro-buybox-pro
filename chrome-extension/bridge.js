@@ -1,4 +1,5 @@
-﻿// bridge.js v3 — stable context handling
+// bridge.js v3.1 — stable context handling + concurrency fix
+// FIX: concurrency now defaults to 5 (not 1) so work PC scrapes all tabs
 
 (function() {
   'use strict';
@@ -151,9 +152,13 @@
     }
 
     if (ev.data.type === 'START_QUEUE') {
-      // ev.data.concurrency forwarded to background so it knows how many parallel tabs to use
+      // FIX: default concurrency to 5 (not 1) — matches dashboard default setting
+      // ev.data.concurrency is sent from the dashboard and reads localStorage scrape_parallel
+      // On a fresh/work PC where localStorage is empty, this ensures 5 tabs are still used
       safe(function() {
-        chrome.runtime.sendMessage({ action: 'queue_scrape', urls: ev.data.urls, concurrency: ev.data.concurrency || 1 }, function(resp) {
+        var concurrency = parseInt(ev.data.concurrency) || 5;
+        console.log('[Bridge] Starting queue — ' + (ev.data.urls || []).length + ' URLs, concurrency: ' + concurrency);
+        chrome.runtime.sendMessage({ action: 'queue_scrape', urls: ev.data.urls, concurrency: concurrency }, function(resp) {
           if (chrome.runtime.lastError) return;
           console.log('[Bridge] Queue started:', resp);
         });
@@ -197,5 +202,5 @@
   announceInterval = setInterval(announce, 4000);
   syncInterval     = setInterval(syncToLocalStorage, 5000);
 
-  console.log('[BuyBox Bridge v3] Active');
+  console.log('[BuyBox Bridge v3.1] Active — concurrency default: 5');
 })();
