@@ -2394,7 +2394,8 @@ function importListings(input) {
       renderProducts();
       renderDashboard();
       updateProductCount();
-      initPricer();
+      // Only call initPricer if the pricer tab is currently active (element exists)
+      if (document.getElementById('pricerListingsStatus')) initPricer();
 
       // Show non-blocking confirmation in the UI
       var msg = '✅ Imported ' + listings.length + ' listings' + (skuCount > 0 ? ', matched ' + skuCount + ' SKU(s).' : '.');
@@ -3786,12 +3787,19 @@ function sendFileToPortal() {
 // TELEGRAM ALERTS
 // ============================================================
 function saveTgSettings() {
-  var token  = (document.getElementById('tgBotToken') || {}).value || '';
-  var chatId = (document.getElementById('tgChatId')   || {}).value || '';
-  var enabled= !!(document.getElementById('tgEnabled') || {}).checked;
-  if (token)  localStorage.setItem('tg_token',   token);
-  if (chatId) localStorage.setItem('tg_chat_id', chatId);
+  var token   = ((document.getElementById('tgBotToken') || {}).value || '').trim();
+  var chatId  = ((document.getElementById('tgChatId')   || {}).value || '').trim();
+  var enabled = !!(document.getElementById('tgEnabled') || {}).checked;
+  localStorage.setItem('tg_token',   token);
+  localStorage.setItem('tg_chat_id', chatId);
   localStorage.setItem('tg_enabled', enabled ? '1' : '0');
+  // Show brief save confirmation
+  var btn = document.querySelector('[onclick="testTelegram()"]');
+  if (btn && token && chatId) {
+    var orig = btn.textContent;
+    btn.textContent = '✅ Saved';
+    setTimeout(function(){ btn.textContent = orig; }, 1500);
+  }
 }
 
 function loadTgSettings() {
@@ -3820,10 +3828,11 @@ function loadMinProfitSetting() {
 
 var _tgLastAlert = {};
 function sendTelegramAlert(prod, buyboxPrice, seller) {
-  if (localStorage.getItem('tg_enabled') !== '1') return;
   var token  = localStorage.getItem('tg_token')   || '';
   var chatId = localStorage.getItem('tg_chat_id') || '';
-  if (!token || !chatId) return;
+  var enabled = localStorage.getItem('tg_enabled') === '1';
+  if (!enabled || !token || !chatId) return;
+  // Throttle: max 1 alert per product per 30 min
   var key = prod.fsn || prod.url;
   var now = Date.now();
   if (_tgLastAlert[key] && now - _tgLastAlert[key] < 30 * 60 * 1000) return;
