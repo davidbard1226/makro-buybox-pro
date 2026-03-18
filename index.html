@@ -48,3 +48,4271 @@
   #app { position:relative; z-index:1; display:flex; flex-direction:column; height:100vh; }
 
   /* HEADER */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    display:flex;
+    align-items:center;
+    gap:24px;
+    height: 60px;
+    flex-shrink:0;
+  }
+
+  .logo {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 26px;
+    letter-spacing: 2px;
+    color: var(--accent);
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+
+  .logo-dot { width:8px; height:8px; background:var(--accent); border-radius:50%; box-shadow:0 0 10px var(--accent); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(1.3)} }
+
+  .ext-status {
+    margin-left:auto;
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-family:'Space Mono', monospace;
+    font-size:11px;
+    padding: 6px 14px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+  }
+
+  .ext-dot { width:7px; height:7px; border-radius:50%; background:var(--muted); }
+  .ext-dot.green { background:var(--accent); box-shadow:0 0 8px var(--accent); }
+  .ext-dot.red { background:var(--accent2); }
+
+  .seller-badge {
+    font-family:'Space Mono',monospace;
+    font-size:11px;
+    color:var(--accent3);
+    padding:5px 12px;
+    border:1px solid rgba(255,214,10,.3);
+    border-radius:20px;
+    background: rgba(255,214,10,.05);
+  }
+
+  /* NAV TABS */
+  nav {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    display:flex;
+    gap:4px;
+    flex-shrink:0;
+  }
+
+  .tab-btn {
+    background:none;
+    border:none;
+    color:var(--muted);
+    font-family:'DM Sans',sans-serif;
+    font-size:13px;
+    font-weight:500;
+    padding:14px 18px;
+    cursor:pointer;
+    position:relative;
+    transition: color .2s;
+  }
+
+  .tab-btn::after {
+    content:'';
+    position:absolute;
+    bottom:0; left:0; right:0;
+    height:2px;
+    background:var(--accent);
+    transform:scaleX(0);
+    transition: transform .2s;
+  }
+
+  .tab-btn.active { color:var(--text); }
+  .tab-btn.active::after { transform:scaleX(1); }
+  .tab-btn:hover { color:var(--text); }
+
+  .tab-badge {
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    background:var(--accent);
+    color:#000;
+    font-size:9px;
+    font-weight:700;
+    width:16px; height:16px;
+    border-radius:50%;
+    margin-left:6px;
+  }
+
+  /* CONTENT */
+  main { flex:1; overflow-y:auto; padding:24px; }
+
+  .tab-content { display:none; }
+  .tab-content.active { display:block; animation: fadeIn .3s ease; }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+
+  /* STAT CARDS */
+  .stats-grid {
+    display:grid;
+    grid-template-columns: repeat(4,1fr);
+    gap:16px;
+    margin-bottom:24px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius:12px;
+    padding:20px;
+    position:relative;
+    overflow:hidden;
+  }
+
+  .stat-card::before {
+    content:'';
+    position:absolute;
+    top:0; left:0; right:0;
+    height:2px;
+    background: linear-gradient(90deg, var(--accent), transparent);
+  }
+
+  .stat-card.red::before { background: linear-gradient(90deg, var(--accent2), transparent); }
+  .stat-card.yellow::before { background: linear-gradient(90deg, var(--accent3), transparent); }
+  .stat-card.blue::before { background: linear-gradient(90deg, #60a5fa, transparent); }
+
+  .stat-label { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px; }
+  .stat-value { font-family:'Bebas Neue',sans-serif; font-size:42px; line-height:1; color:var(--text); }
+  .stat-value.accent { color:var(--accent); }
+  .stat-value.red { color:var(--accent2); }
+  .stat-value.yellow { color:var(--accent3); }
+  .stat-sub { font-size:11px; color:var(--muted); margin-top:6px; }
+
+  /* CHART */
+  .chart-row { display:grid; grid-template-columns:1fr 320px; gap:16px; margin-bottom:24px; }
+
+  .card {
+    background: var(--surface);
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:20px;
+  }
+
+  .card-title {
+    font-family:'Space Mono',monospace;
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:2px;
+    color:var(--muted);
+    margin-bottom:16px;
+  }
+
+  /* WIN/LOSE DONUT */
+  .donut-wrap { display:flex; align-items:center; gap:24px; }
+  .donut-canvas { width:120px; height:120px; }
+  .donut-legend { flex:1; }
+  .legend-item { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+  .legend-dot { width:10px; height:10px; border-radius:2px; flex-shrink:0; }
+  .legend-label { font-size:13px; color:var(--text); }
+  .legend-val { margin-left:auto; font-family:'Space Mono',monospace; font-size:12px; font-weight:700; }
+
+  /* BAR CHART */
+  .bar-chart { display:flex; flex-direction:column; gap:8px; }
+  .bar-row { display:flex; align-items:center; gap:10px; }
+  .bar-label { font-size:12px; color:var(--muted); width:100px; text-align:right; flex-shrink:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .bar-track { flex:1; height:22px; background:var(--surface2); border-radius:4px; overflow:hidden; }
+  .bar-fill { height:100%; border-radius:4px; transition:width .8s ease; display:flex; align-items:center; justify-content:flex-end; padding-right:6px; }
+  .bar-fill-val { font-size:10px; font-family:'Space Mono',monospace; }
+
+  /* PRODUCT TABLE */
+  .product-table { width:100%; border-collapse:collapse; }
+  .product-table th {
+    font-family:'Space Mono',monospace;
+    font-size:10px;
+    text-transform:uppercase;
+    letter-spacing:1px;
+    color:var(--muted);
+    padding:10px 12px;
+    text-align:left;
+    border-bottom:1px solid var(--border);
+  }
+  .product-table td { padding:12px 12px; border-bottom:1px solid rgba(30,37,48,.5); vertical-align:middle; }
+  .product-table tr:hover td { background:rgba(0,229,160,.03); }
+  .product-table tr:last-child td { border:none; }
+
+  .prod-title { font-size:13px; font-weight:500; line-height:1.4; max-width:280px; }
+  .prod-url { font-size:11px; color:var(--accent); text-decoration:none; display:block; font-family:'Space Mono',monospace; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:200px; }
+  .prod-url:hover { text-decoration:underline; }
+
+  .price-cell { font-family:'Space Mono',monospace; font-size:14px; font-weight:700; }
+  .price-cell.win { color:var(--accent); }
+  .price-cell.lose { color:var(--accent2); }
+
+  .status-pill {
+    display:inline-flex;
+    align-items:center;
+    gap:5px;
+    padding:3px 10px;
+    border-radius:20px;
+    font-size:11px;
+    font-weight:600;
+    font-family:'Space Mono',monospace;
+  }
+
+  .status-pill.win { background:rgba(0,229,160,.1); color:var(--accent); border:1px solid rgba(0,229,160,.2); }
+  .status-pill.lose { background:rgba(255,77,109,.1); color:var(--accent2); border:1px solid rgba(255,77,109,.2); }
+  .status-pill.unknown { background:rgba(107,114,128,.1); color:var(--muted); border:1px solid rgba(107,114,128,.2); }
+
+  .action-btn {
+    background: none;
+    border:1px solid var(--border);
+    color:var(--muted);
+    padding:4px 10px;
+    border-radius:6px;
+    font-size:11px;
+    cursor:pointer;
+    transition: all .2s;
+  }
+  .action-btn:hover { border-color:var(--accent); color:var(--accent); }
+  .action-btn.danger:hover { border-color:var(--accent2); color:var(--accent2); }
+
+  /* SCRAPER TAB */
+  .scraper-layout { display:grid; grid-template-columns:1fr 360px; gap:20px; }
+
+  .url-input-area {
+    background:var(--surface2);
+    border:1px solid var(--border);
+    border-radius:8px;
+    width:100%;
+    height:220px;
+    color:var(--text);
+    font-family:'Space Mono',monospace;
+    font-size:12px;
+    padding:14px;
+    resize:vertical;
+    outline:none;
+    line-height:1.8;
+  }
+  .url-input-area:focus { border-color:var(--accent); }
+  .url-input-area::placeholder { color:var(--muted); }
+
+  .scraper-config { display:flex; flex-direction:column; gap:14px; }
+  
+  .config-field label { display:block; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:6px; }
+  
+  .config-input {
+    background:var(--surface2);
+    border:1px solid var(--border);
+    border-radius:6px;
+    color:var(--text);
+    font-family:'DM Sans',sans-serif;
+    font-size:13px;
+    padding:9px 12px;
+    width:100%;
+    outline:none;
+  }
+  .config-input:focus { border-color:var(--accent); }
+
+  .btn-primary {
+    background: var(--accent);
+    color:#000;
+    border:none;
+    border-radius:8px;
+    padding:12px 24px;
+    font-family:'DM Sans',sans-serif;
+    font-size:14px;
+    font-weight:600;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    transition: all .2s;
+    width:100%;
+  }
+  .btn-primary:hover { background:#00ffb0; transform:translateY(-1px); }
+  .btn-primary:disabled { background:var(--muted); cursor:not-allowed; transform:none; }
+
+  .btn-secondary {
+    background: none;
+    color:var(--text);
+    border:1px solid var(--border);
+    border-radius:8px;
+    padding:10px 20px;
+    font-family:'DM Sans',sans-serif;
+    font-size:13px;
+    font-weight:500;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    gap:8px;
+    transition: all .2s;
+    width:100%;
+    justify-content:center;
+  }
+  .btn-secondary:hover { border-color:var(--accent); color:var(--accent); }
+
+  /* PROGRESS */
+  .progress-section { margin-top:16px; }
+  .progress-track { background:var(--surface2); border-radius:4px; height:6px; overflow:hidden; }
+  .progress-fill { height:100%; background:var(--accent); border-radius:4px; transition:width .3s; box-shadow:0 0 10px var(--accent); }
+  .progress-label { font-family:'Space Mono',monospace; font-size:11px; color:var(--muted); margin-bottom:6px; display:flex; justify-content:space-between; }
+
+  /* SCRAPE LOG */
+  .scrape-log {
+    margin-top:16px;
+    background:var(--bg);
+    border:1px solid var(--border);
+    border-radius:8px;
+    padding:12px 14px;
+    height:200px;
+    overflow-y:auto;
+    font-family:'Space Mono',monospace;
+    font-size:11px;
+    line-height:1.9;
+  }
+
+  .log-line { display:flex; gap:10px; }
+  .log-time { color:var(--muted); flex-shrink:0; }
+  .log-ok { color:var(--accent); }
+  .log-err { color:var(--accent2); }
+  .log-info { color:var(--accent3); }
+
+  /* ANALYTICS */
+  .analytics-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .analytics-full { grid-column:1/-1; }
+
+  .timeline-wrap { overflow-x:auto; }
+  .timeline-chart { min-width:600px; }
+
+  /* EMPTY STATE */
+  .empty-state {
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    padding:60px 20px;
+    text-align:center;
+    gap:12px;
+  }
+  .empty-icon { font-size:48px; opacity:.3; }
+  .empty-title { font-family:'Bebas Neue',sans-serif; font-size:28px; color:var(--muted); }
+  .empty-text { font-size:13px; color:var(--muted); max-width:300px; }
+
+  /* IMPORT/EXPORT ROW */
+  .toolbar {
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-bottom:20px;
+  }
+
+  .toolbar-right { margin-left:auto; display:flex; gap:8px; }
+
+  .filter-input {
+    background:var(--surface2);
+    border:1px solid var(--border);
+    border-radius:6px;
+    color:var(--text);
+    font-size:13px;
+    padding:8px 14px;
+    outline:none;
+    width:220px;
+  }
+  .filter-input:focus { border-color:var(--accent); }
+
+  .filter-select {
+    background:var(--surface2);
+    border:1px solid var(--border);
+    border-radius:6px;
+    color:var(--text);
+    font-size:13px;
+    padding:8px 12px;
+    outline:none;
+    cursor:pointer;
+  }
+
+  /* EXT OFFLINE BANNER */
+  #ext-banner {
+    background: rgba(255,77,109,.08);
+    border:1px solid rgba(255,77,109,.2);
+    border-radius:8px;
+    padding:12px 16px;
+    margin-bottom:20px;
+    font-size:13px;
+    color:var(--accent2);
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+
+  /* RESPONSIVE TABLE WRAPPER */
+  .table-wrap { overflow-x:auto; }
+
+  /* MODAL */
+  .modal-backdrop {
+    position:fixed; inset:0;
+    background:rgba(0,0,0,.7);
+    backdrop-filter:blur(4px);
+    z-index:100;
+    display:none;
+    align-items:center;
+    justify-content:center;
+  }
+  .modal-backdrop.show { display:flex; }
+  .modal {
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:16px;
+    padding:28px;
+    width:480px;
+    max-width:90vw;
+  }
+  .modal h3 { font-family:'Bebas Neue',sans-serif; font-size:24px; margin-bottom:8px; }
+  .modal p { font-size:13px; color:var(--muted); margin-bottom:20px; line-height:1.6; }
+  .modal-actions { display:flex; gap:10px; justify-content:flex-end; }
+
+  /* TOOLTIPS */
+  [data-tip] { position:relative; cursor:help; }
+  [data-tip]::after {
+    content: attr(data-tip);
+    position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%);
+    background:#1e2530;
+    border:1px solid var(--border);
+    color:var(--text);
+    font-size:11px;
+    padding:5px 10px;
+    border-radius:6px;
+    white-space:nowrap;
+    opacity:0;
+    pointer-events:none;
+    transition:opacity .15s;
+    z-index:50;
+  }
+  [data-tip]:hover::after { opacity:1; }
+
+  /* SELLER NAME EDIT */
+  .seller-edit-wrap { display:flex; align-items:center; gap:8px; }
+  .seller-name-input { background:transparent; border:none; color:var(--accent3); font-family:'Space Mono',monospace; font-size:11px; width:120px; outline:none; cursor:pointer; }
+  .seller-name-input:focus { border-bottom:1px solid var(--accent3); cursor:text; }
+
+  /* CANVAS WRAPPER */
+  canvas { display:block; }
+
+  /* SCROLLBAR */
+  ::-webkit-scrollbar { width:6px; height:6px; }
+  ::-webkit-scrollbar-track { background:var(--bg); }
+  ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+  ::-webkit-scrollbar-thumb:hover { background:var(--muted); }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <!-- HEADER -->
+  <header>
+    <div class="logo">
+      <div class="logo-dot"></div>
+      MAKRO BUYBOX PRO
+    </div>
+
+    <div class="seller-badge">
+      MY SELLER: <input id="sellerNameInput" class="seller-name-input" value="BonoloOnline" title="Click to edit your seller name">
+    </div>
+
+    <div class="ext-status" id="extStatus">
+      <div class="ext-dot" id="extDot"></div>
+      <span id="extLabel">Extension offline</span>
+    </div>
+  </header>
+
+  <!-- NAV -->
+  <nav>
+    <button class="tab-btn active" onclick="switchTab('dashboard')">📊 Dashboard</button>
+    <button class="tab-btn" onclick="switchTab('products')">📦 Products <span class="tab-badge" id="prodCount">0</span></button>
+    <button class="tab-btn" onclick="switchTab('scraper')">⚡ Scraper</button>
+    <button class="tab-btn" onclick="switchTab('pricer')">💰 Price Updater</button>
+    <button class="tab-btn" onclick="switchTab('analytics')">📈 Analytics</button>
+    <button class="tab-btn" onclick="switchTab('log')">📋 Price Log</button>
+  </nav>
+
+  <!-- MAIN -->
+  <main>
+
+    <!-- ========== DASHBOARD TAB ========== -->
+    <div class="tab-content active" id="tab-dashboard">
+
+      <div id="extBannerDash" class="empty-state" style="display:none">
+        <div class="empty-icon">🔌</div>
+        <div class="empty-title">Extension Not Detected</div>
+        <div class="empty-text">Install the Makro Pro Scraper Chrome extension to use this dashboard. Waiting for connection...</div>
+      </div>
+
+      <div id="dashContent">
+        <div class="stats-grid" style="grid-template-columns:repeat(6,1fr)">
+          <div class="stat-card">
+            <div class="stat-label">Total Products</div>
+            <div class="stat-value accent" id="s-total">0</div>
+            <div class="stat-sub">tracked products</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">BuyBox Wins</div>
+            <div class="stat-value accent" id="s-wins">0</div>
+            <div class="stat-sub" id="s-win-pct">—% win rate</div>
+          </div>
+          <div class="stat-card red">
+            <div class="stat-label">BuyBox Losses</div>
+            <div class="stat-value red" id="s-losses">0</div>
+            <div class="stat-sub" id="s-loss-pct">—% loss rate</div>
+          </div>
+          <div class="stat-card" style="--accent-top:var(--accent)">
+            <div class="stat-label">Est. Margin (wins)</div>
+            <div class="stat-value accent" id="s-avgmargin" style="font-size:32px">—%</div>
+            <div class="stat-sub" id="s-totalprofit">avg on priced products</div>
+          </div>
+          <div class="stat-card yellow">
+            <div class="stat-label">⚠ Low / No Stock</div>
+            <div class="stat-value yellow" id="s-lowstock">0</div>
+            <div class="stat-sub" id="s-lowstock-sub">products need restocking</div>
+          </div>
+          <div class="stat-card yellow">
+            <div class="stat-label">Last Scraped</div>
+            <div class="stat-value yellow" id="s-lastscrape" style="font-size:22px;padding-top:8px">Never</div>
+            <div class="stat-sub" id="s-lastscrape-sub"></div>
+          </div>
+        </div>
+
+        <!-- WARNING CARDS ROW -->
+        <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-top:-8px;margin-bottom:16px" id="warningCards">
+          <div class="stat-card" style="padding:14px 18px;cursor:pointer;border-color:rgba(129,140,248,0.3)" onclick="switchTab('products');document.getElementById('prodFilter').value='no-sku';renderProducts()">
+            <div class="stat-label" style="color:#818cf8">⚠ Unmatched SKUs</div>
+            <div class="stat-value" id="w-nosku" style="font-size:28px;color:#818cf8">0</div>
+            <div class="stat-sub">click to filter → fix SKUs</div>
+          </div>
+          <div class="stat-card" style="padding:14px 18px;cursor:pointer;border-color:rgba(96,165,250,0.3)" onclick="switchTab('products');document.getElementById('prodFilter').value='no-cost';renderProducts()">
+            <div class="stat-label" style="color:#60a5fa">⚠ Missing Cost Price</div>
+            <div class="stat-value" id="w-nocost" style="font-size:28px;color:#60a5fa">0</div>
+            <div class="stat-sub">click to filter → enter costs</div>
+          </div>
+          <div class="stat-card" style="padding:14px 18px;cursor:pointer;border-color:rgba(255,214,10,0.3)" onclick="switchTab('products');document.getElementById('prodFilter').value='pending';prodPage=1;renderProducts()">
+            <div class="stat-label" style="color:var(--accent3)">🔄 Pending Reprices</div>
+            <div class="stat-value" id="w-pending" style="font-size:28px;color:var(--accent3)">0</div>
+            <div class="stat-sub">click → go to Price Updater</div>
+          </div>
+          <div class="stat-card" style="padding:14px 18px;cursor:pointer;border-color:rgba(255,77,109,0.3)" onclick="switchTab('products');document.getElementById('prodFilter').value='lose';renderProducts()">
+            <div class="stat-label" style="color:#ff4d6d">🔴 Losing BuyBox</div>
+            <div class="stat-value" id="w-losing" style="font-size:28px;color:#ff4d6d">0</div>
+            <div class="stat-sub">click to filter losses</div>
+          </div>
+        </div>
+
+        <div class="chart-row">
+          <!-- DONUT only on dashboard now — status bar moved to Analytics -->
+          <div class="card" style="grid-column:1/-1">
+            <div class="card-title">Win Rate</div>
+            <div class="donut-wrap">
+              <canvas class="donut-canvas" id="donutCanvas" width="120" height="120"></canvas>
+              <div class="donut-legend">
+                <div class="legend-item">
+                  <div class="legend-dot" style="background:var(--accent)"></div>
+                  <span class="legend-label">Winning</span>
+                  <span class="legend-val accent" id="leg-win" style="color:var(--accent)">0</span>
+                </div>
+                <div class="legend-item">
+                  <div class="legend-dot" style="background:var(--accent2)"></div>
+                  <span class="legend-label">Losing</span>
+                  <span class="legend-val" id="leg-lose" style="color:var(--accent2)">0</span>
+                </div>
+                <div class="legend-item">
+                  <div class="legend-dot" style="background:var(--muted)"></div>
+                  <span class="legend-label">Unknown</span>
+                  <span class="legend-val" id="leg-unk" style="color:var(--muted)">0</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ACTION PANEL: Easy Wins + Today's Performance -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+
+          <!-- EASY WINS -->
+          <div class="card">
+            <div class="card-title" style="display:flex;align-items:center;justify-content:space-between">
+              <span>🎯 Easy Wins — Losses Within R50</span>
+              <span id="easyWinCount" style="font-family:'Space Mono',monospace;font-size:11px;color:var(--accent)"></span>
+            </div>
+            <div id="easyWinList"><div style="color:var(--muted);font-size:13px;padding:12px 0">No close losses yet — scrape products to see opportunities.</div></div>
+          </div>
+
+          <!-- TODAY'S PERFORMANCE -->
+          <div class="card">
+            <div class="card-title">📅 Today's Performance</div>
+            <div id="todayPerf"><div style="color:var(--muted);font-size:13px;padding:12px 0">Scrape products today to see performance.</div></div>
+          </div>
+
+        </div>
+      </div>
+
+    </div><!-- /dashboard -->
+
+    <!-- ========== PRODUCTS TAB ========== -->
+    <div class="tab-content" id="tab-products">
+
+      <div class="toolbar">
+        <input class="filter-input" id="prodSearch" placeholder="🔍 Search or paste Makro URL to add..." oninput="prodPage=1;renderProducts();handleSearchInput(this.value)">
+        <select class="filter-select" id="prodFilter" onchange="prodPage=1;renderProducts()">
+          <option value="all">All Status</option>
+          <option value="win">Winning</option>
+          <option value="lose">Losing</option>
+          <option value="unknown">Unknown</option>
+          <option value="no-sku">⚠ No SKU matched</option>
+          <option value="no-cost">⚠ No Cost price</option>
+          <option value="pending">🔄 Pending reprice</option>
+        </select>
+        <select class="filter-select" id="prodPageSize" onchange="prodPage=1;renderProducts()" title="Products per page">
+          <option value="25">25 / page</option>
+          <option value="50">50 / page</option>
+          <option value="100">100 / page</option>
+          <option value="9999">All</option>
+        </select>
+        <span id="filteredCount" style="font-size:12px;color:var(--muted);white-space:nowrap"></span>
+        <button id="addProductBtn" class="btn-primary" style="display:none;width:auto;padding:8px 16px;font-size:13px" onclick="addProductFromSearch()">＋ Add Product</button>
+        <div class="toolbar-right">
+          <label class="btn-secondary" style="width:auto;padding:8px 16px;cursor:pointer" title="Import your Makro S_listing XLS file">
+            📂 Import Listings
+            <input type="file" id="listingsFileInput" accept=".xls,.xlsx,.csv" style="display:none" onchange="importListings(this)">
+          </label>
+          <button class="btn-secondary" id="syncCostsBtn" style="width:auto;padding:8px 16px;color:#60a5fa;border-color:rgba(96,165,250,0.4)" onclick="syncCostsFromSheet()" title="Fetch cost prices from Google Sheet by matching SKU">📊 Sync Costs</button>
+          <button class="btn-secondary" style="width:auto;padding:8px 16px;color:#00e5a0;border-color:rgba(0,229,160,0.3)" onclick="recalcAllMinPrices()" title="Recalculate all min prices using current profit % setting">🔄 Recalc Min Prices</button>
+          <button class="btn-secondary" style="width:auto;padding:8px 16px;color:#818cf8;border-color:#818cf844" onclick="openBulkSkuModal()" title="Bulk import SKU → FSN mappings">🔗 Bulk SKU Import</button>
+          <button class="btn-secondary" style="width:auto;padding:8px 16px" onclick="refreshSelected()">↻ Refresh Selected</button>
+          <button class="btn-secondary danger" style="width:auto;padding:8px 16px;color:#ff9500;border-color:#ff950044" onclick="deleteSelected()">🗑 Delete Selected</button>
+          <button class="btn-secondary" style="width:auto;padding:8px 16px" onclick="exportCSV()">⬇ Export CSV</button>
+          <button class="btn-secondary" style="width:auto;padding:8px 16px;color:#ffd60a;border-color:rgba(255,214,10,0.4)" onclick="exportUnmatchedCSV()" title="Export products with no SKU match so you can fix and re-upload">⬇ Export Unmatched</button>
+          <button class="btn-secondary" style="width:auto;padding:8px 16px" onclick="clearAllConfirm()">🗑 Clear All</button>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table class="product-table">
+          <thead>
+            <tr>
+              <th style="width:32px"><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)" title="Select all"></th>
+              <th>Product</th>
+              <th>FSN</th>
+              <th>SKU</th>
+              <th>My Price</th>
+              <th>Stock</th>
+              <th>Buy Box Price</th>
+              <th>Cost</th>
+              <th title="Min sell price — never go below">Min R</th>
+              <th title="Max sell price — never go above">Max R</th>
+              <th>Margin</th>
+              <th title="Pending reprice or suggested new price">New Price</th>
+              <th>Seller</th>
+              <th>Status</th>
+              <th>Last Checked</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="productsBody">
+            <tr><td colspan="16">
+              <div class="empty-state">
+                <div class="empty-icon">📦</div>
+                <div class="empty-title">No Products Yet</div>
+                <div class="empty-text">Paste Makro product URLs in the Scraper tab to get started.</div>
+              </div>
+            </td></tr>
+          </tbody>
+        </table>
+      </div><!-- /table-wrap -->
+      <div id="prodPagination" style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:14px;font-size:13px"></div>
+    </div><!-- /products -->
+
+    <!-- ========== SCRAPER TAB ========== -->
+    <div class="tab-content" id="tab-scraper">
+
+      <div id="scraperExtBanner" style="display:none" class="empty-state">
+        <div class="empty-icon">🔌</div>
+        <div class="empty-title">Extension Offline</div>
+        <div class="empty-text">The Makro Pro Scraper extension must be installed and enabled. Waiting for connection...</div>
+      </div>
+
+      <div id="scraperReady">
+        <div class="scraper-layout">
+          <div>
+            <div class="card-title" style="margin-bottom:10px">PASTE MAKRO PRODUCT URLs</div>
+            <div style="margin-bottom:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <button class="btn-primary" onclick="generateUrlsFromListings()" style="width:auto;padding:8px 16px;font-size:12px">⚡ Generate URLs from Imported Listings</button>
+              <span id="urlGenStatus" style="font-size:11px;color:var(--muted)"></span>
+            </div>
+            <textarea id="urlInput" class="url-input-area" placeholder="https://www.makro.co.za/electronics/televisions/p/itmxxxxxxxx
+https://www.makro.co.za/appliances/p/itmxxxxxxxx
+https://www.makro.co.za/...
+
+One URL per line. Minimum: makro.co.za product pages."></textarea>
+            <div style="margin-top:8px; display:flex; justify-content:space-between; align-items:center">
+              <span id="urlCount" style="font-size:12px;color:var(--muted)">0 URLs detected</span>
+              <button class="action-btn" onclick="clearUrlInput()">Clear</button>
+            </div>
+
+            <div class="progress-section" id="progressSection" style="display:none">
+              <div class="progress-label">
+                <span id="progressText">Scraping...</span>
+                <span id="progressPct">0%</span>
+              </div>
+              <div class="progress-track">
+                <div class="progress-fill" id="progressFill" style="width:0%"></div>
+              </div>
+            </div>
+
+            <div class="scrape-log" id="scrapeLog">
+              <div class="log-line"><span class="log-time">&nbsp;</span><span class="log-info">Ready. Paste URLs and click Start Scraping.</span></div>
+            </div>
+          </div>
+
+          <div class="scraper-config">
+            <div class="config-field">
+              <label>My Seller Name (for BuyBox detection)</label>
+              <input class="config-input" id="sellerNameConfig" placeholder="e.g. BonoloOnline">
+            </div>
+
+            <div class="config-field">
+              <label>Parallel Tabs (simultaneous products)</label>
+              <select class="config-input" id="scrapeParallel" onchange="localStorage.setItem('scrape_parallel', this.value)">
+                <option value="1">1 tab — safest</option>
+                <option value="2">2 tabs — moderate</option>
+                <option value="3">3 tabs — fast</option>
+                <option value="4">4 tabs — faster</option>
+                <option value="5" selected>5 tabs — max speed</option>
+              </select>
+              <div style="font-size:10px;color:var(--muted);margin-top:4px;line-height:1.5">
+                5 tabs ≈ <strong style="color:var(--accent)">~750 products/hour</strong>. Each tab uses a 2-4s human delay. Increase if Makro never blocks you.
+              </div>
+            </div>
+
+            <div class="config-field">
+              <label>Min Profit % (after Makro fees)</label>
+              <div style="display:flex;align-items:center;gap:8px">
+                <input type="range" id="minProfitSlider" min="3" max="30" step="1" value="7"
+                  style="flex:1;accent-color:var(--accent)"
+                  oninput="updateMinProfitDisplay(this.value)">
+                <span id="minProfitDisplay" style="font-family:'Space Mono',monospace;font-size:13px;color:var(--accent);width:36px;text-align:right">7%</span>
+              </div>
+              <div style="font-size:10px;color:var(--muted);margin-top:4px;line-height:1.5">
+                Min price = this profit after Makro's 10% + delivery fee. Applied when auto-calculating floor price from cost.
+              </div>
+            </div>
+
+            <div class="config-field">
+              <label>🕐 Auto-Scrape Schedule</label>
+              <select class="config-input" id="autoScrapeInterval">
+                <option value="0">Off (manual only)</option>
+                <option value="60" selected>Every 1 hour</option>
+                <option value="240">Every 4 hours</option>
+                <option value="480">Every 8 hours</option>
+                <option value="720">Every 12 hours</option>
+              </select>
+
+              <div style="margin-top:8px">
+                <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:1px">Scrape Order</label>
+                <select class="config-input" id="autoScrapeMode">
+                  <option value="smart">🧠 Smart — losses first, then wins</option>
+                  <option value="losses">🔴 Losses only (fastest)</option>
+                  <option value="all">🔄 All products</option>
+                </select>
+              </div>
+
+              <div id="autoScrapeStatus" style="font-size:10px;color:var(--accent);margin-top:6px;line-height:1.6"></div>
+            </div>
+
+            <div class="config-field">
+              <label>✈️ Telegram Alerts</label>
+              <input class="config-input" id="tgBotToken" placeholder="Bot Token — from @BotFather" style="margin-bottom:6px"
+                oninput="saveTgSettings()" onchange="saveTgSettings()">
+              <input class="config-input" id="tgChatId" placeholder="Your Chat ID" style="margin-bottom:6px"
+                oninput="saveTgSettings()" onchange="saveTgSettings()">
+              <div style="font-size:10px;color:var(--muted);line-height:1.8;margin-bottom:6px">
+                <b style="color:var(--text)">Setup (2 min):</b><br>
+                1. Telegram → search <b>@BotFather</b> → send <code>/newbot</code> → copy <b>Bot Token</b><br>
+                2. Send any message to your new bot to activate it<br>
+                3. Visit <span style="color:var(--accent)">api.telegram.org/bot<b>TOKEN</b>/getUpdates</span> → copy <b>id</b> from result<br>
+                Alerts fire when you <span style="color:#ff9500">lose the BuyBox</span> after a scrape.
+              </div>
+              <div style="display:flex;gap:8px;align-items:center">
+                <label style="font-size:11px;display:flex;align-items:center;gap:4px;cursor:pointer;color:var(--muted)">
+                  <input type="checkbox" id="tgEnabled" style="width:14px;height:14px"> Enable alerts
+                </label>
+                <button class="action-btn" style="font-size:10px;color:var(--accent)" onclick="testTelegram()">📨 Test</button>
+              </div>
+            </div>
+
+            <div class="config-field">
+              <label>Mode</label>
+              <select class="config-input" id="scrapeMode">
+                <option value="add">Add / update products</option>
+                <option value="replace">Replace all data</option>
+              </select>
+            </div>
+
+            <div style="padding:14px; background:var(--surface2); border-radius:8px; border:1px solid var(--border)">
+              <div style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px">Extension Status</div>
+              <div style="display:flex; align-items:center; gap:8px; font-size:13px" id="scraperExtStatus">
+                <div style="width:8px;height:8px;border-radius:50%;background:var(--muted)" id="scraperDot"></div>
+                <span id="scraperExtLabel">Waiting for extension...</span>
+              </div>
+            </div>
+
+            <button class="btn-primary" id="startBtn" onclick="startScraping()" disabled>
+              ⚡ Start Scraping
+            </button>
+
+            <button class="btn-secondary" id="stopBtn" onclick="stopScraping()" style="display:none">
+              ⏹ Stop
+            </button>
+
+            <button class="btn-secondary" onclick="loadSampleUrls()">
+              📋 Load Sample URLs
+            </button>
+
+            <div style="font-size:11px; color:var(--muted); line-height:1.8; padding:12px; background:var(--surface2); border-radius:8px; border:1px solid var(--border)">
+              <strong style="color:var(--accent)">✅ Separate window mode — bot-free</strong><br>
+              1. Paste Makro product URLs (one per line)<br>
+              2. A dedicated Chrome window opens automatically<br>
+              3. Each page loads as a real foreground tab<br>
+              4. Content script scrapes price + seller + FSN<br>
+              5. 4–9 second human delay between pages<br>
+              6. Results sync live to your dashboard<br>
+              7. Window closes automatically when done
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /scraper -->
+
+    <!-- ========== PRICE UPDATER TAB ========== -->
+    <div class="tab-content" id="tab-pricer">
+      <div class="scraper-layout">
+        <!-- LEFT: Settings & Generate -->
+        <div>
+          <div class="card" style="margin-bottom:16px">
+            <div class="card-title" style="margin-bottom:14px">⚙️ REPRICING STRATEGY</div>
+            <div style="display:grid;gap:12px">
+              <label style="font-size:13px;color:var(--muted)">Strategy
+                <select id="pricerStrategy" style="width:100%;margin-top:6px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:6px;font-size:13px">
+                  <option value="beat">Beat BuyBox by fixed amount</option>
+                  <option value="match">Match BuyBox exactly</option>
+                  <option value="pct">Beat BuyBox by percentage</option>
+                  <option value="floor">Beat BuyBox but never below my floor price</option>
+                </select>
+              </label>
+              <label style="font-size:13px;color:var(--muted)">Beat by (R amount or %)
+                <input id="pricerBeatBy" type="number" value="1" min="0" step="0.50" style="width:100%;margin-top:6px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:6px;font-size:13px">
+              </label>
+              <label style="font-size:13px;color:var(--muted)">Floor price margin (% above cost — only used in floor strategy)
+                <input id="pricerFloor" type="number" value="10" min="0" step="1" style="width:100%;margin-top:6px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:6px;font-size:13px">
+              </label>
+
+              <!-- Min / Max price guards — apply to ALL strategies -->
+              <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:2px">
+                <div style="font-size:11px;color:var(--accent);font-weight:700;letter-spacing:1px;margin-bottom:10px">🛡 PRICE GUARDS — applies to every strategy</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                  <label style="font-size:12px;color:var(--muted)">
+                    Min Price (R) — never go below
+                    <div style="display:flex;align-items:center;gap:6px;margin-top:5px">
+                      <label style="font-size:11px;display:flex;align-items:center;gap:4px;cursor:pointer">
+                        <input type="checkbox" id="pricerMinEnabled" onchange="buildPricerPreview()" style="width:14px;height:14px"> On
+                      </label>
+                      <input id="pricerMinPrice" type="number" value="0" min="0" step="1"
+                        style="flex:1;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:5px;font-size:12px"
+                        oninput="buildPricerPreview()">
+                    </div>
+                  </label>
+                  <label style="font-size:12px;color:var(--muted)">
+                    Max Price (R) — never go above
+                    <div style="display:flex;align-items:center;gap:6px;margin-top:5px">
+                      <label style="font-size:11px;display:flex;align-items:center;gap:4px;cursor:pointer">
+                        <input type="checkbox" id="pricerMaxEnabled" onchange="buildPricerPreview()" style="width:14px;height:14px"> On
+                      </label>
+                      <input id="pricerMaxPrice" type="number" value="9999" min="0" step="1"
+                        style="flex:1;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:5px;font-size:12px"
+                        oninput="buildPricerPreview()">
+                    </div>
+                  </label>
+                </div>
+                <div style="font-size:10px;color:var(--muted);margin-top:8px;line-height:1.5">
+                  Products clamped to min/max will show <span style="color:#ff9500">⚠ CLAMPED</span> in the preview and be skipped from the upload to avoid pricing mistakes.
+                </div>
+              </div>
+
+              <label style="font-size:13px;display:flex;align-items:center;gap:8px;color:var(--muted);cursor:pointer">
+                <input type="checkbox" id="pricerWinsOnly" checked style="width:16px;height:16px">
+                Only update products where I'm losing the BuyBox
+              </label>
+              <label style="font-size:13px;display:flex;align-items:center;gap:8px;color:var(--muted);cursor:pointer">
+                <input type="checkbox" id="pricerSkipUnknown" checked style="width:16px;height:16px">
+                Skip products with no BuyBox price scraped yet
+              </label>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title" style="margin-bottom:14px">📋 LISTINGS FILE REQUIRED</div>
+            <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Import your S_listing XLS first (Products tab → Import Listings). The price updater uses your current prices and FSN codes to generate the upload file.</p>
+            <div id="pricerListingsStatus" style="font-size:13px;color:var(--muted);margin-bottom:8px">⏳ Checking listings...</div>
+          <div id="pendingUploadCount" style="font-size:12px;color:var(--muted);margin-bottom:12px;font-family:'Space Mono',monospace"></div>
+          <button class="btn-primary" onclick="generatePriceUpdate()" id="generateBtn" style="width:100%;margin-bottom:8px">⬇ Generate & Download Price Update File</button>
+          <button class="btn-secondary" onclick="openPortalUpload()" id="portalUploadBtn" style="width:100%;margin-bottom:8px;color:#00e5a0;border-color:#00e5a044">🚀 Send to Portal & Auto Upload</button>
+          <button class="btn-secondary" onclick="sendFileToPortal()" id="sendFileBtn" style="width:100%;margin-bottom:4px;color:#ffd60a;border-color:#ffd60a44" title="Re-send the generated file to the portal extension without downloading again">📤 Re-send File to Portal</button>
+            <div id="pricerResult" style="margin-top:14px;font-size:12px;color:var(--muted)"></div>
+          </div>
+        </div>
+
+        <!-- RIGHT: Preview table -->
+        <div class="card" style="overflow:auto">
+          <div class="card-title" style="margin-bottom:14px">👁 PREVIEW — Products to Update</div>
+          <div id="pricerPreview" style="font-size:12px;color:var(--muted)">Generate a file to see preview here.</div>
+        </div>
+      </div>
+
+      <!-- How to upload instructions -->
+      <div class="card" style="margin-top:16px">
+        <div class="card-title" style="margin-bottom:10px">📤 HOW TO UPLOAD TO SELLER PORTAL</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px">
+          <div style="text-align:center;padding:12px">
+            <div style="font-size:24px;margin-bottom:8px">1️⃣</div>
+            <div style="font-size:12px;color:var(--muted)">Click <b style="color:var(--text)">Generate Price Update File</b> above to download your updated XLS</div>
+          </div>
+          <div style="text-align:center;padding:12px">
+            <div style="font-size:24px;margin-bottom:8px">2️⃣</div>
+            <div style="font-size:12px;color:var(--muted)">Go to <b style="color:var(--accent)">seller.makro.co.za</b> → <b style="color:var(--text)">Products</b> → <b style="color:var(--text)">Update Products</b></div>
+          </div>
+          <div style="text-align:center;padding:12px">
+            <div style="font-size:24px;margin-bottom:8px">3️⃣</div>
+            <div style="font-size:12px;color:var(--muted)">Upload the generated XLS file using <b style="color:var(--text)">Bulk Upload</b></div>
+          </div>
+          <div style="text-align:center;padding:12px">
+            <div style="font-size:24px;margin-bottom:8px">4️⃣</div>
+            <div style="font-size:12px;color:var(--muted)">Prices update within <b style="color:var(--text)">15–30 minutes</b> on Makro marketplace</div>
+          </div>
+        </div>
+      </div>
+    </div><!-- /pricer -->
+
+    <!-- ========== ANALYTICS TAB ========== -->
+    <div class="tab-content" id="tab-analytics">
+      <div class="analytics-grid">
+
+        <!-- ROW 1: Price dist + Trend -->
+        <div class="card">
+          <div class="card-title">Price Distribution</div>
+          <canvas id="priceChart" height="180"></canvas>
+          <div id="emptyPriceChart" class="empty-state" style="padding:20px; display:none">
+            <div class="empty-text">No data yet</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Win/Loss Over Time</div>
+          <canvas id="trendChart" height="180"></canvas>
+          <div id="emptyTrendChart" class="empty-state" style="padding:20px; display:none">
+            <div class="empty-text">Scrape products to see trends</div>
+          </div>
+        </div>
+
+        <!-- ROW 3: Competitor full breakdown + price gap analysis -->
+        <div class="card">
+          <div class="card-title" style="margin-bottom:14px">🏆 Competitor Breakdown</div>
+          <div id="compBreakdown"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title" style="margin-bottom:14px">📉 Price Gap Analysis</div>
+          <div id="priceGapAnalysis"></div>
+        </div>
+
+        <!-- ROW 5: Opportunity table + Summary -->
+        <div class="card analytics-full">
+          <div class="card-title" style="margin-bottom:14px">🎯 Top Opportunities — Closest to Winning BuyBox</div>
+          <div id="opportunityTable" style="overflow-x:auto"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title" style="margin-bottom:14px">📋 Summary Stats</div>
+          <div id="summaryStats" style="display:flex; flex-direction:column; gap:4px; padding-top:4px"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title" style="margin-bottom:14px">🔄 Data & Sync</div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <button class="btn-secondary" style="width:100%;padding:10px" onclick="exportAllData()">⬇ Export All Data (JSON)</button>
+            <label class="btn-secondary" style="width:100%;padding:10px;text-align:center;cursor:pointer">
+              ⬆ Import Data (JSON) — sync from another PC
+              <input type="file" accept=".json" style="display:none" onchange="importAllData(this)">
+            </label>
+            <div style="font-size:11px;color:var(--muted);line-height:1.7;padding:8px;background:var(--surface2);border-radius:6px">
+              Export on this PC → copy JSON file to your work PC → Import there. All products, history and listings transfer instantly.
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div><!-- /analytics -->
+
+    <!-- ========== PRICE LOG TAB ========== -->
+    <div class="tab-content" id="tab-log">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+        <div class="card-title" style="margin:0">📋 PRICE CHANGE HISTORY</div>
+        <button class="btn-secondary" style="width:auto;padding:6px 14px;font-size:12px" onclick="exportPriceLog()">⬇ Export CSV</button>
+        <button class="btn-secondary" style="width:auto;padding:6px 14px;font-size:12px;color:#ff9500;border-color:#ff950044" onclick="clearPriceLog()">🗑 Clear Log</button>
+        <button class="btn-secondary" style="width:auto;padding:6px 14px;font-size:12px;color:var(--accent);border-color:#00e5a044" onclick="addTestLogEntry()">+ Add Test Entry</button>
+        <span id="priceLogCount" style="font-size:12px;color:var(--muted);margin-left:auto"></span>
+      </div>
+      <div class="card">
+        <div id="priceLogTable" style="overflow-x:auto;font-size:12px"></div>
+      </div>
+    </div><!-- /log -->
+
+  </main>
+</div>
+
+<!-- PRICE HISTORY MODAL -->
+<div class="modal-backdrop" id="historyModal">
+  <div class="modal" style="width:600px">
+    <h3>📈 Price History</h3>
+    <p id="historyModalTitle" style="color:var(--accent);font-size:13px;margin-bottom:12px"></p>
+    <canvas id="historyCanvas" width="540" height="200" style="width:100%;border-radius:6px;background:var(--surface2)"></canvas>
+    <div id="historyTable" style="margin-top:14px;max-height:200px;overflow-y:auto;font-size:11px;font-family:'Space Mono',monospace"></div>
+    <div class="modal-actions" style="margin-top:16px">
+      <button class="btn-primary" style="width:auto" onclick="document.getElementById('historyModal').classList.remove('show')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- BULK SKU IMPORT MODAL -->
+<div class="modal-backdrop" id="bulkSkuModal">
+  <div class="modal" style="width:580px">
+    <h3>🔗 Bulk SKU Import</h3>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:14px">Upload a CSV or Excel file, or paste rows directly. Two columns required: <span style="color:#818cf8;font-family:monospace">SKU</span> and <span style="color:var(--accent);font-family:monospace">FSN</span>. Header row is auto-detected and skipped.</p>
+
+    <!-- File drop zone -->
+    <label id="bulkSkuDropZone" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;border:2px dashed var(--border);border-radius:8px;padding:20px;cursor:pointer;transition:border-color .2s;margin-bottom:10px;background:var(--surface2)" ondragover="event.preventDefault();this.style.borderColor='var(--accent)'" ondragleave="this.style.borderColor='var(--border)'" ondrop="bulkSkuDropped(event)">
+      <div style="font-size:28px">📂</div>
+      <div style="font-size:13px;color:var(--text)">Drop CSV or Excel file here, or <span style="color:var(--accent);text-decoration:underline">click to browse</span></div>
+      <div style="font-size:11px;color:var(--muted)">.csv, .xls, .xlsx accepted</div>
+      <input type="file" id="bulkSkuFile" accept=".csv,.xls,.xlsx" style="display:none" onchange="bulkSkuFileSelected(this)">
+    </label>
+
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <div style="flex:1;height:1px;background:var(--border)"></div>
+      <span style="font-size:11px;color:var(--muted)">OR PASTE BELOW</span>
+      <div style="flex:1;height:1px;background:var(--border)"></div>
+    </div>
+
+    <textarea id="bulkSkuInput" style="width:100%;height:120px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:'Space Mono',monospace;font-size:12px;padding:10px;border-radius:6px;resize:vertical;outline:none" placeholder="SKU,FSN&#10;ABC-001,INTHFFWCZ5WSYEPZ&#10;ABC-002,ABCDEFGHIJ123456"></textarea>
+
+    <div id="bulkSkuPreview" style="font-size:11px;color:var(--muted);margin-top:6px;font-family:monospace;min-height:18px"></div>
+    <div id="bulkSkuResult" style="font-size:12px;color:var(--muted);margin-top:6px"></div>
+
+    <div class="modal-actions" style="margin-top:14px">
+      <button class="btn-secondary" style="width:auto" onclick="document.getElementById('bulkSkuModal').classList.remove('show')">Cancel</button>
+      <button class="btn-primary" style="width:auto;min-width:120px" onclick="saveBulkSkus()">💾 Import SKUs</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT PRODUCT MODAL -->
+<div class="modal-backdrop" id="editModal">
+  <div class="modal" style="width:500px">
+    <h3>✎ Edit Product Details</h3>
+    <p id="editModalTitle" style="color:var(--accent);margin-bottom:16px;font-size:13px;font-weight:600"></p>
+
+    <div style="display:grid;gap:14px">
+      <div>
+        <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:5px">FSN (Makro Product ID)</label>
+        <input id="editFsnInput" type="text" placeholder="e.g. INTHFFWCZ5WSYEPZ"
+          style="width:100%;background:var(--surface2);border:1px solid #f59e0b;color:#f59e0b;font-family:'Space Mono',monospace;font-size:13px;padding:8px 10px;border-radius:6px;outline:none">
+        <div style="font-size:10px;color:var(--muted);margin-top:4px">⚠ Changing FSN relinks this product — make sure it matches exactly</div>
+      </div>
+      <div>
+        <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:5px">SKU (Seller Product Code)</label>
+        <input id="editSkuInput" type="text" placeholder="e.g. ABC-1234"
+          style="width:100%;background:var(--surface2);border:1px solid #818cf8;color:#818cf8;font-family:'Space Mono',monospace;font-size:13px;padding:8px 10px;border-radius:6px;outline:none">
+      </div>
+      <div>
+        <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:5px">Cost Price (R) — what you paid the supplier</label>
+        <input id="editCostInput" type="number" step="0.01" min="0" placeholder="e.g. 850.00"
+          style="width:100%;background:var(--surface2);border:1px solid #60a5fa;color:#60a5fa;font-family:'Space Mono',monospace;font-size:13px;padding:8px 10px;border-radius:6px;outline:none">
+        <div id="editCostHint" style="font-size:11px;color:var(--muted);margin-top:5px"></div>
+      </div>
+      <div>
+        <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:5px">Min Price (R) — floor after Makro fees</label>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+          <span style="font-size:11px;color:var(--muted)">Min profit %:</span>
+          <select id="editMinProfitPct" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:12px;padding:3px 6px;border-radius:4px;outline:none" onchange="updateEditCalcPreview()">
+            <option value="5">5%</option>
+            <option value="7" selected>7%</option>
+            <option value="10">10%</option>
+            <option value="12">12%</option>
+            <option value="15">15%</option>
+            <option value="20">20%</option>
+          </select>
+          <span style="font-size:11px;color:var(--muted)">or override:</span>
+        </div>
+        <input id="editMinInput" type="number" step="1" min="0" placeholder="Auto-calculated from cost + profit %"
+          style="width:100%;background:var(--surface2);border:1px solid var(--accent3);color:var(--accent3);font-family:'Space Mono',monospace;font-size:13px;padding:8px 10px;border-radius:6px;outline:none">
+        <div id="editMinHint" style="font-size:11px;color:var(--muted);margin-top:5px">Leave blank to auto-calculate</div>
+      </div>
+      <div>
+        <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:5px">Max Price (R) — auto = min price × 1.20</label>
+        <input id="editMaxInput" type="number" step="1" min="0" placeholder="Auto = Min Price + 20%"
+          style="width:100%;background:var(--surface2);border:1px solid #a78bfa;color:#a78bfa;font-family:'Space Mono',monospace;font-size:13px;padding:8px 10px;border-radius:6px;outline:none">
+        <div id="editMaxHint" style="font-size:11px;color:var(--muted);margin-top:5px">Leave blank to auto-set to 20% above min price</div>
+      </div>
+    </div>
+
+    <div style="margin-top:20px;padding:10px;background:var(--surface2);border-radius:6px;font-size:11px;color:var(--muted);line-height:1.7" id="editCalcPreview"></div>
+
+    <div class="modal-actions" style="margin-top:20px">
+      <button class="btn-secondary" style="width:auto" onclick="closeEditModal()">Cancel</button>
+      <button class="btn-primary" style="width:auto;min-width:120px" onclick="saveEditModal()">💾 Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- CLEAR CONFIRM MODAL -->
+<div class="modal-backdrop" id="clearModal">
+  <div class="modal">
+    <h3>⚠️ Clear All Products?</h3>
+    <p>This will permanently delete all <span id="clearCount">0</span> scraped products from local storage. This cannot be undone.</p>
+    <div class="modal-actions">
+      <button class="btn-secondary" style="width:auto" onclick="document.getElementById('clearModal').classList.remove('show')">Cancel</button>
+      <button class="btn-primary" style="width:auto;background:var(--accent2)" onclick="clearAll()">Delete All</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// STATE
+// ============================================================
+const STORAGE_KEY = 'makro_buybox_v2';
+const SELLER_KEY  = 'makro_seller_name';
+
+let state = {
+  products: [],     // [{url, fsn, title, buybox_price, seller, status, lastChecked, history:[]}]
+  scraping: false,
+  extReady: false,
+  stopRequested: false,
+};
+
+let extensionId = null;
+
+// ============================================================
+// STORAGE
+// ============================================================
+function saveProducts() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state.products)); } catch(e) {}
+}
+
+function loadProducts() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) state.products = JSON.parse(raw);
+  } catch(e) { state.products = []; }
+
+  // ── DEDUPLICATE by FSN: keep the richest entry (most fields filled) ──────
+  state.products = deduplicateProducts(state.products);
+
+  // ── STRIP bad itm... values incorrectly stored as SKU from old scraper ───
+  var skuFixed = false;
+  state.products.forEach(function(p) {
+    if (p.sku && (p.sku.startsWith('itm') || p.sku.startsWith('ITM'))) {
+      p.sku = '';
+      skuFixed = true;
+    }
+  });
+  if (skuFixed) saveProducts();
+
+  // Backfill max_price for any product that has min but no max
+  var changed = false;
+  state.products.forEach(function(p) {
+    if (!p.max_price && p.min_price > 0) {
+      p.max_price = Math.round(p.min_price * 1.20);
+      changed = true;
+    }
+  });
+  if (changed) saveProducts();
+}
+
+// Merge duplicate FSN entries — keep the one with the most useful data,
+// then copy any non-null fields from the other into it.
+function deduplicateProducts(products) {
+  var seen = {}; // fsn → index in result
+  var result = [];
+  products.forEach(function(p) {
+    var key = (p.fsn || '').trim().toUpperCase();
+    if (!key) {
+      // No FSN — keep as-is, can't dedupe without a key
+      result.push(p);
+      return;
+    }
+    if (key in seen) {
+      // Merge: copy non-empty fields from p into the existing entry
+      var existing = result[seen[key]];
+      var fields = ['sku','title','url','seller','status','buybox_price','cost_price',
+                    'min_price','max_price','cost_supplier','lastChecked','pending_price',
+                    'pending_updated','history'];
+      fields.forEach(function(f) {
+        if (f === 'history') {
+          // Merge history arrays, dedupe by ts
+          var h1 = existing.history || [];
+          var h2 = p.history || [];
+          var allH = h1.concat(h2);
+          var hSeen = {};
+          existing.history = allH.filter(function(h) {
+            if (hSeen[h.ts]) return false;
+            hSeen[h.ts] = true; return true;
+          }).sort(function(a,b){ return new Date(a.ts)-new Date(b.ts); }).slice(-30);
+        } else if (!existing[f] && p[f]) {
+          // SKU special case: prefer a real SKU over an itm... placeholder
+          if (f === 'sku') {
+            var eBad = !existing.sku || /^itm/i.test(existing.sku);
+            var pGood = p.sku && !/^itm/i.test(p.sku);
+            if (eBad && pGood) existing.sku = p.sku;
+          } else {
+            existing[f] = p[f]; // fill in missing fields from duplicate
+          }
+        } else if (f === 'sku' && /^itm/i.test(existing.sku) && p.sku && !/^itm/i.test(p.sku)) {
+          // Overwrite bad itm SKU with a real one even if existing field wasn't empty
+          existing.sku = p.sku;
+        } else if (f === 'lastChecked' && p[f] > (existing[f]||'')) {
+          // Keep the more recent scrape data
+          existing[f] = p[f];
+          if (p.buybox_price) existing.buybox_price = p.buybox_price;
+          if (p.seller)       existing.seller       = p.seller;
+          if (p.status)       existing.status       = p.status;
+        }
+      });
+    } else {
+      seen[key] = result.length;
+      result.push(Object.assign({}, p));
+    }
+  });
+  return result;
+}
+
+function getMySellerName() {
+  return document.getElementById('sellerNameInput').value.trim() || 'BonoloOnline';
+}
+
+function reEvaluateStatuses() {
+  const myName = getMySellerName().toLowerCase().trim();
+  state.products.forEach(function(p) {
+    if (!p.seller || p.seller === 'Unknown Seller') {
+      p.status = 'unknown';
+    } else {
+      const s = p.seller.toLowerCase();
+      p.status = (s.includes(myName) || myName.includes(s.substring(0,6))) ? 'win' : 'lose';
+    }
+    // ── MIGRATE FSN from URL if missing ─────────────────────────────────────
+    // Products scraped before FSN fix: try to extract FSN from stored URL now
+    if (!p.fsn && p.url) {
+      // Try pid= param
+      const m1 = p.url.match(/[?&]pid=([A-Z0-9]{8,})/i);
+      if (m1) { p.fsn = m1[1].toUpperCase(); return; }
+      // Try to match SKU-like path segment that looks like a Makro FSN (uppercase alpha+numeric, 12-20 chars)
+      // Makro FSNs look like: INTH5YY5BCERERBG, PRNH5FQYEF7HS9SE
+      const m2 = p.url.match(/\/([A-Z]{2,4}[A-Z0-9]{8,16})(?:[/?#]|$)/);
+      if (m2 && /^[A-Z]{2,4}[A-Z0-9]+$/.test(m2[1])) p.fsn = m2[1];
+    }
+  });
+}
+
+// ============================================================
+// EXTENSION BRIDGE
+// ============================================================
+// This page is loaded directly (not inside an iframe!)
+// So the extension-bridge.js injects and postMessages directly to window.
+
+window.addEventListener('message', function(ev) {
+  var d = ev.data;
+  if (!d || !d.type) return;
+
+  if (d.type === 'MAKRO_EXTENSION_READY') {
+    if (!state.extReady) {
+      state.extReady = true;
+      extensionId = d.extensionId || null;
+      log('info', 'Extension connected' + (extensionId ? ' (id: ' + extensionId.slice(0,8) + '...)' : ''));
+    }
+    setExtStatus(true);
+    return;
+  }
+
+  if (d.type === 'PRODUCTS_UPDATED') {
+    // ── Preserve manually-set fields before reloading from localStorage ──
+    // Bridge writes scraped data which won't have SKU/cost/min/max the user set manually.
+    var memMap = {};
+    state.products.forEach(function(p) {
+      var key = (p.fsn||'').toUpperCase() || p.url;
+      if (key) memMap[key] = p;
+    });
+    loadProducts();
+    // Merge manual fields back in — never let a bridge write wipe them
+    state.products.forEach(function(p) {
+      var key = (p.fsn||'').toUpperCase() || p.url;
+      var mem = memMap[key];
+      if (!mem) return;
+      if (mem.sku && !/^itm/i.test(mem.sku) && (!p.sku || /^itm/i.test(p.sku))) p.sku = mem.sku;
+      if (mem.cost_price > 0 && !(p.cost_price > 0)) { p.cost_price = mem.cost_price; p.cost_supplier = mem.cost_supplier; }
+      if (mem.min_price > 0 && !(p.min_price > 0)) p.min_price = mem.min_price;
+      if (mem.max_price > 0 && !(p.max_price > 0)) p.max_price = mem.max_price;
+    });
+    saveProducts();
+    reEvaluateStatuses();
+    saveProducts();
+    updateProductCount();
+    renderDashboard();
+    const anyChecked = document.querySelectorAll('.row-check:checked').length > 0;
+    if (!anyChecked) renderProducts();
+    return;
+  }
+
+  if (d.type === 'SCRAPE_RESULT') {
+    // legacy — no longer used in human-mode but kept for compat
+    return;
+  }
+
+  if (d.type === 'QUEUE_PROGRESS') {
+    handleQueueProgress(d);
+    return;
+  }
+
+  if (d.type === 'QUEUE_FINISHED') {
+    handleQueueFinished();
+    return;
+  }
+
+  if (d.type === 'QUEUE_ABORTED') {
+    log('info', '⚠ Queue stopped. ' + (d.done||0) + '/' + (d.total||0) + ' done.');
+    finishScraping();
+    return;
+  }
+
+  if (d.type === 'SCRAPER_LOG') {
+    log('info', d.msg || '');
+    return;
+  }
+});
+
+// Also check via chrome.runtime if available (same page)
+function pingExtension() {
+  // We rely on extension-bridge.js announcing via postMessage
+  // but also request on load
+  try {
+    window.postMessage({ type: 'REQUEST_EXTENSION' }, '*');
+  } catch(e) {}
+}
+
+// ============================================================
+// EXT STATUS UI
+// ============================================================
+function setExtStatus(online) {
+  state.extReady = online;
+  document.getElementById('extDot').className = 'ext-dot ' + (online ? 'green' : 'red');
+  document.getElementById('extLabel').textContent = online ? 'Extension connected' : 'Extension offline';
+  document.getElementById('scraperDot').style.background = online ? 'var(--accent)' : 'var(--muted)';
+  document.getElementById('scraperExtLabel').textContent = online ? '✓ Connected — ready to scrape' : 'Waiting for extension...';
+  document.getElementById('startBtn').disabled = !online;
+  document.getElementById('scraperExtBanner').style.display = online ? 'none' : 'block';
+  document.getElementById('scraperReady').style.display = 'flex';
+  document.getElementById('scraperReady').style.flexDirection = online ? '' : 'none';
+  // Show scraper layout regardless; just disable the button
+  document.getElementById('scraperReady').style.display = 'block';
+}
+
+// ============================================================
+// TABS
+// ============================================================
+function switchTab(name) {
+  const names = ['dashboard','products','scraper','pricer','analytics','log'];
+  document.querySelectorAll('.tab-btn').forEach((b,i) => {
+    b.classList.toggle('active', names[i] === name);
+  });
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  if (name === 'dashboard') renderDashboard();
+  if (name === 'products')  renderProducts();
+  if (name === 'analytics') renderAnalytics();
+  if (name === 'scraper')   syncSellerConfig();
+  if (name === 'pricer')    initPricer();
+  if (name === 'log')       renderPriceLog();
+}
+
+function syncSellerConfig() {
+  document.getElementById('sellerNameConfig').value = getMySellerName();
+}
+
+// ============================================================
+// SCRAPER — Human-mode queue (bot-free)
+// Opens each URL as a real foreground tab, content.js auto-scrapes,
+// background.js advances the queue. No background/hidden tabs.
+// ============================================================
+let scrapeQueue = [];
+let scrapeIdx   = 0;
+let prodPage    = 1;
+
+function parseUrls() {
+  const raw = document.getElementById('urlInput').value;
+  return raw.split('\n')
+    .map(l => l.trim())
+    .filter(l => l.startsWith('http') && l.includes('makro.co.za'));
+}
+
+document.getElementById('urlInput').addEventListener('input', function() {
+  const urls = parseUrls();
+  document.getElementById('urlCount').textContent = urls.length + ' URL' + (urls.length !== 1 ? 's' : '') + ' detected';
+});
+
+function clearUrlInput() {
+  document.getElementById('urlInput').value = '';
+  document.getElementById('urlCount').textContent = '0 URLs detected';
+}
+
+function generateUrlsFromListings() {
+  var listings = getListings();
+  var statusEl = document.getElementById('urlGenStatus');
+  if (!listings.length) {
+    statusEl.textContent = '⚠️ No listings imported — go to Products tab and import your Makro Offers XLS first.';
+    statusEl.style.color = '#ff9500';
+    return;
+  }
+
+  // Build FSN → real URL map from already-scraped products
+  var fsnToUrl = {};
+  state.products.forEach(function(p) {
+    if (p.fsn && p.url && p.url.includes('makro.co.za')) fsnToUrl[p.fsn] = p.url;
+  });
+
+  var urls = [];
+  var fromHistory = 0, fromSearch = 0;
+  listings.forEach(function(l) {
+    if (!l.fsn || l.fsn.length < 6) return;
+    if (fsnToUrl[l.fsn]) {
+      // Use the real URL we scraped before — guaranteed to work
+      urls.push(fsnToUrl[l.fsn]);
+      fromHistory++;
+    } else {
+      // Construct URL: makro search by FSN redirects directly to the product page
+      // Format: https://www.makro.co.za/search?q=FSN  (redirects to product)
+      urls.push('https://www.makro.co.za/search?q=' + encodeURIComponent(l.fsn));
+      fromSearch++;
+    }
+  });
+
+  var unique = urls.filter(function(v, i, a) { return a.indexOf(v) === i; });
+  if (!unique.length) {
+    statusEl.textContent = '⚠️ No FSN codes found in listings.';
+    statusEl.style.color = '#ff9500';
+    return;
+  }
+  document.getElementById('urlInput').value = unique.join('\n');
+  document.getElementById('urlCount').textContent = unique.length + ' URLs loaded';
+  statusEl.textContent = '✅ ' + unique.length + ' URLs generated (' + fromHistory + ' direct, ' + fromSearch + ' via search) — click Start Scraping.';
+  statusEl.style.color = '#00e5a0';
+  document.getElementById('urlInput').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function startScraping() {
+  if (!state.extReady) { alert('Extension not connected. Please install the Makro Pro Scraper extension.'); return; }
+  const urls = parseUrls();
+  if (urls.length === 0) { alert('No valid Makro URLs found. Paste at least one makro.co.za product URL.'); return; }
+
+  const configSeller = document.getElementById('sellerNameConfig').value.trim();
+  if (configSeller) document.getElementById('sellerNameInput').value = configSeller;
+
+  scrapeQueue = [...urls];
+  scrapeIdx   = 0;
+  state.scraping = true;
+  state.stopRequested = false;
+
+  document.getElementById('startBtn').style.display = 'none';
+  document.getElementById('stopBtn').style.display  = 'flex';
+  document.getElementById('progressSection').style.display = 'block';
+  clearLog();
+  log('info', '🚀 Human-mode queue started: ' + urls.length + ' URLs');
+  log('info', 'Each product page will open in a foreground tab — fully bot-free.');
+  log('info', 'Seller: ' + getMySellerName());
+
+  updateProgress(0, urls.length);
+
+  // Send queue to background service worker
+  const concurrency = parseInt(document.getElementById('scrapeParallel').value) || 5;
+  localStorage.setItem('scrape_parallel', concurrency);
+  window.postMessage({ type: 'START_QUEUE', urls: urls, concurrency: concurrency }, '*');
+}
+
+function stopScraping() {
+  state.stopRequested = true;
+  state.scraping = false;
+  window.postMessage({ type: 'STOP_QUEUE' }, '*');
+  finishScraping();
+  log('info', '⏹ Scraping stopped.');
+}
+
+// Called by bridge when background reports a page was scraped
+function handleQueueProgress(d) {
+  scrapeIdx++;
+  updateProgress(scrapeIdx, scrapeQueue.length);
+
+  if (d && d.data) {
+    const p  = d.data;
+    const seller = p.buyBoxSeller || 'Unknown Seller';
+    const price  = parseFloat(p.buyBoxPrice) || 0;
+    const myName = getMySellerName().toLowerCase().trim();
+    const isWin  = seller !== 'Unknown Seller' &&
+                   (seller.toLowerCase().includes(myName) || myName.includes(seller.toLowerCase().substring(0,6)));
+    const status = seller === 'Unknown Seller' ? 'unknown' : (isWin ? 'win' : 'lose');
+
+    const existing = state.products.find(function(x) {
+      return x.url === p.url || (p.fsn && x.fsn === p.fsn);
+    });
+    if (existing) {
+      existing.buybox_price = price;
+      existing.seller       = seller;
+      existing.status       = status;
+      existing.lastChecked  = new Date().toISOString();
+      existing.title        = p.title || existing.title;
+      existing.fsn          = p.fsn || existing.fsn || '';
+      existing.history      = existing.history || [];
+      existing.history.push({ price, seller, status, ts: new Date().toISOString() });
+      if (existing.history.length > 30) existing.history.shift();
+    } else {
+      state.products.push({
+        url: p.url, fsn: p.fsn || '', sku: p.sku || '',
+        title: p.title || p.url, buybox_price: price,
+        seller, status, lastChecked: new Date().toISOString(),
+        history: [{ price, seller, status, ts: new Date().toISOString() }]
+      });
+    }
+    saveProducts();
+
+    // ── AUTO REPRICE: beat competitor by R1, never below min_price ──────────
+    var prod = existing || state.products[state.products.length - 1];
+    autoReprice(prod);
+
+    // ── PRICE LOG ENTRY ───────────────────────────────────────────────────
+    var listings = getListings();
+    var listingMatch = listings.find(function(l){ return l.fsn === prod.fsn; });
+    addPriceLogEntry({
+      ts: new Date().toISOString(),
+      title: prod.title || prod.url,
+      fsn: prod.fsn || '',
+      sku: prod.sku || '',
+      status: status,
+      buybox_price: price,
+      seller: seller,
+      my_price: listingMatch ? listingMatch.myPrice : null,
+      pending_price: prod.pending_price || null
+    });
+
+    // ── WHATSAPP ALERT on BuyBox loss ────────────────────────────────────
+    if (status === 'lose') sendTelegramAlert(prod, price, seller);
+
+    log(isWin ? 'ok' : 'err',
+      (isWin ? '✓ WIN ' : '✗ LOSE') + ' | R' + price.toFixed(2) + ' | ' + seller.slice(0,30) +
+      ' | ' + (p.title||'').slice(0,35));
+  }
+
+  if (scrapeIdx >= scrapeQueue.length) finishScraping();
+}
+
+function handleQueueFinished() {
+  finishScraping();
+  log('ok', '✅ Queue complete — all products scraped.');
+}
+
+function finishScraping() {
+  state.scraping      = false;
+  state.stopRequested = false;
+  document.getElementById('startBtn').style.display = 'flex';
+  document.getElementById('stopBtn').style.display  = 'none';
+  updateProgress(scrapeQueue.length, scrapeQueue.length);
+  renderDashboard();
+  renderProducts();
+  updateProductCount();
+}
+
+function handleBulkResults(d) { /* legacy compat */ }
+
+// ============================================================
+// PROGRESS + LOG
+// ============================================================
+function updateProgress(current, total) {
+  const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressPct').textContent = pct + '%';
+  document.getElementById('progressText').textContent = 'Scraping ' + current + ' / ' + total;
+}
+
+function log(type, msg) {
+  const el = document.getElementById('scrapeLog');
+  if (!el) { console.log('[' + type + ']', msg); return; }  // null guard — scrapeLog only exists on Scraper tab
+  const now = new Date().toTimeString().slice(0,8);
+  const line = document.createElement('div');
+  line.className = 'log-line';
+  line.innerHTML = '<span class="log-time">' + now + '</span><span class="log-' + type + '">' + escHtml(msg) + '</span>';
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+function clearLog() {
+  const el = document.getElementById('scrapeLog');
+  if (el) el.innerHTML = '';
+}
+
+// ============================================================
+// MAKRO FEE STRUCTURE
+// 10% of selling price + delivery fee:
+//   < R1500  → R50
+//   R1500–R3000 → R120
+//   > R3000  → R200
+// Minimum margin: 5% of cost (i.e. profit after fees >= 5% of cost)
+// ============================================================
+function makroFees(sellingPrice) {
+  var commission = sellingPrice * 0.10;
+  var delivery;
+  if (sellingPrice < 1500)       delivery = 50;
+  else if (sellingPrice <= 3000) delivery = 120;
+  else                           delivery = 200;
+  return commission + delivery;
+}
+
+function calcProfit(sellingPrice, costPrice) {
+  if (!sellingPrice || !costPrice || costPrice <= 0) return null;
+  var fees = makroFees(sellingPrice);
+  var profit = sellingPrice - fees - costPrice;
+  var marginPct = (profit / sellingPrice) * 100;
+  return { profit: profit, fees: fees, marginPct: marginPct };
+}
+
+// Min price to achieve 5% profit after Makro fees
+// Solve: price - 0.10*price - deliveryFee - cost >= 0.05 * cost
+// => 0.90*price - deliveryFee >= 1.05 * cost
+// => price >= (1.05*cost + deliveryFee) / 0.90
+function getMinProfitPct() {
+  var v = parseFloat(localStorage.getItem('min_profit_pct'));
+  return (!isNaN(v) && v > 0) ? v / 100 : 0.07; // default 7%
+}
+
+// Min price to achieve target profit margin % of selling price after Makro fees
+// Makro takes: 10% commission + delivery fee (R50/<1500, R120/1500-3000, R200/>3000)
+// Solve: price × (1 - 0.10 - profitPct) = cost + deliveryFee
+// => price = (cost + deliveryFee) / (1 - 0.10 - profitPct)
+// e.g. 7% margin: price = (cost + 50) / 0.83
+function calcMinViablePrice(costPrice) {
+  if (!costPrice || costPrice <= 0) return null;
+  var pct = getMinProfitPct(); // e.g. 0.07
+  var divisor = 1 - 0.10 - pct; // e.g. 0.83 for 7%
+  if (divisor <= 0) return null; // sanity check
+  var p50  = (costPrice + 50)  / divisor;
+  var p120 = (costPrice + 120) / divisor;
+  var p200 = (costPrice + 200) / divisor;
+  var price;
+  if (p50 < 1500)        price = p50;
+  else if (p120 <= 3000) price = p120;
+  else                   price = p200;
+  return Math.ceil(price);
+}
+
+// Round price to nearest whole number
+function roundPrice(p) {
+  return Math.round(p);
+}
+
+// ── AUTO REPRICE ──────────────────────────────────────────────────────────
+// Called after every scrape. Beats competitor by R1, never below min_price.
+// Updates the listing's myPrice and flags product as pending upload.
+// SAFETY: will NOT reprice if cost_price is missing — can't know the floor without it.
+function autoReprice(prod) {
+  if (!prod) return;
+  var buybox = prod.buybox_price;
+  if (!buybox || buybox <= 0) return;         // no buybox data yet
+  if (prod.status === 'win') return;           // already winning — don't touch price
+
+  // ── SAFETY GUARD: never auto-reprice without a cost price ────────────────
+  if (!(prod.cost_price > 0)) {
+    log('info', '⚠ Skipped auto-reprice (no cost): ' + String(prod.title || prod.fsn || '').slice(0, 40));
+    return;
+  }
+
+  var minPrice = prod.min_price;
+
+  // Always recalculate min from cost — ensures min is never stale
+  var freshMin = calcMinViablePrice(prod.cost_price);
+  if (freshMin && freshMin > 0) {
+    if (!minPrice || minPrice < freshMin) {
+      minPrice = freshMin;
+      prod.min_price = freshMin;
+      prod.max_price = Math.round(freshMin * 1.20);
+    }
+  }
+
+  if (!minPrice || minPrice <= 0) return;      // no min price — can't reprice safely
+
+  var maxPrice = prod.max_price || null;
+
+  var targetPrice = roundPrice(buybox - 1);   // beat by R1, rounded to whole number
+  if (targetPrice < minPrice) targetPrice = minPrice;   // never below floor
+  if (maxPrice && targetPrice > maxPrice) targetPrice = maxPrice; // never above ceiling
+
+  // Update the listing's myPrice
+  var listings = getListings();
+  var changed = false;
+  listings.forEach(function(l) {
+    if (l.fsn && l.fsn === prod.fsn) {
+      if (l.myPrice !== targetPrice) {
+        l.myPrice = targetPrice;
+        changed = true;
+      }
+    }
+  });
+  if (changed) {
+    localStorage.setItem('makro_listings', JSON.stringify(listings));
+    // Mark product as pending price upload
+    prod.pending_price    = targetPrice;
+    prod.pending_updated  = new Date().toISOString();
+    saveProducts();
+    // Show in scrape log
+    var atFloor = targetPrice === minPrice;
+    log('info',
+      '💰 Auto-repriced: R' + roundPrice(buybox) + ' → R' + targetPrice +
+      (atFloor ? ' ⚠ AT FLOOR (min R' + minPrice + ')' : ' (beat by R1)')
+    );
+    // Update pending upload badge
+    updatePendingBadge();
+  }
+}
+
+// Track how many products have pending price changes
+function updatePendingBadge() {
+  var pending = state.products.filter(function(p) { return p.pending_price != null; }).length;
+  var el = document.getElementById('pendingUploadCount');
+  if (el) {
+    el.textContent = pending > 0 ? pending + ' price' + (pending > 1 ? 's' : '') + ' pending upload' : '';
+    el.style.color = pending > 0 ? '#ffd60a' : 'var(--muted)';
+  }
+}
+
+
+
+function shortUrl(url) {
+  try { return new URL(url).pathname.split('/').filter(Boolean).pop() || url; } catch(e) { return url; }
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ============================================================
+// DASHBOARD
+// ============================================================
+function renderDashboard() {
+  const prods = state.products;
+  const wins = prods.filter(p => p.status === 'win').length;
+  const loses = prods.filter(p => p.status === 'lose').length;
+  const unk = prods.filter(p => p.status === 'unknown' || !p.status).length;
+  const total = prods.length;
+  const winPct = total > 0 ? Math.round((wins/total)*100) : 0;
+
+  document.getElementById('s-total').textContent = total;
+  document.getElementById('s-wins').textContent = wins;
+  document.getElementById('s-losses').textContent = loses;
+  document.getElementById('s-win-pct').textContent = winPct + '% win rate';
+  document.getElementById('s-loss-pct').textContent = total > 0 ? Math.round((loses/total)*100) + '% loss rate' : '—% loss rate';
+
+  // Profit summary — products with cost set
+  var margins = [];
+  prods.forEach(function(p) {
+    if (!p.cost_price || p.cost_price <= 0) return;
+    var price = p.buybox_price > 0 ? p.buybox_price : 0;
+    if (!price) return;
+    var r = calcProfit(price, p.cost_price);
+    if (r) margins.push(r.marginPct);
+  });
+  var avgMargin = margins.length ? (margins.reduce(function(a,b){return a+b;},0)/margins.length) : null;
+  document.getElementById('s-avgmargin').textContent = avgMargin !== null ? avgMargin.toFixed(1) + '%' : '—%';
+  document.getElementById('s-avgmargin').style.color = avgMargin !== null ? (avgMargin >= 5 ? 'var(--accent)' : avgMargin >= 0 ? '#ffd60a' : '#ff4d6d') : 'var(--muted)';
+  document.getElementById('s-totalprofit').textContent = margins.length + ' products with cost data';
+
+  // Low stock warning — from listings
+  var listings = getListings();
+  var lowStock = listings.filter(function(l) { return l.myStock <= 3; }).length;
+  document.getElementById('s-lowstock').textContent = lowStock;
+  document.getElementById('s-lowstock').style.color = lowStock > 0 ? '#ffd60a' : 'var(--accent)';
+  document.getElementById('s-lowstock-sub').textContent = lowStock > 0 ? 'check stock levels' : 'all stocked';
+
+  const lastScrape = localStorage.getItem('makro_last_scrape');
+  if (lastScrape) {
+    const d = new Date(lastScrape);
+    document.getElementById('s-lastscrape').textContent = d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+    document.getElementById('s-lastscrape-sub').textContent = d.toLocaleDateString();
+  }
+
+  // Donut
+  drawDonut(wins, loses, unk);
+  document.getElementById('leg-win').textContent = wins;
+  document.getElementById('leg-lose').textContent = loses;
+  document.getElementById('leg-unk').textContent = unk;
+
+  // Recent activity
+  const recents = [...prods]
+    .filter(p => p.lastChecked)
+    .sort((a,b) => new Date(b.lastChecked) - new Date(a.lastChecked))
+    .slice(0, 8);
+
+  const recentEl = document.getElementById('recentList');
+  if (recents.length === 0) {
+    recentEl.innerHTML = '<div class="empty-state" style="padding:20px"><div class="empty-text">No activity yet.</div></div>';
+  } else {
+    recentEl.innerHTML = recents.map(p => {
+      const color = p.status === 'win' ? 'var(--accent)' : p.status === 'lose' ? 'var(--accent2)' : 'var(--muted)';
+      const icon = p.status === 'win' ? '✓' : p.status === 'lose' ? '✗' : '?';
+      const t = new Date(p.lastChecked).toLocaleString();
+      return `<div style="display:flex;align-items:center;gap:14px;padding:10px 0;border-bottom:1px solid var(--border)">
+        <div style="width:26px;height:26px;border-radius:50%;background:${color};color:#000;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex-shrink:0">${icon}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(p.title||p.url)}</div>
+          <div style="font-size:11px;color:var(--muted)">${escHtml(p.seller||'?')} · ${t}</div>
+        </div>
+        <div style="font-family:'Space Mono',monospace;font-size:13px;font-weight:700;color:${color}">R${(p.buybox_price||0).toFixed(2)}</div>
+      </div>`;
+    }).join('');
+  }
+
+  // ── EASY WINS: losses where gap to buybox ≤ R50 ─────────────────────────
+  var ewListings = getListings();
+  var listMap  = {};
+  ewListings.forEach(function(l) { if (l.fsn) listMap[l.fsn] = l; });
+
+  var easyWins = [];
+  prods.forEach(function(p) {
+    if (p.status !== 'lose' || !p.buybox_price) return;
+    var l = listMap[p.fsn];
+    var myPrice = l ? l.myPrice : null;
+    if (!myPrice) return;
+    var gap = myPrice - p.buybox_price;
+    if (gap > 0 && gap <= 50) easyWins.push({ p: p, myPrice: myPrice, gap: gap });
+  });
+  easyWins.sort(function(a, b) { return a.gap - b.gap; });
+
+  var ewEl = document.getElementById('easyWinList');
+  var ewCount = document.getElementById('easyWinCount');
+  if (ewCount) ewCount.textContent = easyWins.length ? easyWins.length + ' opportunities' : '';
+  if (ewEl) {
+    if (!easyWins.length) {
+      ewEl.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:12px 0">No close losses — either you\'re winning or gap is >R50.</div>';
+    } else {
+      ewEl.innerHTML = easyWins.slice(0, 6).map(function(e) {
+        var beatPrice = e.p.buybox_price - 1;
+        var minP = e.p.min_price || 0;
+        var canBeat = beatPrice >= minP;
+        return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + escHtml(e.p.title) + '">' + escHtml((e.p.title||'').slice(0,38)) + '</div>' +
+            '<div style="font-size:11px;color:var(--muted);margin-top:2px">' +
+              'My: <span style="color:#ff9500">R' + e.myPrice.toFixed(0) + '</span> · ' +
+              'BuyBox: <span style="color:var(--accent)">R' + e.p.buybox_price.toFixed(0) + '</span> · ' +
+              'Gap: <span style="color:#ffd60a">R' + e.gap.toFixed(0) + '</span>' +
+            '</div>' +
+          '</div>' +
+          '<div style="text-align:right;flex-shrink:0">' +
+            (canBeat
+              ? '<span style="font-family:monospace;font-size:12px;color:var(--accent);font-weight:700">→ R' + beatPrice + '</span>'
+              : '<span style="font-size:10px;color:var(--muted)">below min<br>R' + minP.toFixed(0) + '</span>') +
+          '</div>' +
+        '</div>';
+      }).join('');
+    }
+  }
+
+  // ── TODAY'S PERFORMANCE ───────────────────────────────────────────────────
+  var todayStr = new Date().toISOString().slice(0, 10);
+  var todayWins = 0, todayLoses = 0, todayChecked = 0;
+  var competitorToday = {};
+  prods.forEach(function(p) {
+    (p.history || []).forEach(function(h) {
+      if (!h.ts || h.ts.slice(0, 10) !== todayStr) return;
+      todayChecked++;
+      if (h.status === 'win') todayWins++;
+      else if (h.status === 'lose') {
+        todayLoses++;
+        if (h.seller && h.seller !== 'Unknown Seller') {
+          competitorToday[h.seller] = (competitorToday[h.seller] || 0) + 1;
+        }
+      }
+    });
+  });
+
+  var topComp = Object.entries(competitorToday).sort(function(a, b) { return b[1] - a[1]; }).slice(0, 3);
+  var todayRate = todayChecked ? Math.round(todayWins / todayChecked * 100) : null;
+
+  var tpEl = document.getElementById('todayPerf');
+  if (tpEl) {
+    if (!todayChecked) {
+      tpEl.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:12px 0">No scrapes yet today. Run the scraper to see today\'s results.</div>';
+    } else {
+      var rateCol = todayRate >= 50 ? 'var(--accent)' : todayRate >= 25 ? '#ffd60a' : '#ff4d6d';
+      tpEl.innerHTML =
+        '<div style="display:flex;gap:20px;margin-bottom:14px">' +
+          '<div style="text-align:center">' +
+            '<div style="font-family:\'Bebas Neue\',sans-serif;font-size:36px;color:var(--accent);line-height:1">' + todayWins + '</div>' +
+            '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Wins</div>' +
+          '</div>' +
+          '<div style="text-align:center">' +
+            '<div style="font-family:\'Bebas Neue\',sans-serif;font-size:36px;color:#ff4d6d;line-height:1">' + todayLoses + '</div>' +
+            '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Losses</div>' +
+          '</div>' +
+          '<div style="text-align:center">' +
+            '<div style="font-family:\'Bebas Neue\',sans-serif;font-size:36px;color:' + rateCol + ';line-height:1">' + (todayRate !== null ? todayRate + '%' : '—') + '</div>' +
+            '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Win Rate</div>' +
+          '</div>' +
+          '<div style="text-align:center">' +
+            '<div style="font-family:\'Bebas Neue\',sans-serif;font-size:36px;color:var(--muted);line-height:1">' + todayChecked + '</div>' +
+            '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Checked</div>' +
+          '</div>' +
+        '</div>' +
+        (topComp.length ? '<div style="font-size:11px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px">Top competitors stealing today</div>' +
+          topComp.map(function(c) {
+            return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">' +
+              '<div style="flex:1;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--accent2)">' + escHtml(c[0]) + '</div>' +
+              '<div style="font-family:monospace;font-size:12px;color:var(--muted)">' + c[1] + ' losses</div>' +
+            '</div>';
+          }).join('') : '<div style="font-size:12px;color:var(--accent)">✓ No losses to competitors today!</div>');
+    }
+  }
+
+  // Warning cards
+  var noSku     = prods.filter(function(p){ return !p.sku; }).length;
+  var noCost    = prods.filter(function(p){ return !(p.cost_price > 0); }).length;
+  var pending   = prods.filter(function(p){ return p.pending_price != null; }).length;
+  var wNoSku    = document.getElementById('w-nosku');
+  var wNoCost   = document.getElementById('w-nocost');
+  var wPending  = document.getElementById('w-pending');
+  var wLosing   = document.getElementById('w-losing');
+  if (wNoSku)   { wNoSku.textContent   = noSku;  wNoSku.closest('.stat-card').style.display   = noSku   > 0 ? '' : 'none'; }
+  if (wNoCost)  { wNoCost.textContent  = noCost; wNoCost.closest('.stat-card').style.display  = noCost  > 0 ? '' : 'none'; }
+  if (wPending) { wPending.textContent = pending; wPending.closest('.stat-card').style.display = pending > 0 ? '' : 'none'; }
+  if (wLosing)  { wLosing.textContent  = loses;  wLosing.closest('.stat-card').style.display  = loses   > 0 ? '' : 'none'; }
+}
+
+function drawDonut(wins, loses, unk) {
+  const canvas = document.getElementById('donutCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = 120, H = 120, cx = 60, cy = 60, r = 44, stroke = 16;
+  ctx.clearRect(0,0,W,H);
+
+  const total = wins + loses + unk || 1;
+  const slices = [
+    { val: wins, color: '#00e5a0' },
+    { val: loses, color: '#ff4d6d' },
+    { val: unk, color: '#6b7280' },
+  ];
+
+  let start = -Math.PI / 2;
+  slices.forEach(s => {
+    if (s.val === 0) return;
+    const angle = (s.val / total) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, start, start + angle);
+    ctx.strokeStyle = s.color;
+    ctx.lineWidth = stroke;
+    ctx.stroke();
+    start += angle;
+  });
+
+  // Center text
+  ctx.fillStyle = '#e8eaf0';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = 'bold 18px "Bebas Neue", sans-serif';
+  ctx.fillText(Math.round((wins/total)*100) + '%', cx, cy - 6);
+  ctx.font = '10px "DM Sans", sans-serif';
+  ctx.fillStyle = '#6b7280';
+  ctx.fillText('win rate', cx, cy + 10);
+}
+
+// ============================================================
+// PRODUCTS
+// ============================================================
+function renderProducts() {
+  const search = (document.getElementById('prodSearch').value || '').toLowerCase();
+  const filter = document.getElementById('prodFilter').value;
+
+  // ── PRESERVE checked state before re-render ───────────────────────────────
+  const prevChecked = new Set();
+  document.querySelectorAll('.row-check:checked').forEach(c => prevChecked.add(parseInt(c.dataset.idx)));
+
+  // Load listings cross-reference map
+  const listingsMap = {};
+  try {
+    const raw = localStorage.getItem('makro_listings');
+    if (raw) JSON.parse(raw).forEach(l => { listingsMap[l.fsn] = l; });
+  } catch(e) {}
+
+  // Auto-populate max_price for any product missing it
+  var maxNeedsSave = false;
+  state.products.forEach(function(p) {
+    if (!p.max_price && p.min_price > 0) {
+      p.max_price = Math.round(p.min_price * 1.20);
+      maxNeedsSave = true;
+    }
+  });
+  if (maxNeedsSave) saveProducts();
+
+  let prods = state.products.filter(p => {
+    if (filter === 'win' && p.status !== 'win') return false;
+    if (filter === 'lose' && p.status !== 'lose') return false;
+    if (filter === 'unknown' && p.status !== 'unknown' && p.status) return false;
+    if (filter === 'no-sku' && p.sku) return false;
+    if (filter === 'no-cost' && p.cost_price > 0) return false;
+    if (filter === 'pending' && p.pending_price == null) return false;
+    const titleOk = (p.title||'').toLowerCase().includes(search);
+    const sellerOk = (p.seller||'').toLowerCase().includes(search);
+    const fsnOk = (p.fsn||'').toLowerCase().includes(search);
+    const skuOk = (p.sku||'').toLowerCase().includes(search);
+    if (search && !titleOk && !sellerOk && !fsnOk && !skuOk) return false;
+    return true;
+  });
+
+  const pageSize  = parseInt(document.getElementById('prodPageSize').value) || 25;
+  const totalProds = prods.length;
+  const totalPages = Math.max(1, Math.ceil(totalProds / pageSize));
+  if (prodPage > totalPages) prodPage = totalPages;
+  const pageStart = (prodPage - 1) * pageSize;
+  const pageProds = prods.slice(pageStart, pageStart + pageSize);
+
+  // Update filtered count in toolbar
+  var countEl = document.getElementById('filteredCount');
+  if (countEl) {
+    var filterVal = document.getElementById('prodFilter').value;
+    var searchVal = (document.getElementById('prodSearch').value||'').trim();
+    if (filterVal !== 'all' || searchVal) {
+      countEl.textContent = totalProds + ' of ' + state.products.length + ' products';
+    } else {
+      countEl.textContent = '';
+    }
+  }
+
+  const tbody = document.getElementById('productsBody');
+
+  // Build a stable index map: filtered+paged product → index in state.products
+  // We can't use indexOf after JSON.parse (new object refs), so we match by URL+FSN
+  function findRealIdx(p) {
+    return state.products.findIndex(function(x) {
+      return x === p || x.url === p.url || (p.fsn && p.fsn === x.fsn);
+    });
+  }
+
+  if (prods.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="16"><div class="empty-state">
+      <div class="empty-icon">📦</div>
+      <div class="empty-title">${state.products.length === 0 ? 'No Products Yet' : 'No Matches'}</div>
+      <div class="empty-text">${state.products.length === 0 ? 'Use the Scraper tab to add products.' : 'Try changing your filters.'}</div>
+    </div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = pageProds.map((p, i) => {
+    const statusClass = p.status === 'win' ? 'win' : p.status === 'lose' ? 'lose' : 'unknown';
+    const statusLabel = p.status === 'win' ? '✓ WIN' : p.status === 'lose' ? '✗ LOSE' : '? UNKNOWN';
+    const t = p.lastChecked ? new Date(p.lastChecked).toLocaleString() : '—';
+    const realIdx = findRealIdx(p);
+    const listing = listingsMap[p.fsn] || null;
+    const myPrice = listing ? `<span style="color:var(--accent3);font-family:'Space Mono',monospace;font-size:12px">R ${listing.myPrice.toFixed(2)}</span>` : '<span style="color:var(--muted);font-size:11px">—</span>';
+    const myStock = listing ? `<span style="color:${listing.myStock > 0 ? 'var(--accent)' : '#ff9500'};font-size:12px">${listing.myStock}</span>` : '<span style="color:var(--muted);font-size:11px">—</span>';
+    let priceIndicator = '';
+    if (listing && p.buybox_price > 0) {
+      if (listing.myPrice > p.buybox_price) priceIndicator = ' <span style="color:#ff9500;font-size:10px">▲above</span>';
+      else if (listing.myPrice < p.buybox_price) priceIndicator = ' <span style="color:var(--accent);font-size:10px">▼below</span>';
+      else priceIndicator = ' <span style="color:var(--muted);font-size:10px">=match</span>';
+    }
+    return `<tr>
+      <td><input type="checkbox" class="row-check" data-idx="${realIdx}"></td>
+      <td>
+        <div class="prod-title">${escHtml((p.title||'Unknown').slice(0,55))}</div>
+        <a class="prod-url" href="${escHtml(p.url)}" target="_blank" rel="noopener">${escHtml(p.sku || shortUrl(p.url))}</a>
+      </td>
+      <td>
+        <input type="text"
+          value="${escHtml(p.fsn||'')}"
+          placeholder="— enter FSN"
+          title="Makro FSN / product ID — click to edit"
+          style="width:160px;background:transparent;border:1px solid transparent;color:var(--muted);font-family:'Space Mono',monospace;font-size:11px;padding:2px 4px;border-radius:4px;outline:none;cursor:pointer"
+          onfocus="this.style.borderColor='var(--border)';this.style.background='var(--surface2)'"
+          onblur="this.style.borderColor='transparent';this.style.background='transparent';setProductPriceSilent(${realIdx},'fsn',this.value)"
+          onkeydown="if(event.key==='Enter')this.blur()"
+        >
+      </td>
+      <td>
+        ${p.sku
+          ? `<span style="font-family:'Space Mono',monospace;font-size:12px;color:#818cf8;font-weight:600">${escHtml(p.sku)}</span>
+             <button class="action-btn" style="font-size:9px;padding:1px 5px;margin-left:3px" onclick="openEditModal(${realIdx})" title="Edit SKU/Cost/Min">✎</button>`
+          : `<button class="action-btn" style="font-size:10px;color:#818cf8;border-color:#818cf844" onclick="openEditModal(${realIdx})">+ Add SKU</button>`}
+      </td>
+      <td>${myPrice}${priceIndicator}</td>
+      <td>${myStock}</td>
+      <td><span class="price-cell ${p.status==='win'?'win':'lose'}">R ${(p.buybox_price||0).toFixed(2)}</span></td>
+      <td>
+        ${p.cost_price > 0
+          ? `<div style="display:flex;align-items:center;gap:4px">
+               <span style="font-family:'Space Mono',monospace;font-size:12px;color:#60a5fa">R ${p.cost_price.toFixed(0)}</span>
+               <span style="font-size:10px;color:var(--muted)">${p.cost_supplier||''}</span>
+               <button class="action-btn" style="font-size:9px;padding:1px 5px" onclick="openEditModal(${realIdx})" title="Edit cost">✎</button>
+             </div>`
+          : `<button class="action-btn" style="font-size:10px;color:#60a5fa;border-color:#60a5fa44" onclick="openEditModal(${realIdx})">+ Enter Cost</button>`}
+      </td>
+      <td>
+        <input type="number" step="1" min="0"
+          value="${p.min_price != null ? p.min_price : ''}"
+          placeholder="—"
+          title="Min sell price for this product"
+          style="width:70px;background:var(--surface2);border:1px solid var(--border);color:var(--accent3);font-family:'Space Mono',monospace;font-size:11px;padding:3px 5px;border-radius:4px;text-align:right"
+          onchange="setProductPriceSilent(${realIdx},'min_price',this.value)"
+        >
+      </td>
+      <td>
+        <input type="number" step="1" min="0"
+          value="${p.max_price != null ? p.max_price : ''}"
+          placeholder="—"
+          title="Max sell price for this product"
+          style="width:70px;background:var(--surface2);border:1px solid var(--border);color:#a78bfa;font-family:'Space Mono',monospace;font-size:11px;padding:3px 5px;border-radius:4px;text-align:right"
+          onchange="setProductPriceSilent(${realIdx},'max_price',this.value)"
+        >
+      </td>
+      <td>
+        ${(() => {
+          var cost = p.cost_price;
+          if (!cost || cost <= 0) return '<span style="color:var(--muted);font-size:10px">—</span>';
+          var listing2 = listingsMap[p.fsn];
+          var myPr = listing2 ? listing2.myPrice : null;
+          var bbPr = p.buybox_price > 0 ? p.buybox_price : null;
+          var lines = [];
+          if (myPr) {
+            var r = calcProfit(myPr, cost);
+            if (r) {
+              var col = r.profit >= 0 ? (r.marginPct >= 5 ? 'var(--accent)' : '#ffd60a') : '#ff4d6d';
+              lines.push('<div style="font-size:10px;color:var(--muted)">My price:</div>');
+              lines.push('<div style="font-family:monospace;font-size:12px;color:' + col + '">R' + Math.round(r.profit) + ' (' + r.marginPct.toFixed(1) + '%)</div>');
+            }
+          }
+          if (bbPr && bbPr !== myPr) {
+            var rb = calcProfit(bbPr, cost);
+            if (rb) {
+              var colb = rb.profit >= 0 ? (rb.marginPct >= 5 ? 'var(--accent)' : '#ffd60a') : '#ff4d6d';
+              lines.push('<div style="font-size:10px;color:var(--muted);margin-top:3px">BuyBox:</div>');
+              lines.push('<div style="font-family:monospace;font-size:12px;color:' + colb + '">R' + Math.round(rb.profit) + ' (' + rb.marginPct.toFixed(1) + '%)</div>');
+            }
+          }
+          return lines.length ? lines.join('') : '<span style="color:var(--muted);font-size:10px">—</span>';
+        })()}
+      </td>
+      <td>
+        ${(() => {
+          // New Price column — shows pending reprice or calculated suggested price
+          var bb = p.buybox_price;
+          var minP = p.min_price || 0;
+          var maxP = p.max_price || null;
+          var myP = (listingsMap[p.fsn] || {}).myPrice || null;
+
+          // If a reprice is already queued (auto-reprice ran after last scrape)
+          if (p.pending_price != null) {
+            var diff = myP ? (p.pending_price - myP) : null;
+            var diffStr = diff !== null ? (diff < 0 ? ' <span style="color:var(--accent);font-size:10px">▼R'+Math.abs(diff)+'</span>' : ' <span style="color:#ff9500;font-size:10px">▲R'+diff+'</span>') : '';
+            return '<div style="display:flex;flex-direction:column;gap:2px">' +
+              '<span style="font-family:monospace;font-size:13px;font-weight:700;color:var(--accent3)">R'+p.pending_price+'</span>' +
+              '<span style="font-size:9px;color:var(--accent3);opacity:.8">⏳ pending'+diffStr+'</span>' +
+              '</div>';
+          }
+          // No pending — calculate what it would be if repriced now
+          if (!bb || bb <= 0 || p.status === 'win') return '<span style="color:var(--muted);font-size:10px">—</span>';
+          var suggested = bb - 1;
+          var clamped = false;
+          var clampNote = '';
+          if (minP > 0 && suggested < minP) { suggested = minP; clamped = true; clampNote = 'at floor'; }
+          if (maxP && suggested > maxP)     { suggested = maxP; clamped = true; clampNote = 'at ceiling'; }
+          var sameAsMyPrice = myP && suggested === Math.round(myP);
+          if (sameAsMyPrice) return '<span style="color:var(--muted);font-size:10px">no change</span>';
+          var col = clamped ? '#ffd60a' : 'var(--accent)';
+          var diff2 = myP ? (suggested - myP) : null;
+          var diffStr2 = diff2 !== null ? (diff2 < 0 ? ' <span style="color:var(--accent);font-size:10px">▼R'+Math.abs(diff2)+'</span>' : ' <span style="color:#ff9500;font-size:10px">▲R'+diff2+'</span>') : '';
+          return '<div style="display:flex;flex-direction:column;gap:2px">' +
+            '<span style="font-family:monospace;font-size:13px;color:'+col+'">R'+suggested+'</span>' +
+            '<span style="font-size:9px;color:var(--muted)">'+(clamped ? '⚠ '+clampNote : '💡 suggested')+diffStr2+'</span>' +
+            '</div>';
+        })()}
+      </td>
+      <td style="font-size:12px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(p.seller||'')}">${escHtml((p.seller||'Unknown').slice(0,20))}</td>
+      <td><span class="status-pill ${statusClass}">${statusLabel}</span></td>
+      <td style="font-size:11px;color:var(--muted);white-space:nowrap">${t}</td>
+      <td style="display:flex;gap:4px">
+        <button class="action-btn" onclick="showHistory(${realIdx})" title="Price history">📈</button>
+        <button class="action-btn" onclick="rescrapeOne(${realIdx})" title="Re-scrape">↻</button>
+        <button class="action-btn danger" onclick="deleteProduct(${realIdx})" title="Delete">✕</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  // ── RESTORE checked state after re-render ─────────────────────────────────
+  if (prevChecked.size > 0) {
+    document.querySelectorAll('.row-check').forEach(c => {
+      if (prevChecked.has(parseInt(c.dataset.idx))) c.checked = true;
+    });
+  }
+
+  // ── PAGINATION BAR ────────────────────────────────────────────────────────
+  const pagEl = document.getElementById('prodPagination');
+  if (pagEl) {
+    if (totalPages <= 1) { pagEl.innerHTML = ''; }
+    else {
+      const btnStyle = (active) => `style="background:${active?'var(--accent)':'var(--surface2)'};color:${active?'#000':'var(--text)'};border:1px solid ${active?'var(--accent)':'var(--border)'};border-radius:5px;padding:5px 11px;cursor:pointer;font-size:12px;font-family:'Space Mono',monospace"`;
+      let html = `<span style="font-size:12px;color:var(--muted)">${pageStart+1}–${Math.min(pageStart+pageSize,totalProds)} of ${totalProds}</span> `;
+      html += `<button ${btnStyle(false)} onclick="prodPage=Math.max(1,prodPage-1);renderProducts()" ${prodPage===1?'disabled':''}>‹ Prev</button>`;
+      // show up to 7 page buttons
+      const startP = Math.max(1, prodPage - 3);
+      const endP   = Math.min(totalPages, startP + 6);
+      for (let pg = startP; pg <= endP; pg++) {
+        html += `<button ${btnStyle(pg===prodPage)} onclick="prodPage=${pg};renderProducts()">${pg}</button>`;
+      }
+      html += `<button ${btnStyle(false)} onclick="prodPage=Math.min(totalPages,prodPage+1);renderProducts()" ${prodPage===totalPages?'disabled':''}>Next ›</button>`;
+      pagEl.innerHTML = html;
+    }
+  }
+}
+
+function toggleSelectAll(cb) {
+  document.querySelectorAll('.row-check').forEach(c => c.checked = cb.checked);
+}
+
+function refreshSelected() {
+  const idxs = Array.from(document.querySelectorAll('.row-check:checked')).map(c => parseInt(c.dataset.idx));
+  if (idxs.length === 0) { alert('Tick at least one product to refresh.'); return; }
+  if (!state.extReady) { alert('Extension not connected.'); return; }
+  const urls = idxs.map(i => state.products[i].url).join('\n');
+  switchTab('scraper');
+  document.getElementById('urlInput').value = urls;
+  document.getElementById('urlCount').textContent = idxs.length + ' URL(s) detected';
+  setTimeout(startScraping, 200);
+}
+
+function deleteSelected() {
+  const idxs = Array.from(document.querySelectorAll('.row-check:checked'))
+    .map(c => parseInt(c.dataset.idx))
+    .filter(i => !isNaN(i) && i >= 0 && i < state.products.length);
+  if (idxs.length === 0) { alert('Tick at least one product to delete.'); return; }
+  if (!confirm('Delete ' + idxs.length + ' selected product(s)?')) return;
+
+  // Add all to deleted blocklist
+  var deleted = [];
+  try { deleted = JSON.parse(localStorage.getItem('makro_deleted') || '[]'); } catch(e) {}
+  idxs.forEach(function(i) {
+    var p = state.products[i];
+    if (p.url && !deleted.includes(p.url)) deleted.push(p.url);
+    if (p.fsn && !deleted.includes(p.fsn.toUpperCase())) deleted.push(p.fsn.toUpperCase());
+    window.postMessage({ type: 'DELETE_PRODUCT', url: p.url, fsn: p.fsn || '' }, '*');
+  });
+  localStorage.setItem('makro_deleted', JSON.stringify(deleted));
+
+  idxs.sort((a,b) => b-a).forEach(i => state.products.splice(i, 1));
+  saveProducts(); renderProducts(); updateProductCount(); renderDashboard();
+  document.getElementById('selectAll').checked = false;
+}
+
+function importListings(input) {
+  const file = input.files[0];
+  if (!file) return;
+
+  // Step 1: read as Data URL (no stack overflow risk — browser handles it natively)
+  const urlReader = new FileReader();
+  urlReader.onload = function(urlEvt) {
+    // urlEvt.target.result is "data:...;base64,XXXX" — extract the base64 part
+    const dataUrl = urlEvt.target.result;
+    const base64  = dataUrl.split(',')[1];
+    localStorage.setItem('makro_listings_raw',      base64);
+    localStorage.setItem('makro_listings_filename', file.name);
+  };
+  urlReader.readAsDataURL(file);
+
+  // Step 2: read as ArrayBuffer to parse with SheetJS
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = new Uint8Array(e.target.result);
+      // dense:true uses array-of-arrays internally — avoids deep recursion on large XLS files
+      const wb   = XLSX.read(data, { type: 'array', dense: true, cellStyles: false, cellFormula: false, cellHTML: false });
+      const sh   = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sh, { header: 1 });
+      const listings = [];
+      for (let r = 2; r < rows.length; r++) {
+        const row = rows[r];
+        if (!row || !row[4]) continue;
+        const fsn      = String(row[4]  || '').trim();
+        const sku      = String(row[1]  || '').trim();
+        const title    = String(row[0]  || '').trim();
+        const myPrice  = parseFloat(row[9])  || 0;
+        const myStock  = parseInt(row[12])   || 0;
+        const status   = String(row[6]  || '').trim();
+        if (fsn) listings.push({ fsn, sku, title, myPrice, myStock, status });
+      }
+      localStorage.setItem('makro_listings', JSON.stringify(listings));
+
+      // ── Stamp real SKU onto matched products via FSN ──────────────────────
+      const fsnToSku = {};
+      listings.forEach(function(l) { if (l.fsn && l.sku) fsnToSku[l.fsn] = l.sku; });
+      let skuCount = 0;
+      state.products.forEach(function(p) {
+        // Clear wrong itm... slugs stored as SKU from old scraper
+        if (p.sku && p.sku.startsWith('itm')) p.sku = '';
+        // Always overwrite with real SKU from listings
+        if (p.fsn && fsnToSku[p.fsn]) {
+          p.sku = fsnToSku[p.fsn];
+          skuCount++;
+        }
+      });
+      if (skuCount > 0) saveProducts();
+
+      alert('✅ Imported ' + listings.length + ' listings!' + (skuCount > 0 ? ' Matched ' + skuCount + ' SKU(s) to products.' : ''));
+      renderProducts();
+    } catch(err) {
+      alert('❌ Error: ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+  input.value = '';
+}
+
+// ============================================================
+// GOOGLE SHEET COST SYNC
+// ============================================================
+const GSHEET_ID = '1ISaEOPBElufeYh6eq6APtlFjeMvrKqlAwEd3F4K6rBw';
+// Tab names used as sheet= param (URL-encoded when fetching)
+// skuCol: 0-based column index for SKU/Code
+// costCol: 0-based column index for Cost Price
+// minCol/maxCol: 0-based index for min/max sell price (null = not present)
+const GSHEET_TABS = [
+  { sheet: 'DCC',              skuCol: 0, costCol: 4, minCol: 5,    maxCol: null, supplierName: 'DCC' },
+  { sheet: 'Kolok',            skuCol: 2, costCol: 13, minCol: 14,   maxCol: null, supplierName: 'Kolok' },
+  { sheet: 'Tarsus',          skuCol: 0, costCol: 5, minCol: 6,    maxCol: null, supplierName: 'Tarsus' },
+  { sheet: 'Rectron',         skuCol: 0, costCol: 5, minCol: 6,    maxCol: null, supplierName: 'Rectron' },
+  { sheet: 'Esquire Products', skuCol: 0, costCol: 6, minCol: 7,    maxCol: null, supplierName: 'Esquire' },
+  { sheet: 'Pinnacle',        skuCol: 0, costCol: 4, minCol: 5,    maxCol: null, supplierName: 'Pinnacle' },
+  { sheet: 'Mustek',          skuCol: 0, costCol: 5, minCol: 6,    maxCol: null, supplierName: 'Mustek' },
+  { sheet: 'Axiz',            skuCol: 0, costCol: 4, minCol: 5,    maxCol: null, supplierName: 'Axiz' },
+  { sheet: 'SMD',             skuCol: 0, costCol: 4, minCol: 5,    maxCol: null, supplierName: 'SMD' },
+  { sheet: 'VAST -Maynards',  skuCol: 0, costCol: 3, minCol: 4,    maxCol: null, supplierName: 'VAST-Maynards' },
+  { sheet: 'Bundles',         skuCol: 0, costCol: 4, minCol: null,  maxCol: null, supplierName: 'Bundles' },
+];
+
+function parseCSV(text) {
+  var rows = [];
+  var lines = text.split('\n');
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i];
+    if (!line.trim()) continue;
+    var row = [], inQ = false, cur = '';
+    for (var j = 0; j < line.length; j++) {
+      var c = line[j];
+      if (c === '"') { if (inQ && line[j+1] === '"') { cur += '"'; j++; } else inQ = !inQ; }
+      else if (c === ',' && !inQ) { row.push(cur.trim()); cur = ''; }
+      else cur += c;
+    }
+    row.push(cur.trim());
+    if (row.some(function(x) { return x; })) rows.push(row);
+  }
+  return rows;
+}
+
+async function syncCostsFromSheet() {
+  var btn = document.getElementById('syncCostsBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Syncing...';
+
+  try {
+    var lookup = {};
+
+    for (var t = 0; t < GSHEET_TABS.length; t++) {
+      var tab = GSHEET_TABS[t];
+      var url = 'https://docs.google.com/spreadsheets/d/' + GSHEET_ID + '/gviz/tq?tqx=out:csv&sheet=' + encodeURIComponent(tab.sheet);
+      try {
+        var resp = await fetch(url);
+        if (!resp.ok) continue;
+        var csv = await resp.text();
+        if (!csv || csv.includes('<!DOCTYPE')) continue;
+        var rows = parseCSV(csv);
+        var tabMatches = 0;
+
+        for (var r = 1; r < rows.length; r++) {
+          var row = rows[r];
+          var skuRaw = row[tab.skuCol] != null ? row[tab.skuCol].toString().trim() : '';
+          if (!skuRaw) continue;
+          var sku = skuRaw.toLowerCase();
+          var cost = parseFloat((row[tab.costCol] || '').toString().replace(/[R,\s]/g,''));
+          if (isNaN(cost) || cost <= 0) continue;
+          var minV = (tab.minCol != null && row[tab.minCol]) ? parseFloat(row[tab.minCol].toString().replace(/[R,\s]/g,'')) : NaN;
+          var maxV = (tab.maxCol != null && row[tab.maxCol]) ? parseFloat(row[tab.maxCol].toString().replace(/[R,\s]/g,'')) : NaN;
+          // Keep lowest cost if same SKU appears in multiple suppliers
+          if (!lookup[sku] || cost < lookup[sku].cost) {
+            lookup[sku] = { cost: cost, supplier: tab.supplierName,
+              minPrice: isNaN(minV) ? null : minV, maxPrice: isNaN(maxV) ? null : maxV };
+            tabMatches++;
+          }
+        }
+        console.log('[SyncCosts] ' + tab.supplierName + ': ' + tabMatches + ' SKUs loaded');
+      } catch(e) { console.warn('Tab fetch error', e); }
+    }
+
+    // Build fuzzy index: base SKU without brand prefixes or variant suffixes
+    var brandPfx = /^(hp|canon|epson|samsung|lexmark|brother|xerox|dell|lenovo|acer|asus|lg|sony|verbatim|logitech|intel|amd|wd|seagate|kingston|sandisk|corsair|hikvision|dahua|bosch)/i;
+    var fuzzy = {};
+    Object.keys(lookup).forEach(function(raw) {
+      var b = raw.toLowerCase().replace(/\s+/g,'').replace(/-[a-z0-9]{1,4}$/,'').replace(brandPfx,'');
+      if (!fuzzy[b]) fuzzy[b] = lookup[raw];
+    });
+
+    function findCost(sku) {
+      var k = sku.trim().toLowerCase().replace(/\s+/g,'');
+      if (lookup[k]) return lookup[k];                                   // exact
+      var ns = k.replace(/-[a-z0-9]{1,4}$/, '');
+      if (lookup[ns]) return lookup[ns];                                 // strip suffix
+      if (fuzzy[ns])  return fuzzy[ns];
+      var np = k.replace(brandPfx, '');
+      if (lookup[np]) return lookup[np];                                 // strip prefix
+      if (fuzzy[np])  return fuzzy[np];
+      var nsp = np.replace(/-[a-z0-9]{1,4}$/, '');
+      if (lookup[nsp]) return lookup[nsp];                               // strip both
+      if (fuzzy[nsp])  return fuzzy[nsp];
+      return null;
+    }
+
+    var updated = 0, noSku = 0, noMatch = [];
+    state.products.forEach(function(p) {
+      if (!p.sku) { noSku++; return; }
+      var match = findCost(p.sku);
+      if (match) {
+        p.cost_price    = match.cost;
+        p.cost_supplier = match.supplier;
+        // Always recalculate min price from current profit % setting + cost
+        p.min_price = calcMinViablePrice(match.cost);
+        // Only use supplier max if they provide one, otherwise auto-calc 20% above min
+        if (match.maxPrice != null) {
+          p.max_price = match.maxPrice;
+        } else {
+          // Always refresh max when re-syncing costs
+          p.max_price = calcAutoMaxPrice(p.min_price);
+        }
+        updated++;
+      } else {
+        noMatch.push(p.sku);
+      }
+    });
+
+    if (updated > 0) saveProducts();
+    renderProducts();
+
+    var msg = '✅ ' + updated + ' product(s) updated with cost data.';
+    if (noSku > 0)   msg += '\n⚠ ' + noSku + ' product(s) have no SKU — use 🔗 Bulk SKU Import or ⬇ Export Unmatched to fix.';
+    if (noMatch.length > 0) msg += '\n📋 ' + noMatch.length + ' SKU(s) not found in any supplier sheet:\n' + noMatch.slice(0,10).join(', ') + (noMatch.length > 10 ? '...' : '');
+    msg += '\n\n💡 Total supplier SKUs loaded: ' + Object.keys(lookup).length;
+    alert(msg);
+
+  } catch(e) {
+    alert('❌ Cost sync error: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '📊 Sync Costs';
+  }
+}
+
+// Recalculate min (and max) prices for all products that have a cost price,
+// using the current min_profit_pct setting. Call after changing the profit % slider.
+function recalcAllMinPrices() {
+  var pct = getMinProfitPct() * 100;
+  var updated = 0;
+  state.products.forEach(function(p) {
+    if (!p.cost_price || p.cost_price <= 0) return;
+    p.min_price = calcMinViablePrice(p.cost_price);
+    p.max_price = calcAutoMaxPrice(p.min_price);
+    updated++;
+  });
+  if (updated > 0) {
+    saveProducts();
+    renderProducts();
+    alert('✅ Recalculated min/max prices for ' + updated + ' products at ' + pct.toFixed(0) + '% min profit.');
+  } else {
+    alert('⚠ No products with cost prices found — sync costs first.');
+  }
+}
+
+function deleteProduct(idx) {
+  if (idx < 0 || idx >= state.products.length) {
+    alert('Could not find that product — try refreshing the page.');
+    return;
+  }
+  var p = state.products[idx];
+  var title = (p.title || p.url || 'this product').slice(0, 60);
+  if (!confirm('Delete "' + title + '"?')) return;
+
+  // Write URL and FSN to deleted blocklist so bridge never restores it
+  var deleted = [];
+  try { deleted = JSON.parse(localStorage.getItem('makro_deleted') || '[]'); } catch(e) {}
+  if (p.url  && !deleted.includes(p.url))  deleted.push(p.url);
+  if (p.fsn  && !deleted.includes(p.fsn.toUpperCase())) deleted.push(p.fsn.toUpperCase());
+  localStorage.setItem('makro_deleted', JSON.stringify(deleted));
+
+  // Tell bridge to remove from chrome.storage.local too
+  window.postMessage({ type: 'DELETE_PRODUCT', url: p.url, fsn: p.fsn || '' }, '*');
+
+  state.products.splice(idx, 1);
+  saveProducts();
+  renderProducts();
+  updateProductCount();
+  renderDashboard();
+}
+
+// ── EDIT PRODUCT MODAL ────────────────────────────────────────────────────
+var _editModalIdx = null;
+
+function openEditModal(idx) {
+  _editModalIdx = idx;
+  var p = state.products[idx];
+  if (!p) return;
+
+  document.getElementById('editModalTitle').textContent = (p.title || p.url || '').slice(0, 60);
+  document.getElementById('editFsnInput').value  = p.fsn || '';
+  document.getElementById('editSkuInput').value  = p.sku || '';
+  document.getElementById('editCostInput').value = p.cost_price > 0 ? p.cost_price : '';
+  document.getElementById('editMinInput').value  = p.min_price != null ? p.min_price : '';
+  document.getElementById('editMaxInput').value  = p.max_price != null ? p.max_price : '';
+
+  // Set profit pct selector to saved global pref
+  var savedPct = parseFloat(localStorage.getItem('min_profit_pct')) || 7;
+  document.getElementById('editMinProfitPct').value = savedPct;
+
+  updateEditCalcPreview();
+
+  document.getElementById('editModal').classList.add('show');
+  setTimeout(function() {
+    var f = p.sku ? document.getElementById('editCostInput') : document.getElementById('editSkuInput');
+    if (f) f.focus();
+  }, 100);
+
+  document.getElementById('editCostInput').oninput = updateEditCalcPreview;
+  document.getElementById('editMinProfitPct').onchange = updateEditCalcPreview;
+  document.getElementById('editMinInput').oninput = updateEditCalcPreview;
+}
+
+function updateEditCalcPreview() {
+  var cost = parseFloat(document.getElementById('editCostInput').value);
+  var pct  = parseFloat(document.getElementById('editMinProfitPct').value) || 7;
+  // Save pct as global preference
+  localStorage.setItem('min_profit_pct', pct);
+
+  var preview = document.getElementById('editCalcPreview');
+  var minHint = document.getElementById('editMinHint');
+  var maxHint = document.getElementById('editMaxHint');
+
+  if (!cost || cost <= 0) {
+    preview.innerHTML = '';
+    if (minHint) minHint.textContent = 'Enter cost price to auto-calculate';
+    return;
+  }
+
+  var autoMin = calcMinViablePrice(cost);
+  var fees    = makroFees(autoMin);
+  var profit  = autoMin - fees - cost;
+  var profitPct = (profit / autoMin * 100).toFixed(1);
+  var autoMax = Math.round(autoMin * 1.20);
+
+  // Check if user has manually set a min
+  var manualMin = parseFloat(document.getElementById('editMinInput').value);
+  var effectiveMin = (!isNaN(manualMin) && manualMin > 0) ? manualMin : autoMin;
+  var effectiveMax = Math.round(effectiveMin * 1.20);
+
+  preview.innerHTML =
+    '<strong style="color:var(--accent)">Price calculation at ' + pct + '% min profit:</strong><br>' +
+    'Cost: <span style="color:#60a5fa">R' + cost.toFixed(0) + '</span> &nbsp;·&nbsp; ' +
+    'Makro fees: <span style="color:#ff9500">R' + fees.toFixed(0) + '</span> &nbsp;·&nbsp; ' +
+    'Profit at floor: <span style="color:var(--accent)">R' + profit.toFixed(0) + ' (' + profitPct + '%)</span><br>' +
+    '→ <strong style="color:var(--accent3)">Min = R' + autoMin + '</strong> &nbsp;&nbsp; ' +
+    '<strong style="color:#a78bfa">Max = R' + effectiveMax + '</strong> <span style="color:var(--muted)">(20% above min)</span>';
+
+  if (minHint) minHint.textContent = 'Auto: R' + autoMin + ' — override by typing above';
+  if (maxHint) maxHint.textContent = 'Auto: R' + effectiveMax + ' — override by typing above';
+}
+
+function closeEditModal() {
+  document.getElementById('editModal').classList.remove('show');
+  _editModalIdx = null;
+}
+
+function calcAutoMaxPrice(minPrice) {
+  if (!minPrice || minPrice <= 0) return null;
+  return Math.round(minPrice * 1.20);
+}
+
+function saveEditModal() {
+  var idx = _editModalIdx;
+  if (idx === null || !state.products[idx]) return;
+  var p = state.products[idx];
+
+  var fsn  = document.getElementById('editFsnInput').value.trim().toUpperCase();
+  var sku  = document.getElementById('editSkuInput').value.trim();
+  var cost = parseFloat(document.getElementById('editCostInput').value);
+  var min  = document.getElementById('editMinInput').value.trim();
+  var max  = document.getElementById('editMaxInput').value.trim();
+  var pct  = parseFloat(document.getElementById('editMinProfitPct').value) || 7;
+
+  // Save profit % preference globally
+  localStorage.setItem('min_profit_pct', pct);
+
+  if (fsn)  p.fsn = fsn;
+  if (sku)  p.sku = sku;
+
+  if (!isNaN(cost) && cost > 0) {
+    p.cost_price    = cost;
+    p.cost_supplier = p.cost_supplier || 'Manual';
+    // Auto-recalc min price unless user provided one
+    if (!min) p.min_price = calcMinViablePrice(cost);
+  }
+
+  // If product has a cost but min_price is missing or zero, always auto-calc it
+  if (p.cost_price > 0 && (!p.min_price || p.min_price <= 0)) {
+    p.min_price = calcMinViablePrice(p.cost_price);
+  }
+
+  if (min !== '') {
+    var minVal = parseFloat(min);
+    if (!isNaN(minVal) && minVal > 0) p.min_price = roundPrice(minVal);
+  }
+
+  // Auto-calc max = 20% above min price, unless manually overridden
+  if (max !== '') {
+    var maxVal = parseFloat(max);
+    if (!isNaN(maxVal) && maxVal > 0) p.max_price = roundPrice(maxVal);
+  } else if (p.min_price) {
+    p.max_price = calcAutoMaxPrice(p.min_price);
+  }
+
+  saveProducts();
+  closeEditModal();
+  renderProducts();
+}
+
+// ── SAVE PRICE FIELDS WITHOUT RE-RENDER ───────────────────────────────────
+function setProductPriceSilent(idx, field, val) {
+  if (idx < 0 || idx >= state.products.length) return;
+  // String fields — save as-is
+  var stringFields = ['fsn', 'sku', 'title', 'url', 'seller', 'status'];
+  if (stringFields.includes(field)) {
+    state.products[idx][field] = val.trim();
+  } else {
+    var v = val === '' ? null : parseFloat(val);
+    if (val !== '' && isNaN(v)) return;
+    state.products[idx][field] = v;
+  }
+  saveProducts();
+}
+
+// Legacy wrapper — kept for any remaining calls
+function setProductPrice(idx, field, val) {
+  setProductPriceSilent(idx, field, val);
+}
+
+// Legacy — no longer used (modal replaces it) but kept to avoid JS errors
+function showCostInput(idx) { openEditModal(idx); }
+function saveCostInput(idx) { saveEditModal(); }
+
+
+
+// ── ADD PRODUCT FROM SEARCH BAR ──────────────────────────────────────────
+function handleSearchInput(val) {
+  var btn = document.getElementById('addProductBtn');
+  var isUrl = val.trim().startsWith('http') && val.trim().includes('makro.co.za');
+  if (btn) btn.style.display = isUrl ? 'flex' : 'none';
+}
+
+function addProductFromSearch() {
+  var url = (document.getElementById('prodSearch').value || '').trim();
+  if (!url.startsWith('http') || !url.includes('makro.co.za')) {
+    alert('Please paste a valid makro.co.za product URL.');
+    return;
+  }
+  // Check not already tracked
+  var exists = state.products.some(function(p) { return p.url === url; });
+  if (exists) {
+    alert('⚠ This product is already in your list.');
+    return;
+  }
+  // Add as a stub — scraper will fill in the rest
+  var stub = {
+    url: url,
+    fsn: '', sku: '', title: url,
+    buybox_price: 0, seller: '', status: 'unknown',
+    lastChecked: null, history: []
+  };
+  state.products.push(stub);
+  saveProducts();
+  renderProducts();
+  updateProductCount();
+  // Clear search and hide button
+  document.getElementById('prodSearch').value = '';
+  document.getElementById('addProductBtn').style.display = 'none';
+  // Ask if they want to scrape it now
+  if (state.extReady && confirm('✅ Product added! Scrape it now to get BuyBox data?')) {
+    switchTab('scraper');
+    document.getElementById('urlInput').value = url;
+    document.getElementById('urlCount').textContent = '1 URL detected';
+    setTimeout(startScraping, 200);
+  }
+}
+
+function rescrapeOne(idx) {
+  if (!state.extReady) { alert('Extension not connected.'); return; }
+  const p = state.products[idx];
+  switchTab('scraper');
+  document.getElementById('urlInput').value = p.url;
+  document.getElementById('urlCount').textContent = '1 URL detected';
+  setTimeout(startScraping, 100);
+}
+
+function clearAllConfirm() {
+  document.getElementById('clearCount').textContent = state.products.length;
+  document.getElementById('clearModal').classList.add('show');
+}
+
+function clearAll() {
+  state.products = [];
+  saveProducts();
+  document.getElementById('clearModal').classList.remove('show');
+  renderProducts();
+  updateProductCount();
+  renderDashboard();
+}
+
+function updateProductCount() {
+  document.getElementById('prodCount').textContent = state.products.length;
+}
+
+function exportCSV() {
+  if (state.products.length === 0) { alert('No products to export.'); return; }
+  const headers = ['Title', 'SKU', 'FSN', 'BuyBox Price', 'Seller', 'Status', 'Cost Price', 'Min Price', 'Max Price', 'Last Checked'];
+  const rows = state.products.map(p => [
+    p.title, p.sku, p.fsn, p.buybox_price, p.seller, p.status,
+    p.cost_price || '', p.min_price || '', p.max_price || '', p.lastChecked
+  ].map(v => '"' + String(v||'').replace(/"/g,'""') + '"'));
+  const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'makro-buybox-' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+}
+
+// Export products with no SKU match so the user can fix & re-upload
+function exportUnmatchedCSV() {
+  var unmatched = state.products.filter(function(p) { return !p.sku; });
+  if (unmatched.length === 0) { alert('✅ All products have a matched SKU — nothing to export!'); return; }
+  // Headers: FSN (to find the product), Title (for reference), blank SKU column for user to fill
+  var headers = ['FSN', 'Title', 'SKU (fill this in)', 'BuyBox Price', 'Status', 'Last Checked'];
+  var rows = unmatched.map(function(p) {
+    return [p.fsn||'', p.title||'', '', p.buybox_price||'', p.status||'', p.lastChecked||'']
+      .map(function(v){ return '"' + String(v).replace(/"/g,'""') + '"'; });
+  });
+  var csv = [headers.map(function(h){ return '"'+h+'"'; }), ...rows].map(function(r){ return r.join(','); }).join('\n');
+  var blob = new Blob([csv], { type: 'text/csv' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'makro-unmatched-skus-' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+  alert('📥 Exported ' + unmatched.length + ' unmatched products.\n\nFill in the "SKU (fill this in)" column, then use 🔗 Bulk SKU Import to re-upload.');
+}
+
+// ============================================================
+// ANALYTICS
+// ============================================================
+function renderAnalytics() {
+  // Always re-evaluate win/lose before rendering analytics
+  try { reEvaluateStatuses(); } catch(e) {}
+  const prods = state.products;
+  renderStatusBars(prods);
+  renderPriceChart(prods);
+  renderTrendChart(prods);
+  renderPriceComp(prods);
+  renderCompetitors(prods);
+  renderPriceGap(prods);
+  renderOpportunities(prods);
+  renderSummary(prods);
+}
+
+function renderPriceChart(prods) {
+  const canvas = document.getElementById('priceChart');
+  const empty = document.getElementById('emptyPriceChart');
+  if (prods.length === 0) {
+    canvas.style.display = 'none'; empty.style.display = 'flex'; return;
+  }
+  canvas.style.display = 'block'; empty.style.display = 'none';
+
+  const ctx = canvas.getContext('2d');
+  const W = canvas.parentElement.offsetWidth - 40;
+  canvas.width = W; canvas.height = 180;
+  ctx.clearRect(0,0,W,180);
+
+  const prices = prods.map(p => p.buybox_price || 0).filter(v => v > 0);
+  if (prices.length === 0) return;
+
+  // Buckets
+  const min = prices.reduce((a,b)=>a<b?a:b, Infinity);
+  const max = prices.reduce((a,b)=>a>b?a:b, -Infinity);
+  const buckets = 8;
+  const bSize = (max - min) / buckets || 1;
+  const counts = Array(buckets).fill(0);
+  prices.forEach(p => {
+    const b = Math.min(Math.floor((p - min) / bSize), buckets - 1);
+    counts[b]++;
+  });
+
+  const maxCount = Math.max(...counts, 1);
+  const barW = (W - 40) / buckets - 4;
+  const barAreaH = 140;
+
+  counts.forEach((c, i) => {
+    const h = (c / maxCount) * barAreaH;
+    const x = 20 + i * ((W - 40) / buckets);
+    const y = barAreaH - h + 20;
+    ctx.fillStyle = '#00e5a0';
+    ctx.globalAlpha = 0.7;
+    ctx.fillRect(x, y, barW, h);
+    ctx.globalAlpha = 1;
+
+    // X label
+    ctx.fillStyle = '#6b7280';
+    ctx.font = '9px DM Sans';
+    ctx.textAlign = 'center';
+    ctx.fillText('R' + Math.round(min + i * bSize), x + barW/2, 170);
+  });
+}
+
+function renderTrendChart(prods) {
+  const canvas = document.getElementById('trendChart');
+  const empty = document.getElementById('emptyTrendChart');
+
+  // Gather all history points
+  const timeline = [];
+  prods.forEach(p => {
+    (p.history || []).forEach(h => timeline.push(h));
+  });
+  timeline.sort((a,b) => new Date(a.ts) - new Date(b.ts));
+
+  if (timeline.length < 2) {
+    canvas.style.display = 'none'; empty.style.display = 'flex'; return;
+  }
+
+  canvas.style.display = 'block'; empty.style.display = 'none';
+  const ctx = canvas.getContext('2d');
+  const W = canvas.parentElement.offsetWidth - 40;
+  canvas.width = W; canvas.height = 180;
+  ctx.clearRect(0,0,W,180);
+
+  // Group by day, count wins/loses
+  const days = {};
+  timeline.forEach(h => {
+    const day = h.ts.slice(0,10);
+    if (!days[day]) days[day] = { wins:0, loses:0 };
+    if (h.status === 'win') days[day].wins++;
+    else days[day].loses++;
+  });
+
+  const dayKeys = Object.keys(days).sort().slice(-14);
+  if (dayKeys.length < 2) { canvas.style.display = 'none'; empty.style.display = 'flex'; return; }
+
+  const maxVal = Math.max(...dayKeys.map(d => days[d].wins + days[d].loses), 1);
+  const step = (W - 40) / (dayKeys.length - 1);
+  const H = 160;
+  const padT = 10, padB = 30;
+
+  function toY(val) { return padT + (1 - val/maxVal) * (H - padT - padB); }
+
+  // Win line
+  ctx.beginPath();
+  dayKeys.forEach((d, i) => {
+    const x = 20 + i * step, y = toY(days[d].wins);
+    i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  });
+  ctx.strokeStyle = '#00e5a0'; ctx.lineWidth = 2; ctx.stroke();
+
+  // Lose line
+  ctx.beginPath();
+  dayKeys.forEach((d, i) => {
+    const x = 20 + i * step, y = toY(days[d].loses);
+    i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  });
+  ctx.strokeStyle = '#ff4d6d'; ctx.lineWidth = 2; ctx.stroke();
+
+  // Labels
+  ctx.fillStyle = '#6b7280'; ctx.font = '9px DM Sans'; ctx.textAlign = 'center';
+  dayKeys.forEach((d, i) => {
+    if (i % Math.ceil(dayKeys.length / 6) === 0) {
+      ctx.fillText(d.slice(5), 20 + i * step, H - 5);
+    }
+  });
+
+  // Legend
+  ctx.fillStyle = '#00e5a0'; ctx.fillRect(W - 80, 15, 10, 2);
+  ctx.fillStyle = '#e8eaf0'; ctx.font = '10px DM Sans'; ctx.textAlign = 'left';
+  ctx.fillText('Wins', W - 66, 18);
+  ctx.fillStyle = '#ff4d6d'; ctx.fillRect(W - 80, 28, 10, 2);
+  ctx.fillStyle = '#e8eaf0';
+  ctx.fillText('Losses', W - 66, 31);
+}
+
+function renderPriceComp(prods) {
+  const el = document.getElementById('priceCompBar');
+  const empty = document.getElementById('emptyPriceComp');
+  if (!el) return;  // element not present — skip silently
+  const p2 = prods.filter(p => p.buybox_price > 0);
+  if (p2.length === 0) { el.style.display='none'; empty.style.display='flex'; return; }
+  el.style.display = 'flex'; empty.style.display = 'none';
+
+  const maxPrice = Math.max(...p2.map(p => p.buybox_price), 1);
+  el.innerHTML = p2.slice(0,12).map(p => {
+    const pct = (p.buybox_price / maxPrice * 100).toFixed(1);
+    const color = p.status === 'win' ? 'var(--accent)' : p.status === 'lose' ? 'var(--accent2)' : 'var(--muted)';
+    return `<div class="bar-row">
+      <div class="bar-label" title="${escHtml(p.title)}">${escHtml((p.title||'?').slice(0,18))}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${color}">
+        <span class="bar-fill-val" style="color:#000;font-size:10px">R${p.buybox_price.toFixed(0)}</span>
+      </div></div>
+    </div>`;
+  }).join('');
+}
+
+// ── Status bar chart (now in Analytics tab) ──────────────────────────────
+function renderStatusBars(prods) {
+  const el = document.getElementById('statusBarChartAnalytics');
+  if (!el) return;  // element removed from HTML — skip silently
+  if (!el) return;
+  if (!prods.length) { el.innerHTML = '<div style="color:var(--muted);padding:20px;font-size:13px">No products scraped yet.</div>'; return; }
+  const maxPrice = Math.max(...prods.map(p => p.buybox_price || 0), 1);
+  el.innerHTML = '<div class="bar-chart">' + prods.map(p => {
+    const color = p.status === 'win' ? 'var(--accent)' : p.status === 'lose' ? 'var(--accent2)' : 'var(--muted)';
+    const pct = ((p.buybox_price || 0) / maxPrice * 100).toFixed(1);
+    const label = (p.title || p.url || 'Unknown').slice(0, 32);
+    return `<div class="bar-row">
+      <div class="bar-label" title="${escHtml(p.title)}">${escHtml(label)}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${color}">
+        <span class="bar-fill-val" style="color:#000;font-size:10px">R${(p.buybox_price||0).toFixed(0)} · ${escHtml((p.seller||'').slice(0,20))}</span>
+      </div></div>
+    </div>`;
+  }).join('') + '</div>';
+}
+
+// ── Competitor breakdown — FULL names, show % share, avg price ────────────
+function renderCompetitors(prods) {
+  const el = document.getElementById('compBreakdown');
+  const sellerData = {};
+  prods.forEach(function(p) {
+    if (!p.seller || p.seller === 'Unknown Seller') return;
+    if (!sellerData[p.seller]) sellerData[p.seller] = { count: 0, prices: [] };
+    sellerData[p.seller].count++;
+    if (p.buybox_price > 0) sellerData[p.seller].prices.push(p.buybox_price);
+  });
+
+  const myName = getMySellerName().toLowerCase();
+  const sorted = Object.entries(sellerData).sort((a, b) => b[1].count - a[1].count);
+  const total  = sorted.reduce((s, [, d]) => s + d.count, 0) || 1;
+  const max    = sorted.length ? sorted[0][1].count : 1;
+
+  if (!sorted.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:13px">No competitor data yet.</div>';
+    return;
+  }
+
+  el.innerHTML = sorted.map(function([name, d]) {
+    const isMe  = name.toLowerCase().includes(myName) || myName.includes(name.toLowerCase().slice(0, 6));
+    const color = isMe ? 'var(--accent)' : 'var(--accent2)';
+    const pct   = (d.count / max * 100).toFixed(0);
+    const share = (d.count / total * 100).toFixed(1);
+    const avg   = d.prices.length ? 'R' + (d.prices.reduce((a,b)=>a+b,0)/d.prices.length).toFixed(0) : '—';
+    return `<div class="bar-row" style="margin-bottom:6px">
+      <div class="bar-label" title="${escHtml(name)}" style="width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(name)}</div>
+      <div class="bar-track" style="flex:1">
+        <div class="bar-fill" style="width:${pct}%;background:${color};min-width:2px">
+          <span class="bar-fill-val" style="color:#000">${d.count}</span>
+        </div>
+      </div>
+      <div style="font-size:10px;color:var(--muted);white-space:nowrap;margin-left:8px;width:100px;text-align:right">${share}% · avg ${avg}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── Price Gap Analysis — how far are you from winning ────────────────────
+function renderPriceGap(prods) {
+  const el = document.getElementById('priceGapAnalysis');
+  if (!el) return;
+  const listings = getListings();
+  const listMap  = {};
+  listings.forEach(function(l) { if (l.fsn) listMap[l.fsn] = l; });
+
+  // Show buybox price distribution by competitor even without listings
+  if (!listings.length) {
+    // Show top losing competitors with their avg price instead
+    const compData = {};
+    prods.forEach(function(p) {
+      if (!p.seller || p.seller === 'Unknown Seller' || !p.buybox_price) return;
+      if (!compData[p.seller]) compData[p.seller] = { count: 0, prices: [] };
+      compData[p.seller].count++;
+      compData[p.seller].prices.push(p.buybox_price);
+    });
+    const sorted = Object.entries(compData).sort((a,b) => b[1].count - a[1].count).slice(0,6);
+    if (!sorted.length) {
+      el.innerHTML = '<div style="color:var(--muted);font-size:12px;line-height:1.6">No BuyBox price data yet. Scrape your products first, then import your S_listing file to see how far your prices are from winning.</div>';
+      return;
+    }
+    const maxCount = sorted[0][1].count;
+    el.innerHTML = '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">Import S_listing to see exact gaps. Current competitor avg prices:</div>' +
+      sorted.map(function([name, d]) {
+        const avg = (d.prices.reduce((a,b)=>a+b,0)/d.prices.length).toFixed(0);
+        const pct = (d.count / maxCount * 100).toFixed(0);
+        return `<div class="bar-row" style="margin-bottom:5px">
+          <div class="bar-label" style="width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(name)}">${escHtml(name.slice(0,18))}</div>
+          <div class="bar-track" style="flex:1"><div class="bar-fill" style="width:${pct}%;background:var(--accent2);min-width:2px">
+            <span class="bar-fill-val" style="color:#000">${d.count}</span>
+          </div></div>
+          <div style="font-size:10px;color:var(--muted);white-space:nowrap;margin-left:8px">avg R${avg}</div>
+        </div>`;
+      }).join('');
+    return;
+  }
+
+  // Only products where we have both my price and buybox price
+  const gaps = [];
+  prods.forEach(function(p) {
+    if (p.status !== 'lose' && p.status !== 'unknown') return;
+    const l = listMap[p.fsn];
+    if (!l || !l.myPrice || !p.buybox_price) return;
+    const gap = l.myPrice - p.buybox_price;
+    gaps.push({ title: p.title, myPrice: l.myPrice, buybox: p.buybox_price, gap, seller: p.seller });
+  });
+
+  if (!gaps.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:12px;line-height:1.6">No price gap data yet — make sure your S_listing FSN codes match the scraped products.</div>';
+    return;
+  }
+
+  gaps.sort((a, b) => Math.abs(a.gap) - Math.abs(b.gap));
+
+  const buckets = { '<R10':0, 'R10–50':0, 'R50–200':0, 'R200–500':0, '>R500':0 };
+  gaps.forEach(function(g) {
+    const a = Math.abs(g.gap);
+    if (a < 10)       buckets['<R10']++;
+    else if (a < 50)  buckets['R10–50']++;
+    else if (a < 200) buckets['R50–200']++;
+    else if (a < 500) buckets['R200–500']++;
+    else              buckets['>R500']++;
+  });
+
+  const maxB = Math.max(...Object.values(buckets), 1);
+  const colors = ['#00e5a0','#7ee8c8','#ffd60a','#ff9500','#ff4d6d'];
+  el.innerHTML = '<div style="margin-bottom:10px;font-size:11px;color:var(--muted)">' + gaps.length + ' losing products with price data</div>' +
+    Object.entries(buckets).map(function([label, count], i) {
+      const pct = (count / maxB * 100).toFixed(0);
+      return `<div class="bar-row" style="margin-bottom:5px">
+        <div class="bar-label" style="width:70px">${label}</div>
+        <div class="bar-track" style="flex:1"><div class="bar-fill" style="width:${pct}%;background:${colors[i]};min-width:2px">
+          <span class="bar-fill-val" style="color:#000">${count}</span>
+        </div></div>
+      </div>`;
+    }).join('');
+}
+
+// ── Top Opportunities — products closest to winning buybox ────────────────
+function renderOpportunities(prods) {
+  const el = document.getElementById('opportunityTable');
+  if (!el) return;
+  const listings = getListings();
+  const listMap  = {};
+  listings.forEach(function(l) { if (l.fsn) listMap[l.fsn] = l; });
+
+  const opps = [];
+  prods.forEach(function(p) {
+    if (p.status === 'win') return;
+    if (!p.buybox_price) return;
+    const l = listMap[p.fsn];
+    const myPrice = l ? l.myPrice : null;
+    const gap = myPrice ? myPrice - p.buybox_price : null;
+    opps.push({ p, myPrice, gap, absGap: gap !== null ? Math.abs(gap) : 999999 });
+  });
+
+  opps.sort((a, b) => a.absGap - b.absGap);
+  const top = opps.slice(0, 20);
+
+  if (!top.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:12px">No losing products found. Either everything is winning or no products scraped yet.</div>';
+    return;
+  }
+
+  el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12px">
+    <thead><tr style="color:var(--muted);border-bottom:1px solid var(--border)">
+      <th style="text-align:left;padding:8px 6px">Product</th>
+      <th style="text-align:right;padding:8px 6px">BuyBox</th>
+      <th style="text-align:right;padding:8px 6px">My Price</th>
+      <th style="text-align:right;padding:8px 6px">Gap</th>
+      <th style="text-align:left;padding:8px 6px">BuyBox Owner</th>
+      <th style="text-align:center;padding:8px 6px">Action</th>
+    </tr></thead>
+    <tbody>` +
+    top.map(function({ p, myPrice, gap }) {
+      const gapStr  = gap !== null ? (gap > 0 ? '<span style="color:#ff9500">▲R'+gap.toFixed(2)+'</span>' : '<span style="color:#00e5a0">▼R'+Math.abs(gap).toFixed(2)+'</span>') : '<span style="color:var(--muted)">—</span>';
+      const myPriceStr = myPrice ? 'R'+myPrice.toFixed(2) : '<span style="color:var(--muted)">—</span>';
+      const closeEnough = gap !== null && Math.abs(gap) < 50;
+      return `<tr style="border-bottom:1px solid var(--border)${closeEnough ? ';background:rgba(0,229,160,0.04)' : ''}">
+        <td style="padding:8px 6px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(p.title)}">${escHtml((p.title||p.url||'').slice(0,40))}</td>
+        <td style="text-align:right;padding:8px 6px;font-family:monospace;color:var(--accent)">R${p.buybox_price.toFixed(2)}</td>
+        <td style="text-align:right;padding:8px 6px;font-family:monospace">${myPriceStr}</td>
+        <td style="text-align:right;padding:8px 6px;font-family:monospace">${gapStr}</td>
+        <td style="padding:8px 6px;color:var(--muted);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(p.seller||'Unknown')}</td>
+        <td style="text-align:center;padding:8px 6px"><a href="${escHtml(p.url)}" target="_blank" style="color:var(--accent);font-size:11px;text-decoration:none">Open ↗</a></td>
+      </tr>`;
+    }).join('') +
+    '</tbody></table>';
+}
+
+// ── Summary Stats — enriched ──────────────────────────────────────────────
+function renderSummary(prods) {
+  const el = document.getElementById('summaryStats');
+  if (!el) return;
+  if (!prods.length) { el.innerHTML = '<div style="color:var(--muted);font-size:13px">No data yet</div>'; return; }
+
+  try {
+    const wins   = prods.filter(p => p.status === 'win').length;
+    const loses  = prods.filter(p => p.status === 'lose').length;
+    const unk    = prods.filter(p => !p.status || p.status === 'unknown').length;
+    const total  = prods.length;
+    const prices = prods.map(p => p.buybox_price).filter(v => v > 0);
+    const avg    = prices.length ? prices.reduce((a,b)=>a+b,0)/prices.length : 0;
+    // Use reduce instead of spread to avoid stack overflow on large arrays
+    const min    = prices.length ? prices.reduce((a,b)=>a<b?a:b, Infinity) : 0;
+    const max    = prices.length ? prices.reduce((a,b)=>a>b?a:b, -Infinity) : 0;
+
+    const sellers = {};
+    prods.forEach(p => { if (p.seller && p.seller !== 'Unknown Seller') sellers[p.seller] = (sellers[p.seller]||0)+1; });
+    const topSeller = Object.entries(sellers).sort((a,b)=>b[1]-a[1])[0];
+    const listings  = getListings();
+
+    const rows = [
+      ['Total Products',       total,                             ''],
+      ['Winning BuyBox',       wins,                              'color:var(--accent)'],
+      ['Losing BuyBox',        loses,                             'color:var(--accent2)'],
+      ['Unknown / Unscraped',  unk,                               'color:var(--muted)'],
+      ['Win Rate',             Math.round(wins/total*100) + '%',  wins > loses ? 'color:var(--accent)' : 'color:var(--accent2)'],
+      ['Avg BuyBox Price',     'R ' + avg.toFixed(2),             ''],
+      ['Lowest BuyBox Price',  min > 0 ? 'R ' + min.toFixed(2) : '—', ''],
+      ['Highest BuyBox Price', max > 0 ? 'R ' + max.toFixed(2) : '—', ''],
+      ['Unique Competitors',   Object.keys(sellers).length,       ''],
+      ['Top Competitor',       topSeller ? topSeller[0] : '—',    'color:var(--accent2);font-size:11px;text-align:right;max-width:160px'],
+      ['Listings Imported',    listings.length,                   listings.length ? 'color:var(--accent)' : 'color:var(--muted)'],
+    ];
+
+    el.innerHTML = rows.map(([label, val, style]) => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
+        <span style="font-size:11px;color:var(--muted);flex-shrink:0">${label}</span>
+        <span style="font-family:'Space Mono',monospace;font-size:12px;font-weight:700;${style};margin-left:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(String(val))}</span>
+      </div>`).join('');
+  } catch(err) {
+    console.error('[renderSummary error]', err);
+    el.innerHTML = '<div style="color:var(--accent2);font-size:12px">Error rendering stats: ' + err.message + '</div>';
+  }
+}
+
+// ── Export / Import all data ──────────────────────────────────────────────
+function exportAllData() {
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    version:    2,
+    products:   state.products,
+    listings:   getListings()
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = 'makro_buybox_export_' + new Date().toISOString().slice(0,10) + '.json';
+  a.click();
+}
+
+function importAllData(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (!data.products) { alert('Invalid export file.'); return; }
+      const existing = state.products;
+      let added = 0, updated = 0;
+
+      data.products.forEach(function(p) {
+        const idx = existing.findIndex(x => x.url === p.url);
+        if (idx >= 0) { existing[idx] = Object.assign({}, existing[idx], p); updated++; }
+        else          { existing.push(p); added++; }
+      });
+
+      if (data.listings && data.listings.length) {
+        localStorage.setItem('makro_listings', JSON.stringify(data.listings));
+      }
+
+      saveProducts();
+      renderDashboard();
+      renderProducts();
+      renderAnalytics();
+      alert('✅ Import complete!\n' + added + ' new products added\n' + updated + ' products updated' +
+        (data.listings ? '\n' + data.listings.length + ' listings imported' : ''));
+    } catch(err) {
+      alert('Failed to parse file: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+
+// ============================================================
+// SELLER NAME SYNC
+// ============================================================
+document.getElementById('sellerNameInput').addEventListener('change', function() {
+  const v = this.value.trim();
+  if (v) localStorage.setItem(SELLER_KEY, v);
+  syncSellerConfig();
+  // Re-evaluate all product statuses
+  const myName = v.toLowerCase();
+  state.products.forEach(p => {
+    if (p.seller && p.seller !== 'Unknown Seller') {
+      p.status = p.seller.toLowerCase().includes(myName) || myName.includes(p.seller.toLowerCase().slice(0,6)) ? 'win' : 'lose';
+    }
+  });
+  saveProducts();
+  renderDashboard();
+});
+
+document.getElementById('sellerNameConfig').addEventListener('change', function() {
+  document.getElementById('sellerNameInput').value = this.value;
+  document.getElementById('sellerNameInput').dispatchEvent(new Event('change'));
+});
+
+// ============================================================
+// INIT
+// ============================================================
+(function init() {
+  loadProducts();
+
+  // Escape key closes any open modal
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      closeEditModal();
+      document.getElementById('clearModal').classList.remove('show');
+      document.getElementById('historyModal').classList.remove('show');
+      document.getElementById('bulkSkuModal').classList.remove('show');
+    }
+  });
+
+  loadTgSettings();
+  loadMinProfitSetting();
+  var savedParallel = localStorage.getItem('scrape_parallel') || '5';
+  var pEl = document.getElementById('scrapeParallel');
+  if (pEl) pEl.value = savedParallel;
+  initAutoScrape();
+
+  // Load saved seller name
+  const savedSeller = localStorage.getItem(SELLER_KEY);
+  if (savedSeller) document.getElementById('sellerNameInput').value = savedSeller;
+  syncSellerConfig();
+
+  updateProductCount();
+  renderDashboard();
+
+  // Ping extension
+  pingExtension();
+  setInterval(pingExtension, 3000);
+
+  // Auto-poll localStorage for new products written by bridge.js
+  let lastProductCount = state.products.length;
+  let lastScrapeTime = localStorage.getItem('makro_last_scrape') || '';
+  setInterval(function() {
+    const currentScrape = localStorage.getItem('makro_last_scrape') || '';
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    try {
+      const fresh = deduplicateProducts(JSON.parse(raw));
+      // Filter out any products the user has explicitly deleted
+      var deletedSet = [];
+      try { deletedSet = JSON.parse(localStorage.getItem('makro_deleted') || '[]'); } catch(e) {}
+      const cleaned = deletedSet.length ? fresh.filter(function(p) {
+        return !deletedSet.includes(p.url) && !deletedSet.includes((p.fsn||'').toUpperCase());
+      }) : fresh;
+      if (cleaned.length !== lastProductCount || currentScrape !== lastScrapeTime) {
+        lastProductCount = cleaned.length;
+        lastScrapeTime = currentScrape;
+
+        // ── PRESERVE manually-set SKU, cost, min/max price from in-memory state ──
+        // The bridge may write stale data without these fields — never let a
+        // localStorage reload wipe fields the user just typed in.
+        var memMap = {};
+        state.products.forEach(function(p) {
+          var key = (p.fsn||'').toUpperCase() || p.url;
+          if (key) memMap[key] = p;
+        });
+        cleaned.forEach(function(p) {
+          var key = (p.fsn||'').toUpperCase() || p.url;
+          var mem = memMap[key];
+          if (!mem) return;
+          // Keep manual SKU if bridge gives nothing or a bad itm... slug
+          if (mem.sku && !/^itm/i.test(mem.sku) && (!p.sku || /^itm/i.test(p.sku))) p.sku = mem.sku;
+          // Keep cost + pricing if already set in memory
+          if (mem.cost_price > 0 && !(p.cost_price > 0)) {
+            p.cost_price    = mem.cost_price;
+            p.cost_supplier = mem.cost_supplier;
+          }
+          if (mem.min_price > 0 && !(p.min_price > 0)) p.min_price = mem.min_price;
+          if (mem.max_price > 0 && !(p.max_price > 0)) p.max_price = mem.max_price;
+        });
+
+        state.products = cleaned;
+        reEvaluateStatuses();
+        saveProducts();
+        updateProductCount();
+        renderDashboard();
+        // Only re-render products table if no checkboxes are currently selected
+        const anyChecked = document.querySelectorAll('.row-check:checked').length > 0;
+        if (!anyChecked) renderProducts();
+      }
+    } catch(e) {}
+  }, 3000);
+
+  // Check if ext still alive
+  setInterval(function() {
+    // If we got a READY message in last 10s, still online (handled by message handler)
+  }, 10000);
+
+  console.log('[MakroBuyboxV2] Dashboard loaded. Products:', state.products.length);
+})();
+
+// ============================================================
+// PRICE UPDATER
+// ============================================================
+function initPricer() {
+  const listings = getListings();
+  const el = document.getElementById('pricerListingsStatus');
+  const genBtn = document.getElementById('generateBtn');
+  const hasRaw = !!localStorage.getItem('makro_listings_raw');
+  updatePendingBadge();
+  if (!el) return;  // null guard — tab not rendered yet
+  if (listings.length === 0) {
+    el.innerHTML = '⚠️ <span style="color:#ff9500">No listings imported yet.</span> Go to <b>Products tab → 📂 Import Listings</b> first.';
+    if (genBtn) genBtn.disabled = true;
+  } else if (!hasRaw) {
+    el.innerHTML = '⚠️ <span style="color:#ff9500"><b>' + listings.length + ' listings loaded but original XLS file is missing from this browser.</b></span><br>' +
+      '<span style="color:var(--muted);font-size:12px">Re-import your S_listing XLS file on this PC (Products tab → 📂 Import Listings) before generating a price update file.</span>';
+    if (genBtn) genBtn.disabled = false;
+  } else {
+    el.innerHTML = '✅ <span style="color:var(--accent)">' + listings.length + ' listings loaded.</span> Ready to generate.';
+    if (genBtn) genBtn.disabled = false;
+    buildPricerPreview();
+  }
+}
+
+function getListings() {
+  try {
+    const raw = localStorage.getItem('makro_listings');
+    return raw ? JSON.parse(raw) : [];
+  } catch(e) { return []; }
+}
+
+function calcNewPrice(myPrice, buyboxPrice, strategy, beatBy, floorPct, minPrice, maxPrice) {
+  if (!buyboxPrice || buyboxPrice <= 0) return null;
+  let newPrice;
+  if (strategy === 'match') {
+    newPrice = buyboxPrice;
+  } else if (strategy === 'beat') {
+    newPrice = buyboxPrice - parseFloat(beatBy);
+  } else if (strategy === 'pct') {
+    newPrice = buyboxPrice * (1 - parseFloat(beatBy) / 100);
+  } else if (strategy === 'floor') {
+    const floor = myPrice * (1 - parseFloat(floorPct) / 100);
+    newPrice = Math.max(buyboxPrice - parseFloat(beatBy), floor);
+  }
+  newPrice = Math.max(newPrice, 0.01);
+
+  // Round to whole number — Makro prices should be whole Rands
+  newPrice = roundPrice(newPrice);
+
+  // Apply min/max guards — return object so callers can detect clamping
+  const priceBeforeClamp = newPrice;
+  if (minPrice !== null && newPrice < minPrice) newPrice = minPrice;
+  if (maxPrice !== null && newPrice > maxPrice) newPrice = maxPrice;
+
+  return {
+    price:    Math.round(newPrice),
+    clamped:  Math.round(priceBeforeClamp) !== Math.round(newPrice),
+    clampDir: priceBeforeClamp < (minPrice || 0) ? 'min' : 'max'
+  };
+}
+
+function buildPricerPreview() {
+  const listings    = getListings();
+  const strategy    = document.getElementById('pricerStrategy').value;
+  const beatBy      = document.getElementById('pricerBeatBy').value;
+  const floorPct    = document.getElementById('pricerFloor').value;
+  const winsOnly    = document.getElementById('pricerWinsOnly').checked;
+  const skipUnknown = document.getElementById('pricerSkipUnknown').checked;
+  const minEnabled  = document.getElementById('pricerMinEnabled').checked;
+  const maxEnabled  = document.getElementById('pricerMaxEnabled').checked;
+  const minPrice    = minEnabled ? parseFloat(document.getElementById('pricerMinPrice').value) || 0    : null;
+  const maxPrice    = maxEnabled ? parseFloat(document.getElementById('pricerMaxPrice').value) || 9999 : null;
+
+  const scrapedMap = {};
+  state.products.forEach(function(p) { if (p.fsn) scrapedMap[p.fsn] = p; });
+
+  const rows = [];
+  listings.forEach(function(l) {
+    const scraped = scrapedMap[l.fsn];
+    if (!scraped) return;
+    // Safety guard — skip products with no cost or no min price
+    if (!(scraped.cost_price > 0) || !(scraped.min_price > 0)) return;
+    if (skipUnknown && (!scraped.buybox_price || scraped.buybox_price <= 0)) return;
+    if (winsOnly && scraped.status === 'win') return;
+    const result = calcNewPrice(l.myPrice, scraped.buybox_price, strategy, beatBy, floorPct, minPrice, maxPrice);
+    if (!result) return;
+    rows.push({
+      fsn:      l.fsn,
+      sku:      l.sku,
+      title:    l.title,
+      myPrice:  l.myPrice,
+      buybox:   scraped.buybox_price,
+      newPrice: result.price,
+      clamped:  result.clamped,
+      clampDir: result.clampDir,
+      status:   scraped.status,
+      seller:   scraped.seller
+    });
+  });
+
+  const el = document.getElementById('pricerPreview');
+  if (rows.length === 0) {
+    el.innerHTML = '<div style="color:var(--muted);padding:20px">No products match the current strategy settings.</div>';
+    return;
+  }
+
+  const okRows      = rows.filter(function(r) { return !r.clamped; });
+  const clampedRows = rows.filter(function(r) { return  r.clamped; });
+
+  let html = '';
+  if (clampedRows.length) {
+    html += '<div style="background:rgba(255,149,0,0.1);border:1px solid #ff9500;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:11px">' +
+      '⚠️ <b style="color:#ff9500">' + clampedRows.length + ' product' + (clampedRows.length > 1 ? 's' : '') + ' clamped by price guard</b> — ' +
+      'these will be <b>skipped</b> from the upload file to protect you from pricing mistakes.<br>' +
+      '<span style="color:var(--muted)">Adjust your Min/Max guards or strategy if you want to include them.</span></div>';
+  }
+
+  html += '<div style="margin-bottom:8px;font-size:12px">' +
+    '<span style="color:var(--accent)">' + okRows.length + ' products will update</span>' +
+    (clampedRows.length ? ' &nbsp;·&nbsp; <span style="color:#ff9500">' + clampedRows.length + ' skipped (clamped)</span>' : '') +
+    '</div>' +
+    '<table style="width:100%;border-collapse:collapse;font-size:11px">' +
+    '<thead><tr style="color:var(--muted);border-bottom:1px solid var(--border)">' +
+    '<th style="text-align:left;padding:6px 4px">Product</th>' +
+    '<th style="text-align:right;padding:6px 4px">My Price</th>' +
+    '<th style="text-align:right;padding:6px 4px">BuyBox</th>' +
+    '<th style="text-align:right;padding:6px 4px">New Price</th>' +
+    '<th style="text-align:right;padding:6px 4px">Change</th>' +
+    '</tr></thead><tbody>';
+
+  // Show OK rows first, then clamped (faded)
+  const displayRows = okRows.concat(clampedRows).slice(0, 50);
+  displayRows.forEach(function(r) {
+    const change      = r.newPrice - r.myPrice;
+    const changeColor = r.clamped ? '#ff9500' : (change < 0 ? '#ff9500' : 'var(--accent)');
+    const changeStr   = (change >= 0 ? '+' : '') + 'R' + change.toFixed(2);
+    const rowStyle    = r.clamped ? 'opacity:0.5;background:rgba(255,149,0,0.05)' : '';
+    const clampBadge  = r.clamped ? ' <span style="color:#ff9500;font-size:9px">⚠ ' + r.clampDir.toUpperCase() + '</span>' : '';
+    html += '<tr style="border-bottom:1px solid var(--border);' + rowStyle + '">' +
+      '<td style="padding:5px 4px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml(r.title) + '">' +
+        escHtml(r.title.slice(0, 28)) + clampBadge + '</td>' +
+      '<td style="text-align:right;padding:5px 4px;color:var(--muted)">R' + r.myPrice.toFixed(2) + '</td>' +
+      '<td style="text-align:right;padding:5px 4px;color:var(--muted)">R' + r.buybox.toFixed(2) + '</td>' +
+      '<td style="text-align:right;padding:5px 4px;color:' + (r.clamped ? '#ff9500' : 'var(--accent)') + ';font-weight:700">R' + r.newPrice.toFixed(2) + '</td>' +
+      '<td style="text-align:right;padding:5px 4px;color:' + changeColor + '">' + changeStr + '</td>' +
+      '</tr>';
+  });
+
+  if (rows.length > 50) {
+    html += '<tr><td colspan="5" style="color:var(--muted);padding:8px">...and ' + (rows.length - 50) + ' more</td></tr>';
+  }
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+
+// Recalculate preview when any setting changes
+['pricerStrategy','pricerBeatBy','pricerFloor','pricerWinsOnly','pricerSkipUnknown','pricerMinPrice','pricerMaxPrice'].forEach(function(id) {
+  document.getElementById(id) && document.getElementById(id).addEventListener('change', function() {
+    if (document.getElementById('tab-pricer').classList.contains('active')) buildPricerPreview();
+  });
+  document.getElementById(id) && document.getElementById(id).addEventListener('input', function() {
+    if (document.getElementById('tab-pricer').classList.contains('active')) buildPricerPreview();
+  });
+});
+
+function generatePriceUpdate() {
+  const listings    = getListings();
+  const strategy    = document.getElementById('pricerStrategy').value;
+  const beatBy      = document.getElementById('pricerBeatBy').value;
+  const floorPct    = document.getElementById('pricerFloor').value;
+  const winsOnly    = document.getElementById('pricerWinsOnly').checked;
+  const skipUnknown = document.getElementById('pricerSkipUnknown').checked;
+  const minEnabled  = document.getElementById('pricerMinEnabled').checked;
+  const maxEnabled  = document.getElementById('pricerMaxEnabled').checked;
+  const minPrice    = minEnabled ? parseFloat(document.getElementById('pricerMinPrice').value) || 0    : null;
+  const maxPrice    = maxEnabled ? parseFloat(document.getElementById('pricerMaxPrice').value) || 9999 : null;
+
+  // Check we have the raw template file
+  const rawBase64  = localStorage.getItem('makro_listings_raw');
+  const rawFilename = localStorage.getItem('makro_listings_filename') || 'S_listing_price_update.xls';
+  if (!rawBase64) {
+    document.getElementById('pricerResult').innerHTML =
+      '❌ <span style="color:#ff4444">Original listing file not found.<br>Please re-import your S_listing XLS file from the Products tab — the raw file is needed as a template.</span>';
+    return;
+  }
+
+  // Build FSN → new price map
+  const scrapedMap = {};
+  state.products.forEach(function(p) { if (p.fsn) scrapedMap[p.fsn] = p; });
+
+  const priceMap = {};  // fsn → { newPrice, sku, title, oldPrice }
+  let updateCount = 0;
+  let skippedNoCost = 0;
+  listings.forEach(function(l) {
+    const scraped = scrapedMap[l.fsn];
+    if (!scraped) return;
+
+    // ── SAFETY GUARD: never reprice without cost + min price set ────────────
+    // Without these we can't know if the new price is profitable.
+    if (!(scraped.cost_price > 0) || !(scraped.min_price > 0)) {
+      skippedNoCost++;
+      return;
+    }
+
+    // ── ABSOLUTE HARD FLOOR — applied to EVERY price path, no exceptions ───
+    var hardFloor = scraped.min_price;   // guaranteed > 0 (checked above)
+
+    // Priority 1: auto-repriced price (set by autoReprice after scrape)
+    if (scraped.pending_price != null) {
+      var safePrice1 = scraped.pending_price;
+      if (safePrice1 < hardFloor) {
+        safePrice1 = hardFloor;  // HARD FLOOR: never write below min_price
+        log && log('info', '🛡 Floor guard: ' + (scraped.title||scraped.fsn||'product').slice(0,30) + ' → clamped to min R' + hardFloor);
+      }
+      priceMap[l.fsn] = { newPrice: safePrice1, sku: l.sku, title: l.title, oldPrice: l.myPrice, hitFloor: safePrice1 === hardFloor };
+      updateCount++;
+      return;
+    }
+
+    // Priority 2: strategy-based calculation
+    if (skipUnknown && (!scraped.buybox_price || scraped.buybox_price <= 0)) return;
+    if (winsOnly && scraped.status === 'win') return;
+    const result = calcNewPrice(l.myPrice, scraped.buybox_price, strategy, beatBy, floorPct, minPrice, maxPrice);
+    if (!result) return;
+    if (result.clamped) { skippedClamped++; return; }
+    priceMap[l.fsn] = { newPrice: result.price, sku: l.sku, title: l.title, oldPrice: l.myPrice };
+    updateCount++;
+  });
+
+  if (updateCount === 0) {
+    document.getElementById('pricerResult').innerHTML = '⚠️ No products to update with current settings.';
+    return;
+  }
+
+  // Load the original workbook as template — keep ALL sheets, ALL columns, ALL rows intact
+  // Only modify column J (index 9 = "Your Selling Price") for matching FSNs
+  try {
+    const byteStr = atob(rawBase64);
+    const bytes   = new Uint8Array(byteStr.length);
+    for (let i = 0; i < byteStr.length; i++) bytes[i] = byteStr.charCodeAt(i);
+
+    const wb = XLSX.read(bytes, { type: 'array' });
+    const sh = wb.Sheets[wb.SheetNames[0]];
+
+    // Get all rows as array of arrays to find which rows to update
+    const rows = XLSX.utils.sheet_to_json(sh, { header: 1, defval: '' });
+
+    // Row 0 = headers, Row 1 = descriptions, Row 2+ = data
+    // Col index 4 = FSN, Col index 9 = Your Selling Price
+    let changed = 0;
+    const changeLog = [];
+    for (let r = 2; r < rows.length; r++) {
+      const fsn = String(rows[r][4] || '').trim();
+      if (fsn && priceMap[fsn] !== undefined) {
+        const entry = priceMap[fsn];
+        const cellAddr = XLSX.utils.encode_cell({ r: r, c: 9 });
+        if (!sh[cellAddr]) sh[cellAddr] = {};
+        sh[cellAddr].t = 'n';
+        sh[cellAddr].v = entry.newPrice;
+        sh[cellAddr].w = String(entry.newPrice);
+        changeLog.push({ fsn, sku: entry.sku, title: entry.title, oldPrice: entry.oldPrice, newPrice: entry.newPrice });
+        changed++;
+      }
+    }
+
+    // Use the original filename structure but with today's date
+    const dateStr = new Date().toISOString().slice(0,10).replace(/-/g,'');
+    const timeStr = new Date().toTimeString().slice(0,5).replace(':','');
+    // Match original naming: S_listing--ui--group_XXXX_DDMM-HHMMSS_default.xls
+    const filename = rawFilename.replace(/(_\d{4}-\d{6}_default)/, '_' + dateStr.slice(4) + '-' + timeStr + '00_default');
+
+    // Write back as XLS (same format as original)
+    const wbout = XLSX.write(wb, { bookType: 'xls', type: 'array' });
+    const wbBytes = new Uint8Array(wbout);
+    let base64 = '';
+    const CHUNK = 8192;
+    for (let i = 0; i < wbBytes.length; i += CHUNK) {
+      base64 += String.fromCharCode.apply(null, wbBytes.subarray(i, i + CHUNK));
+    }
+    base64 = btoa(base64);
+
+    // Save to localStorage for portal auto-upload
+    localStorage.setItem('portal_upload_file', base64);
+    localStorage.setItem('portal_upload_filename', filename);
+
+    // Also trigger download for manual fallback
+    XLSX.writeFile(wb, filename);
+
+    // Clear pending flags now that prices are in the file
+    state.products.forEach(function(p) {
+      if (p.pending_price != null) { delete p.pending_price; delete p.pending_updated; }
+    });
+    saveProducts();
+    updatePendingBadge();
+
+    document.getElementById('pricerResult').innerHTML =
+      '✅ <span style="color:var(--accent)">Downloaded <b>' + filename + '</b> — ' +
+      changed + ' prices updated.' +
+      (skippedNoCost ? ' <span style="color:#818cf8">⚠ ' + skippedNoCost + ' skipped — no cost/min price set (safety guard).</span>' : '') +
+      (skippedClamped ? ' <span style="color:#ff9500">' + skippedClamped + ' skipped (price guard).</span>' : '') +
+      '</span><br>' +
+      '<span style="color:var(--muted)">Click <b>🚀 Open Seller Portal</b> to auto-upload.</span>' +
+      '<div style="margin-top:12px;max-height:260px;overflow-y:auto">' +
+      '<table style="width:100%;border-collapse:collapse;font-size:11px">' +
+      '<thead><tr style="color:var(--muted);border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface)">' +
+      '<th style="text-align:left;padding:5px 4px">SKU</th>' +
+      '<th style="text-align:left;padding:5px 4px">FSN</th>' +
+      '<th style="text-align:left;padding:5px 4px;max-width:160px">Product</th>' +
+      '<th style="text-align:right;padding:5px 4px">Old Price</th>' +
+      '<th style="text-align:right;padding:5px 4px">New Price</th>' +
+      '<th style="text-align:right;padding:5px 4px">Change</th>' +
+      '</tr></thead><tbody>' +
+      changeLog.map(function(c) {
+        var diff = c.newPrice - c.oldPrice;
+        var col  = diff < 0 ? '#ff9500' : 'var(--accent)';
+        var sign = diff > 0 ? '+' : '';
+        return '<tr style="border-bottom:1px solid var(--border)">' +
+          '<td style="padding:4px;font-family:monospace;color:#818cf8">' + escHtml(c.sku||'—') + '</td>' +
+          '<td style="padding:4px;font-family:monospace;font-size:10px;color:var(--muted)">' + escHtml(c.fsn||'—') + '</td>' +
+          '<td style="padding:4px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml(c.title) + '">' + escHtml((c.title||'').slice(0,28)) + '</td>' +
+          '<td style="text-align:right;padding:4px;color:var(--muted)">R' + Math.round(c.oldPrice) + '</td>' +
+          '<td style="text-align:right;padding:4px;color:var(--accent);font-weight:700">R' + Math.round(c.newPrice) + '</td>' +
+          '<td style="text-align:right;padding:4px;color:' + col + '">' + sign + 'R' + Math.abs(diff) + '</td>' +
+        '</tr>';
+      }).join('') +
+      '</tbody></table></div>';
+
+    document.getElementById('portalUploadBtn').style.display = 'flex';
+    buildPricerPreview();
+
+  } catch(err) {
+    document.getElementById('pricerResult').innerHTML =
+      '❌ <span style="color:#ff4444">Error building file: ' + err.message + '<br>Please re-import your listing file.</span>';
+  }
+}
+
+function sendFileToPortal() {
+  const base64   = localStorage.getItem('portal_upload_file');
+  const filename = localStorage.getItem('portal_upload_filename');
+  if (!base64) {
+    alert('No price file generated yet.\nGo to Price Updater → Generate & Download first.');
+    return;
+  }
+  // Send to bridge → chrome.storage.local so portal.js can read it
+  window.postMessage({ type: 'SAVE_PORTAL_FILE', base64, filename }, '*');
+  setTimeout(function() {
+    document.getElementById('pricerResult').innerHTML =
+      (document.getElementById('pricerResult').innerHTML || '') +
+      '<br><span style="color:#ffd60a">✅ File sent to portal extension. Open seller.makro.co.za — click <b style="color:#00e5a0">🚀 Auto Upload Now</b> in the green overlay.</span>';
+  }, 300);
+}
+
+// ============================================================
+// TELEGRAM ALERTS
+// ============================================================
+function saveTgSettings() {
+  var token  = (document.getElementById('tgBotToken') || {}).value || '';
+  var chatId = (document.getElementById('tgChatId')   || {}).value || '';
+  var enabled= !!(document.getElementById('tgEnabled') || {}).checked;
+  if (token)  localStorage.setItem('tg_token',   token);
+  if (chatId) localStorage.setItem('tg_chat_id', chatId);
+  localStorage.setItem('tg_enabled', enabled ? '1' : '0');
+}
+
+function loadTgSettings() {
+  var tEl = document.getElementById('tgBotToken');
+  var cEl = document.getElementById('tgChatId');
+  var eEl = document.getElementById('tgEnabled');
+  if (tEl) tEl.value   = localStorage.getItem('tg_token')   || '';
+  if (cEl) cEl.value   = localStorage.getItem('tg_chat_id') || '';
+  if (eEl) eEl.checked = localStorage.getItem('tg_enabled') === '1';
+}
+
+function updateMinProfitDisplay(val) {
+  var n = parseInt(val);
+  var el = document.getElementById('minProfitDisplay');
+  if (el) el.textContent = n + '%';
+  localStorage.setItem('min_profit_pct', n);
+}
+
+function loadMinProfitSetting() {
+  var saved = parseFloat(localStorage.getItem('min_profit_pct')) || 7;
+  var slider = document.getElementById('minProfitSlider');
+  var display = document.getElementById('minProfitDisplay');
+  if (slider) slider.value = saved;
+  if (display) display.textContent = saved + '%';
+}
+
+var _tgLastAlert = {};
+function sendTelegramAlert(prod, buyboxPrice, seller) {
+  if (localStorage.getItem('tg_enabled') !== '1') return;
+  var token  = localStorage.getItem('tg_token')   || '';
+  var chatId = localStorage.getItem('tg_chat_id') || '';
+  if (!token || !chatId) return;
+  var key = prod.fsn || prod.url;
+  var now = Date.now();
+  if (_tgLastAlert[key] && now - _tgLastAlert[key] < 30 * 60 * 1000) return;
+  _tgLastAlert[key] = now;
+  var msg =
+    '🔴 *BuyBox LOST!*\n' +
+    (prod.title || prod.url || '').slice(0, 60) + '\n\n' +
+    '🏷 Competitor: ' + seller + '\n' +
+    '💸 Their price: R' + buyboxPrice.toFixed(2) + '\n' +
+    (prod.pending_price ? '✅ Auto-repriced to: R' + prod.pending_price + '\n' : '') +
+    '🕐 ' + new Date().toLocaleTimeString('en-ZA');
+  fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, text: msg, parse_mode: 'Markdown' })
+  }).catch(function(){});
+}
+
+function testTelegram() {
+  saveTgSettings();
+  var token  = localStorage.getItem('tg_token')   || '';
+  var chatId = localStorage.getItem('tg_chat_id') || '';
+  if (!token || !chatId) { alert('Enter your Bot Token and Chat ID first.'); return; }
+  fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, text: '✅ *Makro BuyBox Pro* — Telegram alerts working!', parse_mode: 'Markdown' })
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(j){ alert(j.ok ? '✅ Sent! Check Telegram.' : '❌ Failed: ' + (j.description || 'Check token and chat ID')); })
+  .catch(function(e){ alert('❌ Error: ' + e.message); });
+}
+
+document.addEventListener('change', function(e) {
+  if (e.target && ['tgBotToken','tgChatId','tgEnabled'].includes(e.target.id)) saveTgSettings();
+});
+
+// ============================================================
+// PRICE CHANGE LOG
+// ============================================================
+var PRICE_LOG_KEY = 'makro_price_log';
+
+function getPriceLog() {
+  try { return JSON.parse(localStorage.getItem(PRICE_LOG_KEY) || '[]'); } catch(e) { return []; }
+}
+
+function addPriceLogEntry(entry) {
+  var log = getPriceLog();
+  log.unshift(entry);
+  if (log.length > 2000) log.length = 2000;
+  localStorage.setItem(PRICE_LOG_KEY, JSON.stringify(log));
+}
+
+function addTestLogEntry() {
+  addPriceLogEntry({
+    ts: new Date().toISOString(),
+    title: 'Test Product — Storage Check',
+    fsn: 'TESTFSN123456',
+    sku: 'TEST-SKU-001',
+    status: 'lose',
+    buybox_price: 999.00,
+    seller: 'TestCompetitor',
+    my_price: 1050.00,
+    pending_price: 998
+  });
+  renderPriceLog();
+}
+
+function renderPriceLog() {
+  // Backfill from product history on first ever open
+  if (!localStorage.getItem(PRICE_LOG_KEY)) {
+    var backfill = [];
+    state.products.forEach(function(p) {
+      (p.history || []).forEach(function(h) {
+        backfill.push({
+          ts: h.ts,
+          title: p.title || p.url || '',
+          fsn: p.fsn || '',
+          sku: p.sku || '',
+          status: h.status,
+          buybox_price: h.price,
+          seller: h.seller || '',
+          my_price: null,
+          pending_price: null
+        });
+      });
+    });
+    if (backfill.length) {
+      backfill.sort(function(a,b){ return new Date(b.ts) - new Date(a.ts); });
+      localStorage.setItem(PRICE_LOG_KEY, JSON.stringify(backfill.slice(0,2000)));
+    }
+  }
+  var log = getPriceLog();
+  var el = document.getElementById('priceLogTable');
+  var countEl = document.getElementById('priceLogCount');
+  if (!el) return;
+  if (countEl) countEl.textContent = log.length + ' entries';
+  if (!log.length) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-title">No Log Yet</div><div class="empty-text">Price changes appear here after scraping.</div></div>';
+    return;
+  }
+  var rows = log.slice(0, 500).map(function(e) {
+    var d = new Date(e.ts).toLocaleString();
+    var sc = e.status === 'win' ? 'var(--accent)' : e.status === 'lose' ? '#ff4d6d' : 'var(--muted)';
+    var si = e.status === 'win' ? '✓' : e.status === 'lose' ? '✗' : '?';
+    return '<tr><td style="padding:7px 10px;color:var(--muted);white-space:nowrap;font-size:11px">' + d + '</td>' +
+      '<td style="padding:7px 10px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml(e.title||'') + '">' + escHtml((e.title||e.fsn||'').slice(0,40)) + '</td>' +
+      '<td style="padding:7px 10px;font-family:monospace;font-size:11px;color:#818cf8">' + escHtml(e.sku||'—') + '</td>' +
+      '<td style="padding:7px 10px;color:' + sc + ';font-weight:700">' + si + ' ' + (e.status||'?').toUpperCase() + '</td>' +
+      '<td style="padding:7px 10px;font-family:monospace">R' + (e.buybox_price||0).toFixed(2) + '</td>' +
+      '<td style="padding:7px 10px;font-family:monospace;color:#60a5fa">' + (e.my_price ? 'R' + Number(e.my_price).toFixed(2) : '—') + '</td>' +
+      '<td style="padding:7px 10px;font-family:monospace;color:var(--accent3)">' + (e.pending_price ? 'R' + e.pending_price : '—') + '</td>' +
+      '<td style="padding:7px 10px;color:var(--muted);font-size:11px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml((e.seller||'').slice(0,25)) + '</td></tr>';
+  }).join('');
+  var hdr = ['Time','Product','SKU','Status','BuyBox R','My Price','Repriced To','Competitor'].map(function(h) {
+    return '<th style="padding:7px 10px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap">' + h + '</th>';
+  }).join('');
+  el.innerHTML = '<table style="width:100%;border-collapse:collapse">' +
+    '<thead><tr style="font-family:monospace;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">' + hdr + '</tr></thead>' +
+    '<tbody>' + rows + '</tbody></table>';
+}
+
+function exportPriceLog() {
+  var log = getPriceLog();
+  if (!log.length) { alert('No log entries yet.'); return; }
+  var csv = 'Time,Product,SKU,Status,BuyBox Price,My Price,Repriced To,Competitor\n' +
+    log.map(function(e) {
+      return [new Date(e.ts).toLocaleString(), e.title||'', e.sku||'', e.status||'',
+              e.buybox_price||'', e.my_price||'', e.pending_price||'', e.seller||'']
+        .map(function(v){ return '"' + String(v).replace(/"/g,'""') + '"'; }).join(',');
+    }).join('\n');
+  var a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = 'makro_price_log_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+}
+
+function clearPriceLog() {
+  if (!confirm('Clear all ' + getPriceLog().length + ' log entries? This cannot be undone.')) return;
+  localStorage.removeItem(PRICE_LOG_KEY);
+  renderPriceLog();
+}
+
+// ============================================================
+// PRICE HISTORY SPARKLINE MODAL
+// ============================================================
+function showHistory(idx) {
+  var p = state.products[idx];
+  if (!p) return;
+  document.getElementById('historyModalTitle').textContent = (p.title || p.url || '').slice(0,70);
+  document.getElementById('historyModal').classList.add('show');
+  var history = p.history || [];
+  var canvas = document.getElementById('historyCanvas');
+  var ctx = canvas.getContext('2d');
+  var W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  if (history.length < 2) {
+    ctx.fillStyle = '#6b7280'; ctx.font = '13px DM Sans'; ctx.textAlign = 'center';
+    ctx.fillText('Scrape this product a few more times to see a trend.', W/2, H/2);
+  } else {
+    var prices = history.map(function(h){ return h.price||0; }).filter(Boolean);
+    var minP = Math.min.apply(null, prices), maxP = Math.max.apply(null, prices);
+    var range = maxP - minP || 1;
+    var pL=50,pR=16,pT=20,pB=32, cW=W-pL-pR, cH=H-pT-pB;
+    var step = cW / Math.max(history.length-1, 1);
+    // Grid
+    ctx.strokeStyle='#1e2530'; ctx.lineWidth=1;
+    for(var gi=0;gi<=4;gi++){
+      var gy=pT+(gi/4)*cH;
+      ctx.beginPath(); ctx.moveTo(pL,gy); ctx.lineTo(W-pR,gy); ctx.stroke();
+      ctx.fillStyle='#6b7280'; ctx.font='9px monospace'; ctx.textAlign='right';
+      ctx.fillText('R'+Math.round(maxP-(gi/4)*range), pL-4, gy+3);
+    }
+    // Fill
+    ctx.beginPath();
+    history.forEach(function(h,i){
+      var x=pL+i*step, y=pT+(1-(h.price-minP)/range)*cH;
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    });
+    ctx.lineTo(pL+(history.length-1)*step,H-pB); ctx.lineTo(pL,H-pB); ctx.closePath();
+    ctx.fillStyle='rgba(0,229,160,0.08)'; ctx.fill();
+    // Line
+    ctx.beginPath();
+    history.forEach(function(h,i){
+      var x=pL+i*step, y=pT+(1-(h.price-minP)/range)*cH;
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    });
+    ctx.strokeStyle='#00e5a0'; ctx.lineWidth=2; ctx.stroke();
+    // Dots
+    history.forEach(function(h,i){
+      var x=pL+i*step, y=pT+(1-(h.price-minP)/range)*cH;
+      ctx.beginPath(); ctx.arc(x,y,4,0,Math.PI*2);
+      ctx.fillStyle = h.status==='win'?'#00e5a0':h.status==='lose'?'#ff4d6d':'#6b7280';
+      ctx.fill();
+    });
+    // X labels
+    var lev = Math.ceil(history.length/6);
+    history.forEach(function(h,i){
+      if(i%lev!==0 && i!==history.length-1) return;
+      var d=new Date(h.ts);
+      ctx.fillStyle='#6b7280'; ctx.font='9px monospace'; ctx.textAlign='center';
+      ctx.fillText(d.toLocaleDateString([],{month:'2-digit',day:'2-digit'}), pL+i*step, H-5);
+    });
+  }
+
+  var rows = [...history].reverse().map(function(h){
+    var d=new Date(h.ts).toLocaleString();
+    var sc=h.status==='win'?'var(--accent)':h.status==='lose'?'#ff4d6d':'var(--muted)';
+    return '<tr><td style="padding:4px 10px;color:var(--muted)">' + d + '</td>' +
+      '<td style="padding:4px 10px;font-family:monospace">R' + (h.price||0).toFixed(2) + '</td>' +
+      '<td style="padding:4px 10px;color:' + sc + '">' + (h.status||'?').toUpperCase() + '</td>' +
+      '<td style="padding:4px 10px;color:var(--muted)">' + escHtml((h.seller||'').slice(0,30)) + '</td></tr>';
+  }).join('');
+  document.getElementById('historyTable').innerHTML =
+    '<table style="width:100%;border-collapse:collapse;font-size:11px">' +
+    '<thead><tr style="color:var(--muted);font-family:monospace;font-size:10px;text-transform:uppercase">' +
+    '<th style="padding:4px 10px;text-align:left">Time</th><th style="text-align:left;padding:4px 10px">Price</th>' +
+    '<th style="text-align:left;padding:4px 10px">Status</th><th style="text-align:left;padding:4px 10px">Competitor</th>' +
+    '</tr></thead><tbody>' + rows + '</tbody></table>';
+}
+
+// ============================================================
+// BULK SKU IMPORT — paste, CSV file, or Excel file
+// ============================================================
+function openBulkSkuModal() {
+  document.getElementById('bulkSkuInput').value = '';
+  document.getElementById('bulkSkuResult').textContent = '';
+  document.getElementById('bulkSkuPreview').textContent = '';
+  document.getElementById('bulkSkuModal').classList.add('show');
+  // clicking the drop zone opens the file picker
+  document.getElementById('bulkSkuDropZone').onclick = function(e) {
+    if (e.target.tagName !== 'INPUT') document.getElementById('bulkSkuFile').click();
+  };
+  setTimeout(function(){ document.getElementById('bulkSkuInput').focus(); }, 100);
+}
+
+function bulkSkuDropped(event) {
+  event.preventDefault();
+  document.getElementById('bulkSkuDropZone').style.borderColor = 'var(--border)';
+  var file = event.dataTransfer.files[0];
+  if (file) processBulkSkuFile(file);
+}
+
+function bulkSkuFileSelected(input) {
+  var file = input.files[0];
+  if (file) processBulkSkuFile(file);
+  input.value = ''; // reset so same file can be re-selected
+}
+
+function processBulkSkuFile(file) {
+  var name = file.name.toLowerCase();
+  document.getElementById('bulkSkuResult').textContent = '⏳ Reading file...';
+
+  if (name.endsWith('.csv')) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      var text = e.target.result;
+      document.getElementById('bulkSkuInput').value = text;
+      var pairs = parseBulkSkuText(text);
+      showBulkSkuPreview(pairs, file.name);
+    };
+    reader.readAsText(file);
+  } else if (name.endsWith('.xls') || name.endsWith('.xlsx')) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        var data = new Uint8Array(e.target.result);
+        var wb = XLSX.read(data, { type: 'array' });
+        var sh = wb.Sheets[wb.SheetNames[0]];
+        var rows = XLSX.utils.sheet_to_json(sh, { header: 1 });
+        // Convert to CSV text for the textarea
+        var csv = rows.map(function(r) { return (r[0]||'') + ',' + (r[1]||''); }).join('\n');
+        document.getElementById('bulkSkuInput').value = csv;
+        var pairs = parseBulkSkuText(csv);
+        showBulkSkuPreview(pairs, file.name);
+      } catch(err) {
+        document.getElementById('bulkSkuResult').textContent = '❌ Could not read Excel file: ' + err.message;
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  } else {
+    document.getElementById('bulkSkuResult').textContent = '❌ Unsupported file type. Use .csv, .xls or .xlsx.';
+  }
+}
+
+// Parse the text area content into [{sku, fsn}] pairs, auto-skipping headers
+function parseBulkSkuText(text) {
+  var lines = text.split('\n').map(function(l){ return l.trim(); }).filter(Boolean);
+  var pairs = [];
+  lines.forEach(function(line) {
+    // Support: comma, tab, or 2+ spaces as delimiter
+    var parts;
+    if (line.includes('\t')) {
+      parts = line.split('\t');
+    } else if (line.includes(',')) {
+      parts = line.split(',');
+    } else {
+      // Split on 2 or more whitespace characters (handles space-padded columns)
+      parts = line.split(/\s{2,}/);
+    }
+    if (parts.length < 2) return;
+    var a = parts[0].trim().replace(/^["']|["']$/g, '');
+    var b = parts[1].trim().replace(/^["']|["']$/g, '');
+    if (!a || !b) return;
+    // Skip header rows — FSN is uppercase alphanumeric 10-20 chars
+    var looksLikeFsnA = /^[A-Z0-9]{10,24}$/.test(a);
+    var looksLikeFsnB = /^[A-Z0-9]{10,24}$/.test(b);
+    if (!looksLikeFsnA && !looksLikeFsnB) return;
+    var sku, fsn;
+    if (looksLikeFsnB && !looksLikeFsnA) { sku = a; fsn = b; }
+    else if (looksLikeFsnA && !looksLikeFsnB) { sku = b; fsn = a; }
+    else { sku = a; fsn = b; }
+    pairs.push({ sku: sku, fsn: fsn });
+  });
+  return pairs;
+}
+
+function showBulkSkuPreview(pairs, filename) {
+  var prevEl = document.getElementById('bulkSkuPreview');
+  var resEl  = document.getElementById('bulkSkuResult');
+  if (!pairs.length) {
+    resEl.textContent = '⚠ No valid SKU/FSN pairs found in ' + filename;
+    prevEl.textContent = '';
+    return;
+  }
+  // Count how many we'd match
+  var matchable = pairs.filter(function(p) {
+    return state.products.some(function(x){ return x.fsn === p.fsn; });
+  }).length;
+  prevEl.textContent = '📄 ' + filename + ' — ' + pairs.length + ' rows parsed, ' + matchable + ' match existing products';
+  resEl.textContent = '';
+}
+
+function saveBulkSkus() {
+  var raw = document.getElementById('bulkSkuInput').value.trim();
+  if (!raw) { document.getElementById('bulkSkuResult').textContent = '⚠ Nothing to import.'; return; }
+
+  var pairs = parseBulkSkuText(raw);
+  if (!pairs.length) {
+    document.getElementById('bulkSkuResult').textContent = '⚠ No valid SKU,FSN rows found. Check format.';
+    return;
+  }
+
+  var map = {};
+  pairs.forEach(function(p) { map[p.fsn] = p.sku; });
+
+  var matched = 0;
+  state.products.forEach(function(p) {
+    if (p.fsn && map[p.fsn]) { p.sku = map[p.fsn]; matched++; }
+  });
+
+  var listings = getListings();
+  listings.forEach(function(l) { if (l.fsn && map[l.fsn]) l.sku = map[l.fsn]; });
+  localStorage.setItem('makro_listings', JSON.stringify(listings));
+  saveProducts();
+
+  document.getElementById('bulkSkuResult').innerHTML =
+    '<span style="color:var(--accent)">✅ Imported ' + pairs.length + ' rows — matched and saved SKUs for ' + matched + ' products.</span>';
+  setTimeout(function() {
+    document.getElementById('bulkSkuModal').classList.remove('show');
+    renderProducts();
+  }, 1400);
+}
+
+// ============================================================
+// AUTO-SCRAPE SCHEDULER
+// ============================================================
+var _autoScrapeTimer = null;
+var _autoScrapeRun = 0; // tracks cycle count
+
+function initAutoScrape() {
+  var sel = document.getElementById('autoScrapeInterval');
+  var modeEl = document.getElementById('autoScrapeMode');
+  if (!sel) return;
+  sel.value  = localStorage.getItem('auto_scrape_interval') || '60';
+  if (modeEl) modeEl.value = localStorage.getItem('auto_scrape_mode') || 'smart';
+  applyAutoScrape();
+  sel.addEventListener('change', function() {
+    localStorage.setItem('auto_scrape_interval', sel.value);
+    applyAutoScrape();
+  });
+  if (modeEl) modeEl.addEventListener('change', function() {
+    localStorage.setItem('auto_scrape_mode', modeEl.value);
+    applyAutoScrape();
+  });
+}
+
+function buildAutoScrapeQueue() {
+  var mode = (document.getElementById('autoScrapeMode') || {}).value
+          || localStorage.getItem('auto_scrape_mode') || 'smart';
+
+  var losses  = state.products.filter(function(p){ return p.status === 'lose' && p.url; });
+  var wins    = state.products.filter(function(p){ return p.status === 'win'  && p.url; });
+  var unknown = state.products.filter(function(p){ return p.status !== 'lose' && p.status !== 'win' && p.url; });
+
+  // Sort each group: oldest lastChecked first so stale data gets refreshed first
+  function byAge(a, b) {
+    return new Date(a.lastChecked||0) - new Date(b.lastChecked||0);
+  }
+  losses.sort(byAge);
+  wins.sort(byAge);
+  unknown.sort(byAge);
+
+  var urls;
+  if (mode === 'losses') {
+    urls = losses.map(function(p){ return p.url; });
+    if (!urls.length) {
+      // Nothing to lose — scrape everything to refresh
+      urls = state.products.filter(function(p){ return p.url; }).sort(byAge).map(function(p){ return p.url; });
+    }
+  } else if (mode === 'all') {
+    urls = state.products.filter(function(p){ return p.url; }).sort(byAge).map(function(p){ return p.url; });
+  } else {
+    // Smart: losses first, then unknown, then wins — all included
+    urls = losses.concat(unknown).concat(wins).map(function(p){ return p.url; });
+  }
+
+  return urls.filter(function(u, i, a){ return u && a.indexOf(u) === i; }); // dedupe
+}
+
+function applyAutoScrape() {
+  if (_autoScrapeTimer) { clearInterval(_autoScrapeTimer); _autoScrapeTimer = null; }
+  var sel = document.getElementById('autoScrapeInterval');
+  var statusEl = document.getElementById('autoScrapeStatus');
+  var mins = sel ? parseInt(sel.value) : 0;
+  if (!mins) {
+    if (statusEl) statusEl.textContent = 'Auto-scrape off.';
+    return;
+  }
+
+  function showStatus(nextMs) {
+    if (!statusEl) return;
+    var losses = state.products.filter(function(p){ return p.status === 'lose'; }).length;
+    var wins   = state.products.filter(function(p){ return p.status === 'win';  }).length;
+    var mode   = (document.getElementById('autoScrapeMode')||{}).value || 'smart';
+    var modeLabel = mode === 'losses' ? 'losses only' : mode === 'all' ? 'all products' : 'smart (losses first)';
+    statusEl.innerHTML =
+      '⏰ Next run: <strong>' + new Date(nextMs).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) + '</strong>' +
+      ' &nbsp;·&nbsp; Mode: ' + modeLabel +
+      '<br>Queue will have <span style="color:#ff4d6d">' + losses + ' losses</span> + <span style="color:var(--accent)">' + wins + ' wins</span>';
+  }
+
+  var nextRun = Date.now() + mins * 60000;
+  showStatus(nextRun);
+
+  _autoScrapeTimer = setInterval(function() {
+    // If previous cycle is still running, skip this tick — don't interrupt it
+    if (state.scraping) {
+      log('info', '⏭ Auto-scrape tick skipped — previous cycle still running.');
+      nextRun = Date.now() + mins * 60000;
+      showStatus(nextRun);
+      return;
+    }
+    _autoScrapeRun++;
+    if (!state.extReady) {
+      log('info', '⏸ Auto-scrape skipped — extension offline.');
+      nextRun = Date.now() + mins * 60000;
+      showStatus(nextRun);
+      return;
+    }
+
+    var urls = buildAutoScrapeQueue();
+    if (!urls.length) {
+      log('info', '⏸ Auto-scrape skipped — no products with URLs.');
+      nextRun = Date.now() + mins * 60000;
+      showStatus(nextRun);
+      return;
+    }
+
+    var losses  = state.products.filter(function(p){ return p.status === 'lose'; }).length;
+    var wins    = state.products.filter(function(p){ return p.status === 'win';  }).length;
+    var mode    = (document.getElementById('autoScrapeMode')||{}).value || 'smart';
+
+    log('info', '🤖 Auto-scrape #' + _autoScrapeRun + ' started — ' + urls.length + ' products' +
+      (mode === 'smart' ? ' (' + losses + ' losses first, then ' + wins + ' wins)' : ' [' + mode + ']'));
+
+    document.getElementById('urlInput').value = urls.join('\n');
+    var concurrency = parseInt(localStorage.getItem('scrape_parallel') || (document.getElementById('scrapeParallel')||{}).value || '5');
+    window.postMessage({ type: 'START_QUEUE', urls: urls, concurrency: concurrency }, '*');
+    scrapeQueue = urls; scrapeIdx = 0; state.scraping = true;
+    document.getElementById('progressSection').style.display = 'block';
+    updateProgress(0, urls.length);
+
+    // Switch to scraper tab so user can see progress
+    switchTab('scraper');
+
+    nextRun = Date.now() + mins * 60000;
+    showStatus(nextRun);
+  }, mins * 60000);
+}
+
+function openPortalUpload() {
+  const base64   = localStorage.getItem('portal_upload_file');
+  const filename = localStorage.getItem('portal_upload_filename');
+  if (!base64) {
+    alert('No price file generated yet.\nGenerate a price update file first.');
+    return;
+  }
+  // Send to bridge → chrome.storage.local
+  window.postMessage({ type: 'SAVE_PORTAL_FILE', base64, filename }, '*');
+  // Open portal after short delay to ensure storage is written
+  setTimeout(function() {
+    window.open('https://seller.makro.co.za', '_blank');
+  }, 800);
+  document.getElementById('pricerResult').innerHTML =
+    (document.getElementById('pricerResult').innerHTML || '') +
+    '<br><span style="color:#ffd60a">✅ File sent. On the portal, click <b style="color:#00e5a0">🚀 Auto Upload Now</b> in the green overlay.</span>';
+}
+</script>
+</body>
+</html>
