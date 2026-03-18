@@ -3723,8 +3723,14 @@ function generatePriceUpdate() {
     return;
   }
 
+  // Build base price map — any listing where user manually edited basePrice
+  const basePriceMap = {};  // fsn → basePrice
+  listings.forEach(function(l) {
+    if (l.fsn && l.basePrice > 0) basePriceMap[l.fsn] = l.basePrice;
+  });
+
   // Load the original workbook as template — keep ALL sheets, ALL columns, ALL rows intact
-  // Only modify column J (index 9 = "Your Selling Price") for matching FSNs
+  // Modify col I (index 8 = "Base Price") and col J (index 9 = "Your Selling Price") for matching FSNs
   try {
     const byteStr = atob(rawBase64);
     const bytes   = new Uint8Array(byteStr.length);
@@ -3742,7 +3748,19 @@ function generatePriceUpdate() {
     const changeLog = [];
     for (let r = 2; r < rows.length; r++) {
       const fsn = String(rows[r][4] || '').trim();
-      if (fsn && priceMap[fsn] !== undefined) {
+      if (!fsn) continue;
+
+      // Write Base Price (col 8) if user edited it
+      if (basePriceMap[fsn] !== undefined) {
+        const bpAddr = XLSX.utils.encode_cell({ r: r, c: 8 });
+        if (!sh[bpAddr]) sh[bpAddr] = {};
+        sh[bpAddr].t = 'n';
+        sh[bpAddr].v = basePriceMap[fsn];
+        sh[bpAddr].w = String(basePriceMap[fsn]);
+      }
+
+      // Write Selling Price (col 9)
+      if (priceMap[fsn] !== undefined) {
         const entry = priceMap[fsn];
         const cellAddr = XLSX.utils.encode_cell({ r: r, c: 9 });
         if (!sh[cellAddr]) sh[cellAddr] = {};
