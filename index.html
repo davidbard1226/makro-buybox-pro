@@ -1630,7 +1630,8 @@ function handleQueueProgress(d) {
 
     log(isWin ? 'ok' : 'err',
       (isWin ? '✓ WIN ' : '✗ LOSE') + ' | R' + price.toFixed(2) + ' | ' + seller.slice(0,30) +
-      ' | ' + (p.title||'').slice(0,35));
+      ' | ' + (p.title||'').slice(0,35) +
+      (isWin && p.min_price > 0 && price < p.min_price ? ' ⚠ SELLING AT LOSS (min R' + p.min_price + ')' : ''));
   }
 
   if (scrapeIdx >= scrapeQueue.length) finishScraping();
@@ -1747,7 +1748,25 @@ function autoReprice(prod) {
   if (!prod) return;
   var buybox = prod.buybox_price;
   if (!buybox || buybox <= 0) return;         // no buybox data yet
-  if (prod.status === 'win') return;           // already winning — don't touch price
+  if (prod.status === 'win') {
+    // Even when winning, check if we're selling below min price (at a loss)
+    // If so, flag it as pending so generatePriceUpdate raises it to the floor
+    if (prod.cost_price > 0) {
+      var winMin = prod.min_price || calcMinViablePrice(prod.cost_price);
+      var listings = getListings();
+      var winListing = listings.find(function(l) { return l.fsn === prod.fsn; });
+      var winMyPrice = winListing ? winListing.myPrice : null;
+      if (winMyPrice && winMin && winMyPrice < winMin) {
+        log('info', '⚠ WIN at LOSS: ' + String(prod.title || prod.fsn || '').slice(0,35) +
+          ' | R' + winMyPrice + ' < min R' + winMin + ' — flagged for price raise');
+        prod.pending_price   = winMin;
+        prod.pending_updated = new Date().toISOString();
+        saveProducts();
+        updatePendingBadge();
+      }
+    }
+    return;
+  }
 
   // ── SAFETY GUARD: never auto-reprice without a cost price ────────────────
   if (!(prod.cost_price > 0)) {
