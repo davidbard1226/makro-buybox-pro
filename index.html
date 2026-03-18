@@ -673,6 +673,7 @@
           <option value="no-sku">⚠ No SKU matched</option>
           <option value="no-cost">⚠ No Cost price</option>
           <option value="pending">🔄 Pending reprice</option>
+          <option value="base-below-max">⚠ Base Price below Max Price</option>
         </select>
         <select class="filter-select" id="prodPageSize" onchange="prodPage=1;renderProducts()" title="Products per page">
           <option value="25">25 / page</option>
@@ -2084,6 +2085,12 @@ function renderProducts() {
     if (filter === 'no-sku' && p.sku) return false;
     if (filter === 'no-cost' && p.cost_price > 0) return false;
     if (filter === 'pending' && p.pending_price == null) return false;
+    if (filter === 'base-below-max') {
+      var lBP = listingsMap[p.fsn];
+      var bp = lBP && lBP.basePrice > 0 ? lBP.basePrice : 0;
+      var mx = p.max_price || 0;
+      if (!bp || !mx || bp >= mx) return false;
+    }
     const titleOk = (p.title||'').toLowerCase().includes(search);
     const sellerOk = (p.seller||'').toLowerCase().includes(search);
     const fsnOk = (p.fsn||'').toLowerCase().includes(search);
