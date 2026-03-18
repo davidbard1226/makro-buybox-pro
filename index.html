@@ -3554,6 +3554,7 @@ function calcNewPrice(myPrice, buyboxPrice, strategy, beatBy, floorPct, minPrice
 }
 
 function buildPricerPreview() {
+  if (!document.getElementById('pricerStrategy')) return;  // pricer tab not active — bail out silently
   const listings    = getListings();
   const strategy    = document.getElementById('pricerStrategy').value;
   const beatBy      = document.getElementById('pricerBeatBy').value;
