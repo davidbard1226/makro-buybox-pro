@@ -2396,6 +2396,20 @@ function importListings(input) {
         const status    = String(row[6]  || '').trim();
         if (fsn) listings.push({ fsn, sku, title, myPrice, basePrice, myStock, status });
       }
+
+      // ── AUTO-FIX: if Base Price < Max Price, raise Base Price to equal Max Price ──
+      // Base Price should never be lower than Max Price or the repricing ceiling is broken.
+      var basePriceFixed = 0;
+      const productMaxMap = {};
+      state.products.forEach(function(p) { if (p.fsn && p.max_price > 0) productMaxMap[p.fsn] = p.max_price; });
+      listings.forEach(function(l) {
+        var maxP = productMaxMap[l.fsn] || 0;
+        if (maxP > 0 && l.basePrice > 0 && l.basePrice < maxP) {
+          l.basePrice = maxP;
+          basePriceFixed++;
+        }
+      });
+
       localStorage.setItem('makro_listings', JSON.stringify(listings));
 
       // ── Stamp real SKU onto matched products via FSN ──────────────────────
@@ -2421,7 +2435,9 @@ function importListings(input) {
       if (document.getElementById('pricerListingsStatus')) initPricer();
 
       // Show non-blocking confirmation in the UI
-      var msg = '✅ Imported ' + listings.length + ' listings' + (skuCount > 0 ? ', matched ' + skuCount + ' SKU(s).' : '.');
+      var msg = '✅ Imported ' + listings.length + ' listings' +
+        (skuCount > 0 ? ', matched ' + skuCount + ' SKU(s)' : '') +
+        (basePriceFixed > 0 ? ', auto-raised ' + basePriceFixed + ' Base Price(s) to Max Price' : '') + '.';
       var banner = document.getElementById('importBanner');
       if (!banner) {
         banner = document.createElement('div');
@@ -2780,9 +2796,18 @@ function saveListingField(fsn, field, val) {
   if (!entry) return;
   var v = val === '' ? 0 : parseFloat(val);
   if (isNaN(v)) return;
+
+  // Auto-raise Base Price to Max Price if entered value is lower
+  if (field === 'basePrice') {
+    var prod = state.products.find(function(p) { return p.fsn === fsn; });
+    var maxP = prod && prod.max_price > 0 ? prod.max_price : 0;
+    if (maxP > 0 && v > 0 && v < maxP) {
+      v = maxP;  // snap up to max price automatically
+    }
+  }
+
   entry[field] = v;
   localStorage.setItem('makro_listings', JSON.stringify(listings));
-  // Re-render to update warning badge immediately
   renderProducts();
 }
 
