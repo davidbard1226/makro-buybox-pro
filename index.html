@@ -2167,7 +2167,23 @@ function renderProducts() {
              <button class="action-btn" style="font-size:9px;padding:1px 5px;margin-left:3px" onclick="openEditModal(${realIdx})" title="Edit SKU/Cost/Min">✎</button>`
           : `<button class="action-btn" style="font-size:10px;color:#818cf8;border-color:#818cf844" onclick="openEditModal(${realIdx})">+ Add SKU</button>`}
       </td>
-      <td>${listing && listing.basePrice > 0 ? `<span style="font-family:'Space Mono',monospace;font-size:12px;color:#a78bfa">R ${listing.basePrice.toFixed(2)}</span>` : '<span style="color:var(--muted);font-size:11px">—</span>'}</td>
+      <td>
+        ${(() => {
+          var bp = listing && listing.basePrice > 0 ? listing.basePrice : 0;
+          var mp = p.max_price || 0;
+          var warn = bp > 0 && mp > 0 && bp < mp;
+          return `<div style="display:flex;flex-direction:column;gap:2px">
+            <input type="number" step="1" min="0"
+              value="${bp > 0 ? bp.toFixed(0) : ''}"
+              placeholder="—"
+              title="Base Price (RRP) — price will never go above this. Click to edit."
+              style="width:75px;background:var(--surface2);border:1px solid ${warn ? '#ff4d6d' : 'var(--border)'};color:#a78bfa;font-family:'Space Mono',monospace;font-size:11px;padding:3px 5px;border-radius:4px;text-align:right"
+              onchange="saveListingField('${p.fsn}','basePrice',this.value)"
+            >
+            ${warn ? `<span style="font-size:9px;color:#ff4d6d" title="⚠ Base Price R${bp} is below Max Price R${mp} — raise Base Price or lower Max Price">⚠ below max</span>` : ''}
+          </div>`;
+        })()}
+      </td>
       <td>${myPrice}${priceIndicator}</td>
       <td>${myStock}</td>
       <td><span class="price-cell ${p.status==='win'?'win':'lose'}">R ${(p.buybox_price||0).toFixed(2)}</span></td>
@@ -2747,6 +2763,20 @@ function setProductPriceSilent(idx, field, val) {
     state.products[idx][field] = v;
   }
   saveProducts();
+}
+
+// Save a field directly on a listing entry (e.g. basePrice) — listings live in localStorage separately from products
+function saveListingField(fsn, field, val) {
+  if (!fsn) return;
+  var listings = getListings();
+  var entry = listings.find(function(l) { return l.fsn === fsn; });
+  if (!entry) return;
+  var v = val === '' ? 0 : parseFloat(val);
+  if (isNaN(v)) return;
+  entry[field] = v;
+  localStorage.setItem('makro_listings', JSON.stringify(listings));
+  // Re-render to update warning badge immediately
+  renderProducts();
 }
 
 // Legacy wrapper — kept for any remaining calls
@@ -3638,14 +3668,33 @@ function generatePriceUpdate() {
     // ── ABSOLUTE HARD FLOOR — applied to EVERY price path, no exceptions ───
     var hardFloor = scraped.min_price;   // guaranteed > 0 (checked above)
 
+    // ── BASE PRICE (RRP) CEILING — never write a price above Makro's Base Price ───
+    // Base Price comes from col I of the S_listing XLS. It is the RRP ceiling on Makro.
+    // If our calculated price exceeds it, clamp down to basePrice.
+    // If basePrice itself is below hardFloor, that is a data problem — skip with warning.
+    var basePrice = l.basePrice && l.basePrice > 0 ? l.basePrice : null;
+    if (basePrice && basePrice < hardFloor) {
+      // Base Price is below min price — product is unprofitable at any valid price, skip it
+      skippedNoCost++;
+      return;
+    }
+    // Effective ceiling = lower of (basePrice, product maxPrice)
+    var effectiveCeiling = basePrice
+      ? (scraped.max_price > 0 ? Math.min(basePrice, scraped.max_price) : basePrice)
+      : (scraped.max_price > 0 ? scraped.max_price : null);
+
+    // Helper: apply floor + ceiling to any candidate price
+    function applyGuards(price) {
+      if (price < hardFloor) price = hardFloor;
+      if (effectiveCeiling && price > effectiveCeiling) price = effectiveCeiling;
+      return price;
+    }
+
     // Priority 1: auto-repriced price (set by autoReprice after scrape)
     if (scraped.pending_price != null) {
-      var safePrice1 = scraped.pending_price;
-      if (safePrice1 < hardFloor) {
-        safePrice1 = hardFloor;  // HARD FLOOR: never write below min_price
-        log && log('info', '🛡 Floor guard: ' + (scraped.title||scraped.fsn||'product').slice(0,30) + ' → clamped to min R' + hardFloor);
-      }
-      priceMap[l.fsn] = { newPrice: safePrice1, sku: l.sku, title: l.title, oldPrice: l.myPrice, hitFloor: safePrice1 === hardFloor };
+      var safePrice1 = applyGuards(scraped.pending_price);
+      priceMap[l.fsn] = { newPrice: safePrice1, sku: l.sku, title: l.title, oldPrice: l.myPrice,
+        hitFloor: safePrice1 === hardFloor, hitCeiling: effectiveCeiling && safePrice1 === effectiveCeiling };
       updateCount++;
       return;
     }
@@ -3656,7 +3705,9 @@ function generatePriceUpdate() {
     const result = calcNewPrice(l.myPrice, scraped.buybox_price, strategy, beatBy, floorPct, minPrice, maxPrice);
     if (!result) return;
     if (result.clamped) { skippedClamped++; return; }
-    priceMap[l.fsn] = { newPrice: result.price, sku: l.sku, title: l.title, oldPrice: l.myPrice };
+    var safePrice2 = applyGuards(result.price);
+    priceMap[l.fsn] = { newPrice: safePrice2, sku: l.sku, title: l.title, oldPrice: l.myPrice,
+      hitFloor: safePrice2 === hardFloor, hitCeiling: effectiveCeiling && safePrice2 === effectiveCeiling };
     updateCount++;
   });
 
