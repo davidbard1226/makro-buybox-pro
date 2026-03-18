@@ -3603,6 +3603,7 @@ function generatePriceUpdate() {
   const priceMap = {};  // fsn → { newPrice, sku, title, oldPrice }
   let updateCount = 0;
   let skippedNoCost = 0;
+  let skippedClamped = 0;
   listings.forEach(function(l) {
     const scraped = scrapedMap[l.fsn];
     if (!scraped) return;
