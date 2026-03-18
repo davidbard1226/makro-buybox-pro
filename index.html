@@ -706,8 +706,8 @@
               <th>Product</th>
               <th>FSN</th>
               <th>SKU</th>
-              <th>My Price</th>
               <th title="RRP / Base Price from your S_listing">Base Price</th>
+              <th>My Price</th>
               <th>Stock</th>
               <th>Buy Box Price</th>
               <th>Cost</th>
@@ -2167,8 +2167,8 @@ function renderProducts() {
              <button class="action-btn" style="font-size:9px;padding:1px 5px;margin-left:3px" onclick="openEditModal(${realIdx})" title="Edit SKU/Cost/Min">✎</button>`
           : `<button class="action-btn" style="font-size:10px;color:#818cf8;border-color:#818cf844" onclick="openEditModal(${realIdx})">+ Add SKU</button>`}
       </td>
-      <td>${myPrice}${priceIndicator}</td>
       <td>${listing && listing.basePrice > 0 ? `<span style="font-family:'Space Mono',monospace;font-size:12px;color:#a78bfa">R ${listing.basePrice.toFixed(2)}</span>` : '<span style="color:var(--muted);font-size:11px">—</span>'}</td>
+      <td>${myPrice}${priceIndicator}</td>
       <td>${myStock}</td>
       <td><span class="price-cell ${p.status==='win'?'win':'lose'}">R ${(p.buybox_price||0).toFixed(2)}</span></td>
       <td>
@@ -2390,8 +2390,24 @@ function importListings(input) {
       });
       if (skuCount > 0) saveProducts();
 
-      alert('✅ Imported ' + listings.length + ' listings!' + (skuCount > 0 ? ' Matched ' + skuCount + ' SKU(s) to products.' : ''));
+      // Auto-refresh everything immediately — no blocking alert
       renderProducts();
+      renderDashboard();
+      updateProductCount();
+      initPricer();
+
+      // Show non-blocking confirmation in the UI
+      var msg = '✅ Imported ' + listings.length + ' listings' + (skuCount > 0 ? ', matched ' + skuCount + ' SKU(s).' : '.');
+      var banner = document.getElementById('importBanner');
+      if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'importBanner';
+        banner.style.cssText = 'position:fixed;bottom:24px;right:24px;background:#111418;border:1px solid #00e5a0;color:#00e5a0;font-family:Space Mono,monospace;font-size:12px;padding:12px 20px;border-radius:8px;z-index:999;box-shadow:0 4px 20px rgba(0,229,160,.2)';
+        document.body.appendChild(banner);
+      }
+      banner.textContent = msg;
+      banner.style.display = 'block';
+      setTimeout(function(){ banner.style.display = 'none'; }, 3000);
     } catch(err) {
       alert('❌ Error: ' + err.message);
     }
