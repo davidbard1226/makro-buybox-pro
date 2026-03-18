@@ -674,6 +674,7 @@
           <option value="no-cost">⚠ No Cost price</option>
           <option value="pending">🔄 Pending reprice</option>
           <option value="base-below-max">⚠ Base Price below Max Price</option>
+          <option value="win-at-loss">⚠ Winning at a Loss</option>
         </select>
         <select class="filter-select" id="prodPageSize" onchange="prodPage=1;renderProducts()" title="Products per page">
           <option value="25">25 / page</option>
@@ -2091,6 +2092,12 @@ function renderProducts() {
       var mx = p.max_price || 0;
       if (!bp || !mx || bp >= mx) return false;
     }
+    if (filter === 'win-at-loss') {
+      var lWL = listingsMap[p.fsn];
+      if (p.status !== 'win') return false;
+      if (!lWL || !lWL.myPrice) return false;
+      if (!(p.min_price > 0) || lWL.myPrice >= p.min_price) return false;
+    }
     const titleOk = (p.title||'').toLowerCase().includes(search);
     const sellerOk = (p.seller||'').toLowerCase().includes(search);
     const fsnOk = (p.fsn||'').toLowerCase().includes(search);
@@ -2145,13 +2152,16 @@ function renderProducts() {
     const listing = listingsMap[p.fsn] || null;
     const myPrice = listing ? `<span style="color:var(--accent3);font-family:'Space Mono',monospace;font-size:12px">R ${listing.myPrice.toFixed(2)}</span>` : '<span style="color:var(--muted);font-size:11px">—</span>';
     const myStock = listing ? `<span style="color:${listing.myStock > 0 ? 'var(--accent)' : '#ff9500'};font-size:12px">${listing.myStock}</span>` : '<span style="color:var(--muted);font-size:11px">—</span>';
+    // Warn if winning but selling below min price (at a loss)
+    const winAtLoss = p.status === 'win' && listing && p.min_price > 0 && listing.myPrice < p.min_price;
     let priceIndicator = '';
     if (listing && p.buybox_price > 0) {
       if (listing.myPrice > p.buybox_price) priceIndicator = ' <span style="color:#ff9500;font-size:10px">▲above</span>';
       else if (listing.myPrice < p.buybox_price) priceIndicator = ' <span style="color:var(--accent);font-size:10px">▼below</span>';
       else priceIndicator = ' <span style="color:var(--muted);font-size:10px">=match</span>';
     }
-    return `<tr>
+    if (winAtLoss) priceIndicator += ' <span style="color:#ff4d6d;font-size:10px;font-weight:700" title="Winning but selling below min price — at a loss! Will be raised on next price update.">⚠ LOSS</span>';
+    return `<tr style="${winAtLoss ? 'background:rgba(255,77,109,0.04)' : ''}">
       <td><input type="checkbox" class="row-check" data-idx="${realIdx}"></td>
       <td>
         <div class="prod-title">${escHtml((p.title||'Unknown').slice(0,55))}</div>
@@ -3732,7 +3742,17 @@ function generatePriceUpdate() {
       return;
     }
 
-    // Priority 2: strategy-based calculation
+    // Priority 2: WIN but selling below floor (at a loss) — raise to floor regardless of winsOnly
+    // e.g. winning at R356 but min viable price is R390 — must raise even though we're winning
+    if (scraped.status === 'win' && l.myPrice > 0 && l.myPrice < hardFloor) {
+      var raisedPrice = applyGuards(hardFloor);
+      priceMap[l.fsn] = { newPrice: raisedPrice, sku: l.sku, title: l.title, oldPrice: l.myPrice,
+        hitFloor: true, hitCeiling: effectiveCeiling && raisedPrice === effectiveCeiling, raisedFromLoss: true };
+      updateCount++;
+      return;
+    }
+
+    // Priority 3: strategy-based calculation
     if (skipUnknown && (!scraped.buybox_price || scraped.buybox_price <= 0)) return;
     if (winsOnly && scraped.status === 'win') return;
     const result = calcNewPrice(l.myPrice, scraped.buybox_price, strategy, beatBy, floorPct, minPrice, maxPrice);
