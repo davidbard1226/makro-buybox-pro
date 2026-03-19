@@ -1628,10 +1628,11 @@ function handleQueueProgress(d) {
     });
 
     // ── Telegram alerts ──────────────────────────────────────────────────
+    var myCurrentPrice = listingMatch ? listingMatch.myPrice : null;
     if (status === 'lose') {
-      sendTelegramAlert(prod, price, seller, 'lose');
+      sendTelegramAlert(prod, price, seller, 'lose', myCurrentPrice);
     } else if (status === 'win' && prod.min_price > 0 && price < prod.min_price) {
-      sendTelegramAlert(prod, price, seller, 'loss');
+      sendTelegramAlert(prod, price, seller, 'loss', myCurrentPrice);
     }
 
     log(isWin ? 'ok' : 'err',
@@ -4008,7 +4009,7 @@ function loadMinProfitSetting() {
 }
 
 var _tgLastAlert = {};
-function sendTelegramAlert(prod, buyboxPrice, seller, alertType) {
+function sendTelegramAlert(prod, buyboxPrice, seller, alertType, myPrice) {
   var token  = localStorage.getItem('tg_token')   || '';
   var chatId = localStorage.getItem('tg_chat_id') || '';
   var enabled = localStorage.getItem('tg_enabled') === '1';
@@ -4028,17 +4029,28 @@ function sendTelegramAlert(prod, buyboxPrice, seller, alertType) {
   localStorage.setItem(key, String(now));
 
   var type = alertType || 'lose';
-  var emoji = type === 'loss' ? '⚠️' : '🔴';
-  var header = type === 'loss' ? '*Winning at a LOSS!*' : '*BuyBox LOST!*';
+  var gap = (myPrice && buyboxPrice) ? (myPrice - buyboxPrice) : null;
 
-  var msg =
-    emoji + ' ' + header + '\n' +
-    (prod.title || prod.url || '').slice(0, 60) + '\n\n' +
-    (type === 'loss'
-      ? '💸 My price: R' + buyboxPrice.toFixed(2) + ' (below min floor)\n'
-      : '🏷 Competitor: ' + seller + '\n' + '💸 Their price: R' + buyboxPrice.toFixed(2) + '\n') +
-    (prod.pending_price ? '✅ Will reprice to: R' + prod.pending_price + '\n' : '') +
-    '🕐 ' + new Date().toLocaleTimeString('en-ZA');
+  var msg;
+  if (type === 'loss') {
+    // Winning but at a loss
+    msg = '⚠️ *Winning at a LOSS!*\n' +
+      (prod.title || '').slice(0, 60) + '\n\n' +
+      '💰 My price: R' + (myPrice ? myPrice.toFixed(2) : '?') + '\n' +
+      '🔻 Min floor: R' + (prod.min_price ? prod.min_price.toFixed(2) : '?') + '\n' +
+      (prod.pending_price ? '✅ Will raise to: R' + prod.pending_price + '\n' : '') +
+      '🕐 ' + new Date().toLocaleTimeString('en-ZA');
+  } else {
+    // Lost BuyBox
+    msg = '🔴 *BuyBox LOST!*\n' +
+      (prod.title || '').slice(0, 60) + '\n\n' +
+      '💰 My price:    R' + (myPrice ? myPrice.toFixed(2) : '?') + '\n' +
+      '🏷 Their price: R' + buyboxPrice.toFixed(2) + '\n' +
+      (gap !== null ? '📉 Gap: R' + Math.abs(gap).toFixed(2) + (gap > 0 ? ' above them' : ' below them') + '\n' : '') +
+      '🛒 Seller: ' + seller + '\n' +
+      (prod.pending_price ? '✅ Auto-repriced to: R' + prod.pending_price + '\n' : '⏳ Repricing pending...\n') +
+      '🕐 ' + new Date().toLocaleTimeString('en-ZA');
+  }
 
   log('info', '📤 Sending Telegram alert: ' + String(prod.title||prod.fsn||'').slice(0,30));
 
