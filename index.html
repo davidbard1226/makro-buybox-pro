@@ -538,6 +538,7 @@
     <button class="tab-btn" onclick="switchTab('pricer')">💰 Price Updater</button>
     <button class="tab-btn" onclick="switchTab('analytics')">📈 Analytics</button>
     <button class="tab-btn" onclick="switchTab('log')">📋 Price Log</button>
+    <button class="tab-btn" onclick="switchTab('intelligence')">🕵️ Intelligence</button>
   </nav>
 
   <!-- MAIN -->
@@ -1084,6 +1085,65 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
       </div>
     </div><!-- /log -->
 
+    <!-- ========== INTELLIGENCE TAB ========== -->
+    <div class="tab-content" id="tab-intelligence">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+        <div class="card-title" style="margin:0">🕵️ COMPETITOR INTELLIGENCE</div>
+        <span style="font-size:12px;color:var(--muted)">Analysed from your scrape history</span>
+        <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+          <select id="intelDays" onchange="renderIntelligence()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:12px;padding:6px 10px;border-radius:6px;outline:none">
+            <option value="1">Last 24h</option>
+            <option value="7" selected>Last 7 days</option>
+            <option value="14">Last 14 days</option>
+            <option value="30">Last 30 days</option>
+          </select>
+          <button class="btn-secondary" style="width:auto;padding:7px 14px;font-size:12px;color:#818cf8;border-color:#818cf844" onclick="sendDailySummaryNow()">📤 Send Daily Summary Now</button>
+          <button class="btn-secondary" style="width:auto;padding:7px 14px;font-size:12px" onclick="renderIntelligence()">🔄 Refresh</button>
+        </div>
+      </div>
+
+      <!-- Daily Summary Schedule -->
+      <div class="card" style="margin-bottom:16px;padding:14px 20px">
+        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+          <div style="font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">📅 Daily Summary Schedule</div>
+          <label style="font-size:12px;color:var(--text);display:flex;align-items:center;gap:6px">
+            <input type="checkbox" id="dailySummaryEnabled" onchange="saveDailySummarySettings()" style="width:14px;height:14px"> Enable daily Telegram summary
+          </label>
+          <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px">
+            Send at:
+            <input type="time" id="dailySummaryTime" value="08:00" onchange="saveDailySummarySettings()"
+              style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:12px;padding:4px 8px;border-radius:5px;outline:none">
+          </label>
+          <div id="dailySummaryStatus" style="font-size:11px;color:var(--accent);font-family:'Space Mono',monospace"></div>
+        </div>
+      </div>
+
+      <!-- Stats row -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px" id="intelStatsRow"></div>
+
+      <!-- Main grid -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+        <div class="card">
+          <div class="card-title" style="margin-bottom:14px">🏆 Most Active Competitors</div>
+          <div id="intelCompetitors" style="font-size:12px"></div>
+        </div>
+        <div class="card">
+          <div class="card-title" style="margin-bottom:14px">🔥 Most Volatile Products (Most BuyBox Changes)</div>
+          <div id="intelVolatile" style="font-size:12px"></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-title" style="margin-bottom:14px">📊 Per-FSN Competitor Breakdown — Who's Fighting You Most</div>
+        <div id="intelFsnTable" style="overflow-x:auto;font-size:12px"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title" style="margin-bottom:14px">📉 Price Movement Log — All Competitor Price Changes</div>
+        <div id="intelPriceLog" style="overflow-x:auto;font-size:12px;max-height:400px;overflow-y:auto"></div>
+      </div>
+    </div><!-- /intelligence -->
+
   </main>
 </div>
 
@@ -1453,7 +1513,7 @@ function setExtStatus(online) {
 // TABS
 // ============================================================
 function switchTab(name) {
-  const names = ['dashboard','products','scraper','pricer','analytics','log'];
+  const names = ['dashboard','products','scraper','pricer','analytics','log','intelligence'];
   document.querySelectorAll('.tab-btn').forEach((b,i) => {
     b.classList.toggle('active', names[i] === name);
   });
@@ -1465,6 +1525,7 @@ function switchTab(name) {
   if (name === 'scraper')   syncSellerConfig();
   if (name === 'pricer')    initPricer();
   if (name === 'log')       renderPriceLog();
+  if (name === 'intelligence') renderIntelligence();
 }
 
 function syncSellerConfig() {
@@ -4593,6 +4654,367 @@ function openPortalUpload() {
   document.getElementById('pricerResult').innerHTML =
     (document.getElementById('pricerResult').innerHTML || '') +
     '<br><span style="color:#ffd60a">✅ File sent. On the portal, click <b style="color:#00e5a0">🚀 Auto Upload Now</b> in the green overlay.</span>';
+}
+
+// ============================================================
+// COMPETITOR INTELLIGENCE
+// ============================================================
+
+function getIntelDays() {
+  return parseInt((document.getElementById('intelDays') || {}).value || '7');
+}
+
+function saveDailySummarySettings() {
+  var enabled = !!(document.getElementById('dailySummaryEnabled') || {}).checked;
+  var time    = ((document.getElementById('dailySummaryTime') || {}).value) || '08:00';
+  localStorage.setItem('daily_summary_enabled', enabled ? '1' : '0');
+  localStorage.setItem('daily_summary_time', time);
+  updateDailySummaryStatus();
+}
+
+function loadDailySummarySettings() {
+  var el = document.getElementById('dailySummaryEnabled');
+  var tEl = document.getElementById('dailySummaryTime');
+  if (el)  el.checked = localStorage.getItem('daily_summary_enabled') === '1';
+  if (tEl) tEl.value  = localStorage.getItem('daily_summary_time') || '08:00';
+  updateDailySummaryStatus();
+}
+
+function updateDailySummaryStatus() {
+  var el = document.getElementById('dailySummaryStatus');
+  if (!el) return;
+  var enabled = localStorage.getItem('daily_summary_enabled') === '1';
+  var time    = localStorage.getItem('daily_summary_time') || '08:00';
+  var lastSent = localStorage.getItem('daily_summary_last_sent') || 'Never';
+  if (enabled) {
+    el.innerHTML = '✅ Enabled — sends at ' + time + ' daily &nbsp;·&nbsp; Last sent: ' + lastSent;
+  } else {
+    el.innerHTML = '<span style="color:var(--muted)">Disabled</span>';
+  }
+}
+
+// Check every minute if it's time to send daily summary
+setInterval(function() {
+  if (localStorage.getItem('daily_summary_enabled') !== '1') return;
+  var token  = localStorage.getItem('tg_token')   || '';
+  var chatId = localStorage.getItem('tg_chat_id') || '';
+  if (!token || !chatId) return;
+  var schedTime = localStorage.getItem('daily_summary_time') || '08:00';
+  var now = new Date();
+  var nowStr = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
+  if (nowStr !== schedTime) return;
+  var lastSent = localStorage.getItem('daily_summary_last_sent') || '';
+  var today = now.toISOString().slice(0,10);
+  if (lastSent.startsWith(today)) return; // already sent today
+  sendDailySummaryNow();
+}, 60000);
+
+function buildIntelData(days) {
+  var cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  var listingsMap = {};
+  try {
+    var raw = localStorage.getItem('makro_listings');
+    if (raw) JSON.parse(raw).forEach(function(l) { listingsMap[l.fsn] = l; });
+  } catch(e) {}
+
+  // Per-seller stats
+  var sellerStats = {}; // seller → { wins, priceChanges, products: Set }
+  // Per-FSN stats
+  var fsnStats = {};    // fsn → { title, sku, fsn, changes: [{ts,seller,price}], sellers: Set }
+  // Price movement log
+  var priceMovements = [];
+
+  state.products.forEach(function(p) {
+    if (!p.history || p.history.length < 2) return;
+    var fsn   = p.fsn || '';
+    var sku   = p.sku || (listingsMap[fsn] ? listingsMap[fsn].sku : '') || '';
+    var title = (p.title || '').slice(0, 45);
+    var ref   = sku ? sku : (fsn ? fsn : '—');
+
+    if (!fsnStats[fsn]) fsnStats[fsn] = { title, sku, fsn, ref, changes: [], sellers: new Set(), buyboxChanges: 0 };
+
+    var prev = null;
+    p.history.forEach(function(h) {
+      var ts = new Date(h.ts).getTime();
+      if (ts < cutoff) { prev = h; return; }
+
+      // Track seller activity
+      var seller = h.seller || 'Unknown';
+      if (!sellerStats[seller]) sellerStats[seller] = { wins: 0, priceChanges: 0, products: new Set(), undercuts: 0 };
+      if (h.status === 'lose' || (h.status !== 'win' && seller !== getMySellerName())) {
+        sellerStats[seller].wins++;
+        sellerStats[seller].products.add(fsn);
+      }
+
+      fsnStats[fsn].sellers.add(seller);
+
+      // Detect price change
+      if (prev && prev.price !== h.price && prev.price > 0) {
+        fsnStats[fsn].buyboxChanges++;
+        fsnStats[fsn].changes.push({ ts: h.ts, seller, price: h.price, prevPrice: prev.price, diff: h.price - prev.price });
+
+        if (seller !== getMySellerName()) {
+          sellerStats[seller].priceChanges++;
+          var myListing = listingsMap[fsn];
+          var myPrice = myListing ? myListing.myPrice : null;
+          if (myPrice && h.price < myPrice) sellerStats[seller].undercuts++;
+        }
+
+        priceMovements.push({
+          ts: h.ts, fsn, sku, ref, title,
+          seller, price: h.price, prevPrice: prev.price,
+          diff: h.price - prev.price
+        });
+      }
+      prev = h;
+    });
+  });
+
+  return { sellerStats, fsnStats, priceMovements, listingsMap };
+}
+
+function renderIntelligence() {
+  loadDailySummarySettings();
+  var days = getIntelDays();
+  var data = buildIntelData(days);
+  var { sellerStats, fsnStats, priceMovements } = data;
+
+  // ── STATS ROW ──────────────────────────────────────────────────────────
+  var totalChanges = priceMovements.length;
+  var uniqueCompetitors = Object.keys(sellerStats).filter(function(s) { return s !== getMySellerName(); }).length;
+  var totalUndercutProducts = Object.values(fsnStats).filter(function(f) { return f.buyboxChanges > 0; }).length;
+  var mostActiveCompetitor = Object.entries(sellerStats)
+    .filter(function(e) { return e[0] !== getMySellerName(); })
+    .sort(function(a,b) { return b[1].priceChanges - a[1].priceChanges; })[0];
+
+  var statsEl = document.getElementById('intelStatsRow');
+  if (statsEl) statsEl.innerHTML = [
+    { label: 'Price Changes Detected', val: totalChanges, color: 'var(--accent)', cls: '' },
+    { label: 'Active Competitors', val: uniqueCompetitors, color: '#f472b6', cls: 'red' },
+    { label: 'Volatile Products', val: totalUndercutProducts, color: '#ffd60a', cls: 'yellow' },
+    { label: 'Top Competitor', val: mostActiveCompetitor ? mostActiveCompetitor[0].slice(0,18) : '—', color: '#818cf8', cls: 'blue' }
+  ].map(function(s) {
+    return '<div class="stat-card ' + s.cls + '" style="padding:16px">' +
+      '<div class="stat-label">' + s.label + '</div>' +
+      '<div class="stat-value" style="font-size:28px;color:' + s.color + '">' + s.val + '</div>' +
+      '</div>';
+  }).join('');
+
+  // ── COMPETITOR TABLE ────────────────────────────────────────────────────
+  var compEl = document.getElementById('intelCompetitors');
+  if (compEl) {
+    var sellers = Object.entries(sellerStats)
+      .filter(function(e) { return e[0] !== getMySellerName(); })
+      .sort(function(a,b) { return (b[1].priceChanges + b[1].wins) - (a[1].priceChanges + a[1].wins); })
+      .slice(0, 15);
+    if (!sellers.length) {
+      compEl.innerHTML = '<div style="color:var(--muted);padding:12px 0">No competitor data yet — scrape more products to build history.</div>';
+    } else {
+      compEl.innerHTML = '<table style="width:100%;border-collapse:collapse">' +
+        '<thead><tr style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid var(--border)">' +
+        '<th style="text-align:left;padding:6px 8px">Seller</th>' +
+        '<th style="text-align:right;padding:6px 8px">BuyBox Wins</th>' +
+        '<th style="text-align:right;padding:6px 8px">Price Changes</th>' +
+        '<th style="text-align:right;padding:6px 8px">Undercuts</th>' +
+        '<th style="text-align:right;padding:6px 8px">Products</th>' +
+        '</tr></thead><tbody>' +
+        sellers.map(function(e, i) {
+          var s = e[1];
+          var heat = s.priceChanges > 10 ? '#ff4d6d' : s.priceChanges > 4 ? '#ffd60a' : 'var(--accent)';
+          return '<tr style="border-bottom:1px solid rgba(30,37,48,.5)">' +
+            '<td style="padding:8px;font-weight:600;color:var(--text)">' + escHtml(e[0]) + '</td>' +
+            '<td style="text-align:right;padding:8px;font-family:monospace;color:#ff4d6d">' + s.wins + '</td>' +
+            '<td style="text-align:right;padding:8px;font-family:monospace;color:' + heat + '">' + s.priceChanges + '</td>' +
+            '<td style="text-align:right;padding:8px;font-family:monospace;color:#f472b6">' + s.undercuts + '</td>' +
+            '<td style="text-align:right;padding:8px;color:var(--muted)">' + s.products.size + '</td>' +
+            '</tr>';
+        }).join('') + '</tbody></table>';
+    }
+  }
+
+  // ── VOLATILE PRODUCTS ───────────────────────────────────────────────────
+  var volEl = document.getElementById('intelVolatile');
+  if (volEl) {
+    var volatile = Object.values(fsnStats)
+      .filter(function(f) { return f.buyboxChanges > 0; })
+      .sort(function(a,b) { return b.buyboxChanges - a.buyboxChanges })
+      .slice(0, 15);
+    if (!volatile.length) {
+      volEl.innerHTML = '<div style="color:var(--muted);padding:12px 0">No price changes recorded yet in this period.</div>';
+    } else {
+      volEl.innerHTML = '<table style="width:100%;border-collapse:collapse">' +
+        '<thead><tr style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid var(--border)">' +
+        '<th style="text-align:left;padding:6px 8px">Product</th>' +
+        '<th style="text-align:left;padding:6px 8px">FSN / SKU</th>' +
+        '<th style="text-align:right;padding:6px 8px">Changes</th>' +
+        '<th style="text-align:right;padding:6px 8px">Competitors</th>' +
+        '</tr></thead><tbody>' +
+        volatile.map(function(f) {
+          var heat = f.buyboxChanges > 10 ? '#ff4d6d' : f.buyboxChanges > 4 ? '#ffd60a' : 'var(--accent)';
+          return '<tr style="border-bottom:1px solid rgba(30,37,48,.5)">' +
+            '<td style="padding:8px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml(f.title) + '">' + escHtml(f.title) + '</td>' +
+            '<td style="padding:8px;font-family:monospace;font-size:10px;color:#818cf8">' + escHtml(f.sku || f.fsn) + '</td>' +
+            '<td style="text-align:right;padding:8px;font-family:monospace;color:' + heat + ';font-weight:700">' + f.buyboxChanges + '</td>' +
+            '<td style="text-align:right;padding:8px;color:var(--muted)">' + f.sellers.size + '</td>' +
+            '</tr>';
+        }).join('') + '</tbody></table>';
+    }
+  }
+
+  // ── PER-FSN BREAKDOWN TABLE ─────────────────────────────────────────────
+  var fsnEl = document.getElementById('intelFsnTable');
+  if (fsnEl) {
+    var fsnList = Object.values(fsnStats)
+      .filter(function(f) { return f.changes.length > 0; })
+      .sort(function(a,b) { return b.changes.length - a.changes.length })
+      .slice(0, 30);
+    if (!fsnList.length) {
+      fsnEl.innerHTML = '<div style="color:var(--muted);padding:12px 0">No data yet.</div>';
+    } else {
+      fsnEl.innerHTML = '<table style="width:100%;border-collapse:collapse">' +
+        '<thead><tr style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface)">' +
+        '<th style="text-align:left;padding:7px 8px">Product</th>' +
+        '<th style="text-align:left;padding:7px 8px">FSN</th>' +
+        '<th style="text-align:left;padding:7px 8px">SKU</th>' +
+        '<th style="text-align:right;padding:7px 8px">Changes</th>' +
+        '<th style="text-align:left;padding:7px 8px">Top Competitor</th>' +
+        '<th style="text-align:right;padding:7px 8px">Last Price</th>' +
+        '<th style="text-align:right;padding:7px 8px">Last Change</th>' +
+        '</tr></thead><tbody>' +
+        fsnList.map(function(f) {
+          var topSeller = {};
+          f.changes.forEach(function(c) { topSeller[c.seller] = (topSeller[c.seller] || 0) + 1; });
+          var topSellerName = Object.entries(topSeller).sort(function(a,b){return b[1]-a[1];})[0];
+          var last = f.changes[f.changes.length - 1];
+          var diffCol = last.diff < 0 ? 'var(--accent)' : '#ff4d6d';
+          var diffSign = last.diff > 0 ? '+' : '';
+          return '<tr style="border-bottom:1px solid rgba(30,37,48,.4)">' +
+            '<td style="padding:7px 8px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px" title="' + escHtml(f.title) + '">' + escHtml(f.title) + '</td>' +
+            '<td style="padding:7px 8px;font-family:monospace;font-size:10px;color:var(--muted)">' + escHtml(f.fsn) + '</td>' +
+            '<td style="padding:7px 8px;font-family:monospace;font-size:10px;color:#818cf8">' + escHtml(f.sku || '—') + '</td>' +
+            '<td style="text-align:right;padding:7px 8px;font-family:monospace;color:#ffd60a;font-weight:700">' + f.changes.length + '</td>' +
+            '<td style="padding:7px 8px;color:#f472b6;font-size:11px">' + escHtml(topSellerName ? topSellerName[0] : '—') + ' ×' + (topSellerName ? topSellerName[1] : 0) + '</td>' +
+            '<td style="text-align:right;padding:7px 8px;font-family:monospace;color:var(--text)">R' + last.price + '</td>' +
+            '<td style="text-align:right;padding:7px 8px;font-family:monospace;color:' + diffCol + '">' + diffSign + 'R' + last.diff + '</td>' +
+            '</tr>';
+        }).join('') + '</tbody></table>';
+    }
+  }
+
+  // ── PRICE MOVEMENT LOG ──────────────────────────────────────────────────
+  var logEl = document.getElementById('intelPriceLog');
+  if (logEl) {
+    var movements = priceMovements.sort(function(a,b) { return new Date(b.ts) - new Date(a.ts); }).slice(0, 200);
+    if (!movements.length) {
+      logEl.innerHTML = '<div style="color:var(--muted);padding:12px 0">No price movements recorded yet.</div>';
+    } else {
+      logEl.innerHTML = '<table style="width:100%;border-collapse:collapse">' +
+        '<thead><tr style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface)">' +
+        '<th style="text-align:left;padding:6px 8px">Time</th>' +
+        '<th style="text-align:left;padding:6px 8px">Product</th>' +
+        '<th style="text-align:left;padding:6px 8px">FSN / SKU</th>' +
+        '<th style="text-align:left;padding:6px 8px">Seller</th>' +
+        '<th style="text-align:right;padding:6px 8px">Was</th>' +
+        '<th style="text-align:right;padding:6px 8px">Now</th>' +
+        '<th style="text-align:right;padding:6px 8px">Change</th>' +
+        '</tr></thead><tbody>' +
+        movements.map(function(m) {
+          var col = m.diff < 0 ? 'var(--accent)' : '#ff4d6d';
+          var sign = m.diff > 0 ? '+' : '';
+          var t = new Date(m.ts);
+          var tStr = t.toLocaleDateString('en-ZA', {day:'2-digit',month:'short'}) + ' ' + t.toLocaleTimeString('en-ZA',{hour:'2-digit',minute:'2-digit'});
+          return '<tr style="border-bottom:1px solid rgba(30,37,48,.3)">' +
+            '<td style="padding:5px 8px;font-family:monospace;font-size:10px;color:var(--muted);white-space:nowrap">' + tStr + '</td>' +
+            '<td style="padding:5px 8px;font-size:11px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml(m.title) + '">' + escHtml(m.title) + '</td>' +
+            '<td style="padding:5px 8px;font-family:monospace;font-size:10px;color:#818cf8">' + escHtml(m.sku || m.fsn) + '</td>' +
+            '<td style="padding:5px 8px;font-size:11px;color:#f472b6">' + escHtml(m.seller) + '</td>' +
+            '<td style="text-align:right;padding:5px 8px;font-family:monospace;font-size:11px;color:var(--muted)">R' + m.prevPrice + '</td>' +
+            '<td style="text-align:right;padding:5px 8px;font-family:monospace;font-size:11px;font-weight:700">R' + m.price + '</td>' +
+            '<td style="text-align:right;padding:5px 8px;font-family:monospace;font-size:11px;color:' + col + '">' + sign + 'R' + Math.abs(m.diff) + '</td>' +
+            '</tr>';
+        }).join('') + '</tbody></table>';
+    }
+  }
+}
+
+// ── DAILY TELEGRAM SUMMARY ─────────────────────────────────────────────────
+function sendDailySummaryNow() {
+  var token  = localStorage.getItem('tg_token')   || '';
+  var chatId = localStorage.getItem('tg_chat_id') || '';
+  if (!token || !chatId) { alert('Set up Telegram in the Scraper tab first.'); return; }
+
+  var days = getIntelDays();
+  var data = buildIntelData(days);
+  var { sellerStats, fsnStats, priceMovements } = data;
+  var prods = state.products;
+  var wins  = prods.filter(function(p){ return p.status === 'win'; }).length;
+  var loses = prods.filter(function(p){ return p.status === 'lose'; }).length;
+  var winAtLoss = 0;
+  var listingsMap = {};
+  try { JSON.parse(localStorage.getItem('makro_listings')||'[]').forEach(function(l){ listingsMap[l.fsn]=l; }); } catch(e){}
+  prods.forEach(function(p){
+    var l = listingsMap[p.fsn];
+    if (p.status === 'win' && l && p.min_price > 0 && l.myPrice < p.min_price) winAtLoss++;
+  });
+
+  var topCompetitors = Object.entries(sellerStats)
+    .filter(function(e){ return e[0] !== getMySellerName(); })
+    .sort(function(a,b){ return b[1].wins - a[1].wins; })
+    .slice(0, 5);
+
+  var topVolatile = Object.values(fsnStats)
+    .filter(function(f){ return f.buyboxChanges > 0; })
+    .sort(function(a,b){ return b.buyboxChanges - a.buyboxChanges; })
+    .slice(0, 5);
+
+  var now = new Date();
+  var dateStr = now.toLocaleDateString('en-ZA', { weekday:'long', day:'numeric', month:'long' });
+
+  var msg = '📊 *Makro BuyBox Daily Summary*\n' +
+    dateStr + '\n\n' +
+    '🏆 *Performance*\n' +
+    '✅ Winning: ' + wins + '  ❌ Losing: ' + loses + '  ⚠️ Win@Loss: ' + winAtLoss + '\n' +
+    '📉 Price changes detected (' + days + 'd): ' + priceMovements.length + '\n\n';
+
+  if (topCompetitors.length) {
+    msg += '🔥 *Top Competitors*\n';
+    topCompetitors.forEach(function(e, i) {
+      msg += (i+1) + '. ' + e[0] + ' — ' + e[1].wins + ' BuyBox wins, ' + e[1].priceChanges + ' changes\n';
+    });
+    msg += '\n';
+  }
+
+  if (topVolatile.length) {
+    msg += '🌡 *Most Volatile Products*\n';
+    topVolatile.forEach(function(f, i) {
+      var ref = f.sku || f.fsn;
+      msg += (i+1) + '. [' + ref + '] ' + f.title.slice(0,35) + ' — ' + f.buyboxChanges + ' changes\n';
+    });
+    msg += '\n';
+  }
+
+  if (winAtLoss > 0) {
+    msg += '⚠️ *' + winAtLoss + ' product(s) winning at a LOSS* — check Price Updater\n\n';
+  }
+
+  msg += '🕐 ' + now.toLocaleTimeString('en-ZA');
+
+  fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, text: msg, parse_mode: 'Markdown' })
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(j){
+    if (j.ok) {
+      localStorage.setItem('daily_summary_last_sent', new Date().toISOString());
+      updateDailySummaryStatus();
+      alert('✅ Daily summary sent to Telegram!');
+    } else {
+      alert('❌ Failed: ' + (j.description || 'Check Telegram settings'));
+    }
+  })
+  .catch(function(e){ alert('❌ Error: ' + e.message); });
 }
 </script>
 </body>
