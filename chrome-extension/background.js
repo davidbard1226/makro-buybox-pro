@@ -1,4 +1,4 @@
-// background.js v8 — up to 5 concurrent tabs, optimised delays
+// background.js v9 — up to 5 concurrent tabs, bot-challenge detection
 
 chrome.runtime.onInstalled.addListener(function() {
   chrome.storage.local.get(['buybox_products'], function(r) {
@@ -16,9 +16,21 @@ let scrapeWinId  = null;   // one shared window all tabs live in
 // activeTabs: Map<tabId, { url, timeoutId, waitingForLoad }>
 let activeTabs   = new Map();
 
-// ── HUMAN-LIKE DELAY: 2-4 seconds per slot ───────────────────────────────
+// ── HUMAN-LIKE DELAY: 3-8 seconds per slot ───────────────────────────────
 function humanDelay() {
-  return 2000 + Math.floor(Math.random() * 2000);
+  // Wider random range: 3-8s — harder to fingerprint as a bot
+  return 3000 + Math.floor(Math.random() * 5000);
+}
+
+// ── CHALLENGE DETECTION ──────────────────────────────────────────────────
+// Called when a tab navigates to a non-product URL (challenge/redirect page)
+let challengePaused = false;
+let challengeTabId  = null;
+
+function isChallengeUrl(url) {
+  if (!url) return false;
+  return /challenges\.cloudflare\.com|cdn-cgi\/challenge|/cdn-cgi\/|interstitial|are.you.human|verify.*human|robot.*check|captcha/i.test(url)
+    || (url.includes('makro.co.za') && !url.includes('/p/') && !url.includes('/search') && url.includes('ray'));
 }
 
 // ── MESSAGE HANDLER ───────────────────────────────────────────────────────
@@ -46,6 +58,18 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
     return true;
   }
 
+  // ── RESUME AFTER CHALLENGE SOLVED ───────────────────────────────────────
+  if (msg.action === 'resume_after_challenge') {
+    challengePaused = false;
+    challengeTabId  = null;
+    sendResponse({ resumed: true });
+    // Restart queue processing
+    if (active && queue.length > 0) {
+      setTimeout(function() { loadNextUrlInTab(null); }, humanDelay());
+    }
+    return true;
+  }
+
   // ── STATUS ───────────────────────────────────────────────────────────────
   if (msg.action === 'queue_status') {
     sendResponse({ active, remaining: queue.length, done: doneCount, total: totalUrls });
@@ -65,7 +89,9 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
     sendResponse({ ok: true });
 
     // Slight stagger so tabs don't fire simultaneously
-    const delay = humanDelay() + (activeTabs.size * 1200);
+    // If queue was paused for a challenge, don't advance until resumed
+    if (challengePaused) { return; }
+    const delay = humanDelay() + (activeTabs.size * 1500);
     if (active && queue.length > 0) {
       setTimeout(function() { loadNextUrlInTab(tabId); }, delay);
     } else if (active && queue.length === 0 && activeTabs.size === 0) {
@@ -132,6 +158,22 @@ function registerTab(tabId, url) {
   }, 15000);
 
   activeTabs.set(tabId, { url, timeoutId });
+
+  // Watch for challenge pages on this tab
+  chrome.tabs.onUpdated.addListener(function onUpdated(tId, info) {
+    if (tId !== tabId) return;
+    if (info.url && isChallengeUrl(info.url)) {
+      // CHALLENGE DETECTED — pause queue and alert dashboard
+      challengePaused = true;
+      challengeTabId  = tabId;
+      clearTimeout(activeTabs.get(tabId) && activeTabs.get(tabId).timeoutId);
+      notifyDashboard({ action: 'challenge_detected', tabId: tabId, url: info.url });
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+    }
+    if (info.status === 'complete') {
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+    }
+  });
 }
 
 // ── NAVIGATE AN EXISTING TAB TO NEXT URL ─────────────────────────────────

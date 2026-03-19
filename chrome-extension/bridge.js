@@ -171,6 +171,15 @@
       });
     }
 
+    if (ev.data.type === 'RESUME_AFTER_CHALLENGE') {
+      safe(function() {
+        chrome.runtime.sendMessage({ action: 'resume_after_challenge' }, function(resp) {
+          if (chrome.runtime.lastError) return;
+          console.log('[Bridge] Resumed after challenge:', resp);
+        });
+      });
+    }
+
     if (ev.data.type === 'REQUEST_EXTENSION') announce();
   });
 
@@ -185,6 +194,9 @@
       }
       if (msg.action === 'queue_aborted') {
         window.postMessage({ type: 'QUEUE_ABORTED', done: msg.done, total: msg.total }, '*');
+      }
+      if (msg.action === 'challenge_detected') {
+        window.postMessage({ type: 'CHALLENGE_DETECTED', tabId: msg.tabId, url: msg.url }, '*');
       }
     });
   });

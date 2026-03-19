@@ -1410,6 +1410,13 @@ window.addEventListener('message', function(ev) {
     return;
   }
 
+  if (d.type === 'CHALLENGE_DETECTED') {
+    // Makro bot challenge detected — pause scraping and show alert
+    log('err', '🤖 BOT CHALLENGE DETECTED — Makro asked "Are you human?". Solve it in the scraper window, then click Resume.');
+    showChallengeAlert();
+    return;
+  }
+
   if (d.type === 'SCRAPER_LOG') {
     log('info', d.msg || '');
     return;
@@ -1840,6 +1847,29 @@ function updatePendingBadge() {
 }
 
 
+
+function showChallengeAlert() {
+  var existing = document.getElementById('challengeBanner');
+  if (existing) return;
+  var banner = document.createElement('div');
+  banner.id = 'challengeBanner';
+  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#1a0a00;border-bottom:2px solid #ff9500;padding:14px 24px;display:flex;align-items:center;gap:16px;font-family:Space Mono,monospace;font-size:13px;color:#ff9500;box-shadow:0 4px 20px rgba(255,149,0,0.3)';
+  banner.innerHTML =
+    '<span style="font-size:22px">🤖</span>' +
+    '<div style="flex:1">' +
+      '<b style="color:#ffd60a">Makro Bot Challenge Detected!</b><br>' +
+      '<span style="font-size:11px;color:#ff9500">Switch to the scraper window and solve the "Are you human?" challenge. Once done, click Resume.</span>' +
+    '</div>' +
+    '<button onclick="resumeAfterChallenge()" style="background:#ff9500;color:#000;border:none;border-radius:6px;padding:10px 20px;font-family:Space Mono,monospace;font-size:12px;font-weight:700;cursor:pointer">▶ Resume Scraping</button>' +
+    '<button onclick="document.getElementById(\'challengeBanner\').remove()" style="background:none;border:1px solid #ff9500;color:#ff9500;border-radius:6px;padding:10px 16px;font-family:Space Mono,monospace;font-size:12px;cursor:pointer;margin-left:4px">✕</button>';
+  document.body.prepend(banner);
+}
+
+function resumeAfterChallenge() {
+  document.getElementById('challengeBanner') && document.getElementById('challengeBanner').remove();
+  window.postMessage({ type: 'RESUME_AFTER_CHALLENGE' }, '*');
+  log('ok', '▶ Resumed — continuing scrape queue...');
+}
 
 function shortUrl(url) {
   try { return new URL(url).pathname.split('/').filter(Boolean).pop() || url; } catch(e) { return url; }
