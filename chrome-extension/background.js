@@ -29,8 +29,7 @@ let challengeTabId  = null;
 
 function isChallengeUrl(url) {
   if (!url) return false;
-  return /challenges\.cloudflare\.com|cdn-cgi\/challenge|/cdn-cgi\/|interstitial|are.you.human|verify.*human|robot.*check|captcha/i.test(url)
-    || (url.includes('makro.co.za') && !url.includes('/p/') && !url.includes('/search') && url.includes('ray'));
+  return /challenges\.cloudflare\.com|cdn-cgi|interstitial|are-you-human|verify.*human|robot.*check|captcha/i.test(url);
 }
 
 // ── MESSAGE HANDLER ───────────────────────────────────────────────────────
