@@ -849,10 +849,12 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
               </div>
               <div style="display:flex;gap:8px;align-items:center">
                 <label style="font-size:11px;display:flex;align-items:center;gap:4px;cursor:pointer;color:var(--muted)">
-                  <input type="checkbox" id="tgEnabled" style="width:14px;height:14px"> Enable alerts
+                  <input type="checkbox" id="tgEnabled" style="width:14px;height:14px" onchange="saveTgSettings()"> Enable alerts
                 </label>
                 <button class="action-btn" style="font-size:10px;color:var(--accent)" onclick="testTelegram()">📨 Test</button>
+                <button class="action-btn" style="font-size:10px;color:#818cf8" onclick="clearTgThrottle()">🔄 Reset Throttle</button>
               </div>
+              <div id="tgStatus" style="margin-top:8px;font-size:11px;font-family:'Space Mono',monospace;line-height:1.8"></div>
             </div>
 
             <div class="config-field">
@@ -3938,6 +3940,7 @@ function saveTgSettings() {
   localStorage.setItem('tg_token',   token);
   localStorage.setItem('tg_chat_id', chatId);
   localStorage.setItem('tg_enabled', enabled ? '1' : '0');
+  updateTgStatusPanel();
   // Show brief save confirmation
   var btn = document.querySelector('[onclick="testTelegram()"]');
   if (btn && token && chatId) {
@@ -3951,9 +3954,42 @@ function loadTgSettings() {
   var tEl = document.getElementById('tgBotToken');
   var cEl = document.getElementById('tgChatId');
   var eEl = document.getElementById('tgEnabled');
-  if (tEl) tEl.value   = localStorage.getItem('tg_token')   || '';
-  if (cEl) cEl.value   = localStorage.getItem('tg_chat_id') || '';
-  if (eEl) eEl.checked = localStorage.getItem('tg_enabled') === '1';
+  var token  = localStorage.getItem('tg_token')   || '';
+  var chatId = localStorage.getItem('tg_chat_id') || '';
+  var enabled = localStorage.getItem('tg_enabled') === '1';
+  if (tEl) tEl.value   = token;
+  if (cEl) cEl.value   = chatId;
+  if (eEl) eEl.checked = enabled;
+  updateTgStatusPanel();
+}
+
+function updateTgStatusPanel() {
+  var el = document.getElementById('tgStatus');
+  if (!el) return;
+  var token   = localStorage.getItem('tg_token')   || '';
+  var chatId  = localStorage.getItem('tg_chat_id') || '';
+  var enabled = localStorage.getItem('tg_enabled') === '1';
+  // Count throttle keys
+  var throttled = 0;
+  for (var i = 0; i < localStorage.length; i++) {
+    if (localStorage.key(i).startsWith('tg_sent_')) throttled++;
+  }
+  var lines = [];
+  lines.push((enabled ? '<span style="color:var(--accent)">✅ Enabled</span>' : '<span style="color:#ff4d6d">❌ Disabled — tick checkbox above</span>'));
+  lines.push(token ? '<span style="color:var(--accent)">✅ Token saved (' + token.slice(0,8) + '...)</span>' : '<span style="color:#ff4d6d">❌ No token saved</span>');
+  lines.push(chatId ? '<span style="color:var(--accent)">✅ Chat ID: ' + chatId + '</span>' : '<span style="color:#ff4d6d">❌ No Chat ID saved</span>');
+  lines.push(throttled > 0 ? '<span style="color:#ffd60a">⏳ ' + throttled + ' product(s) throttled (30min cooldown) — click Reset Throttle to clear</span>' : '<span style="color:var(--muted)">No throttle blocks active</span>');
+  el.innerHTML = lines.join('<br>');
+}
+
+function clearTgThrottle() {
+  var keys = [];
+  for (var i = 0; i < localStorage.length; i++) {
+    if (localStorage.key(i).startsWith('tg_sent_')) keys.push(localStorage.key(i));
+  }
+  keys.forEach(function(k) { localStorage.removeItem(k); });
+  updateTgStatusPanel();
+  log('info', '🔄 Telegram throttle cleared — ' + keys.length + ' cooldown(s) removed');
 }
 
 function updateMinProfitDisplay(val) {
