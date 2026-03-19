@@ -1625,8 +1625,12 @@ function handleQueueProgress(d) {
       pending_price: prod.pending_price || null
     });
 
-    // ── WHATSAPP ALERT on BuyBox loss ────────────────────────────────────
-    if (status === 'lose') sendTelegramAlert(prod, price, seller);
+    // ── Telegram alerts ──────────────────────────────────────────────────
+    if (status === 'lose') {
+      sendTelegramAlert(prod, price, seller, 'lose');
+    } else if (status === 'win' && prod.min_price > 0 && price < prod.min_price) {
+      sendTelegramAlert(prod, price, seller, 'loss');
+    }
 
     log(isWin ? 'ok' : 'err',
       (isWin ? '✓ WIN ' : '✗ LOSE') + ' | R' + price.toFixed(2) + ' | ' + seller.slice(0,30) +
@@ -3968,28 +3972,56 @@ function loadMinProfitSetting() {
 }
 
 var _tgLastAlert = {};
-function sendTelegramAlert(prod, buyboxPrice, seller) {
+function sendTelegramAlert(prod, buyboxPrice, seller, alertType) {
   var token  = localStorage.getItem('tg_token')   || '';
   var chatId = localStorage.getItem('tg_chat_id') || '';
   var enabled = localStorage.getItem('tg_enabled') === '1';
-  if (!enabled || !token || !chatId) return;
-  // Throttle: max 1 alert per product per 30 min
-  var key = prod.fsn || prod.url;
+
+  if (!enabled) { log('info', '📵 Telegram: alerts disabled — tick Enable alerts in Scraper tab'); return; }
+  if (!token)   { log('info', '📵 Telegram: no Bot Token saved'); return; }
+  if (!chatId)  { log('info', '📵 Telegram: no Chat ID saved'); return; }
+
+  // Throttle: max 1 alert per product per 30 min — stored in localStorage so survives refresh
+  var key = 'tg_sent_' + (prod.fsn || prod.url || '');
+  var lastSent = parseInt(localStorage.getItem(key) || '0');
   var now = Date.now();
-  if (_tgLastAlert[key] && now - _tgLastAlert[key] < 30 * 60 * 1000) return;
-  _tgLastAlert[key] = now;
+  if (now - lastSent < 30 * 60 * 1000) {
+    log('info', '📵 Telegram throttled (30min cooldown): ' + String(prod.title||'').slice(0,30));
+    return;
+  }
+  localStorage.setItem(key, String(now));
+
+  var type = alertType || 'lose';
+  var emoji = type === 'loss' ? '⚠️' : '🔴';
+  var header = type === 'loss' ? '*Winning at a LOSS!*' : '*BuyBox LOST!*';
+
   var msg =
-    '🔴 *BuyBox LOST!*\n' +
+    emoji + ' ' + header + '\n' +
     (prod.title || prod.url || '').slice(0, 60) + '\n\n' +
-    '🏷 Competitor: ' + seller + '\n' +
-    '💸 Their price: R' + buyboxPrice.toFixed(2) + '\n' +
-    (prod.pending_price ? '✅ Auto-repriced to: R' + prod.pending_price + '\n' : '') +
+    (type === 'loss'
+      ? '💸 My price: R' + buyboxPrice.toFixed(2) + ' (below min floor)\n'
+      : '🏷 Competitor: ' + seller + '\n' + '💸 Their price: R' + buyboxPrice.toFixed(2) + '\n') +
+    (prod.pending_price ? '✅ Will reprice to: R' + prod.pending_price + '\n' : '') +
     '🕐 ' + new Date().toLocaleTimeString('en-ZA');
+
+  log('info', '📤 Sending Telegram alert: ' + String(prod.title||prod.fsn||'').slice(0,30));
+
   fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ chat_id: chatId, text: msg, parse_mode: 'Markdown' })
-  }).catch(function(){});
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(j) {
+    if (j.ok) {
+      log('ok', '✅ Telegram alert sent: ' + String(prod.title||prod.fsn||'').slice(0,30));
+    } else {
+      log('err', '❌ Telegram failed: ' + (j.description || JSON.stringify(j)));
+    }
+  })
+  .catch(function(e) {
+    log('err', '❌ Telegram error: ' + e.message);
+  });
 }
 
 function testTelegram() {
