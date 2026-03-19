@@ -4062,18 +4062,19 @@ function sendTelegramAlert(prod, buyboxPrice, seller, alertType, myPrice) {
   var gap = (myPrice && buyboxPrice) ? (myPrice - buyboxPrice) : null;
 
   var msg;
+  var ref = prod.sku ? 'SKU: ' + prod.sku : (prod.fsn ? 'FSN: ' + prod.fsn : '');
   if (type === 'loss') {
-    // Winning but at a loss
     msg = '⚠️ *Winning at a LOSS!*\n' +
-      (prod.title || '').slice(0, 60) + '\n\n' +
+      (prod.title || '').slice(0, 55) + '\n' +
+      (ref ? '🔖 ' + ref + '\n' : '') + '\n' +
       '💰 My price: R' + (myPrice ? myPrice.toFixed(2) : '?') + '\n' +
       '🔻 Min floor: R' + (prod.min_price ? prod.min_price.toFixed(2) : '?') + '\n' +
       (prod.pending_price ? '✅ Will raise to: R' + prod.pending_price + '\n' : '') +
       '🕐 ' + new Date().toLocaleTimeString('en-ZA');
   } else {
-    // Lost BuyBox
     msg = '🔴 *BuyBox LOST!*\n' +
-      (prod.title || '').slice(0, 60) + '\n\n' +
+      (prod.title || '').slice(0, 55) + '\n' +
+      (ref ? '🔖 ' + ref + '\n' : '') + '\n' +
       '💰 My price:    R' + (myPrice ? myPrice.toFixed(2) : '?') + '\n' +
       '🏷 Their price: R' + buyboxPrice.toFixed(2) + '\n' +
       (gap !== null ? '📉 Gap: R' + Math.abs(gap).toFixed(2) + (gap > 0 ? ' above them' : ' below them') + '\n' : '') +
