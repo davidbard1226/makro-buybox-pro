@@ -332,16 +332,32 @@ function registerSearchTab(tabId, item) {
     if (activeTabs.has(tabId)) {
       activeTabs.delete(tabId);
       catSearchDone++;
-      notifyDashboard({ action: 'cat_search_progress', done: catSearchDone, total: catSearchTotal, found: Object.keys(catSearchResults).length });
+      notifyDashboard({ action: 'cat_search_progress', done: catSearchDone, total: catSearchTotal, found: Object.keys(catSearchResults).length, lastSku: item.sku, lastUrl: '' });
       if (active && catSearchQueue.length > 0) {
         setTimeout(function() { loadNextSearchInTab(tabId); }, humanDelay());
       } else if (active && catSearchQueue.length === 0 && activeTabs.size === 0) {
         finishCatSearch();
       }
     }
-  }, 18000);
+  }, 20000);  // 20s timeout — enough for slow Makro pages + 6s retry in search_content.js
 
   activeTabs.set(tabId, { url: 'https://www.makro.co.za/search?q=' + encodeURIComponent(item.query), sku: item.sku, query: item.query, timeoutId });
+
+  // Watch for challenge pages
+  chrome.tabs.onUpdated.addListener(function onUpdated(tId, info) {
+    if (tId !== tabId) return;
+    if (info.url && isChallengeUrl(info.url)) {
+      challengePaused = true;
+      challengeTabId  = tabId;
+      const slot = activeTabs.get(tabId);
+      if (slot) clearTimeout(slot.timeoutId);
+      notifyDashboard({ action: 'challenge_detected', tabId: tabId, url: info.url });
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+    }
+    if (info.status === 'complete') {
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+    }
+  });
 }
 
 // ── CAT SEARCH: LOAD NEXT ─────────────────────────────────────────────────
