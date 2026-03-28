@@ -180,6 +180,35 @@
       });
     }
 
+    if (ev.data.type === 'CAT_SEARCH_START') {
+      safe(function() {
+        chrome.runtime.sendMessage({
+          action: 'cat_search_start',
+          items: ev.data.items,
+          concurrency: ev.data.concurrency || 2
+        }, function(r) {
+          if (chrome.runtime.lastError) return;
+          window.postMessage({ type: 'CAT_SEARCH_STARTED', total: r && r.total }, '*');
+        });
+      });
+    }
+
+    if (ev.data.type === 'CAT_SEARCH_STOP') {
+      safe(function() {
+        chrome.runtime.sendMessage({ action: 'cat_search_stop' }, function(r) {
+          window.postMessage({ type: 'CAT_SEARCH_STOPPED', found: r && r.found }, '*');
+        });
+      });
+    }
+
+    if (ev.data.type === 'CAT_GET_RESULTS') {
+      safe(function() {
+        chrome.runtime.sendMessage({ action: 'cat_search_get_results' }, function(r) {
+          window.postMessage({ type: 'CAT_RESULTS', results: r && r.results }, '*');
+        });
+      });
+    }
+
     if (ev.data.type === 'REQUEST_EXTENSION') announce();
   });
 
@@ -197,6 +226,15 @@
       }
       if (msg.action === 'challenge_detected') {
         window.postMessage({ type: 'CHALLENGE_DETECTED', tabId: msg.tabId, url: msg.url }, '*');
+      }
+      // Catalogue search events
+      if (msg.action === 'cat_search_progress') {
+        window.postMessage({ type: 'CAT_SEARCH_PROGRESS',
+          done: msg.done, total: msg.total, found: msg.found,
+          lastSku: msg.lastSku, lastUrl: msg.lastUrl }, '*');
+      }
+      if (msg.action === 'cat_search_finished') {
+        window.postMessage({ type: 'CAT_SEARCH_FINISHED', done: msg.done, total: msg.total, found: msg.found }, '*');
       }
     });
   });

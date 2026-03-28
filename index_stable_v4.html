@@ -538,6 +538,7 @@
     <button class="tab-btn" onclick="switchTab('pricer')">💰 Price Updater</button>
     <button class="tab-btn" onclick="switchTab('analytics')">📈 Analytics</button>
     <button class="tab-btn" onclick="switchTab('log')">📋 Price Log</button>
+    <button class="tab-btn" onclick="switchTab('intelligence')">🕵️ Intelligence</button>
   </nav>
 
   <!-- MAIN -->
@@ -673,6 +674,8 @@
           <option value="no-sku">⚠ No SKU matched</option>
           <option value="no-cost">⚠ No Cost price</option>
           <option value="pending">🔄 Pending reprice</option>
+          <option value="base-below-max">⚠ Base Price below Max Price</option>
+          <option value="win-at-loss">⚠ Winning at a Loss</option>
         </select>
         <select class="filter-select" id="prodPageSize" onchange="prodPage=1;renderProducts()" title="Products per page">
           <option value="25">25 / page</option>
@@ -706,6 +709,7 @@
               <th>Product</th>
               <th>FSN</th>
               <th>SKU</th>
+              <th title="RRP / Base Price from your S_listing">Base Price</th>
               <th>My Price</th>
               <th>Stock</th>
               <th>Buy Box Price</th>
@@ -833,8 +837,10 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
 
             <div class="config-field">
               <label>✈️ Telegram Alerts</label>
-              <input class="config-input" id="tgBotToken" placeholder="Bot Token — from @BotFather" style="margin-bottom:6px">
-              <input class="config-input" id="tgChatId" placeholder="Your Chat ID" style="margin-bottom:6px">
+              <input class="config-input" id="tgBotToken" placeholder="Bot Token — from @BotFather" style="margin-bottom:6px"
+                oninput="saveTgSettings()" onchange="saveTgSettings()">
+              <input class="config-input" id="tgChatId" placeholder="Your Chat ID" style="margin-bottom:6px"
+                oninput="saveTgSettings()" onchange="saveTgSettings()">
               <div style="font-size:10px;color:var(--muted);line-height:1.8;margin-bottom:6px">
                 <b style="color:var(--text)">Setup (2 min):</b><br>
                 1. Telegram → search <b>@BotFather</b> → send <code>/newbot</code> → copy <b>Bot Token</b><br>
@@ -844,10 +850,12 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
               </div>
               <div style="display:flex;gap:8px;align-items:center">
                 <label style="font-size:11px;display:flex;align-items:center;gap:4px;cursor:pointer;color:var(--muted)">
-                  <input type="checkbox" id="tgEnabled" style="width:14px;height:14px"> Enable alerts
+                  <input type="checkbox" id="tgEnabled" style="width:14px;height:14px" onchange="saveTgSettings()"> Enable alerts
                 </label>
                 <button class="action-btn" style="font-size:10px;color:var(--accent)" onclick="testTelegram()">📨 Test</button>
+                <button class="action-btn" style="font-size:10px;color:#818cf8" onclick="clearTgThrottle()">🔄 Reset Throttle</button>
               </div>
+              <div id="tgStatus" style="margin-top:8px;font-size:11px;font-family:'Space Mono',monospace;line-height:1.8"></div>
             </div>
 
             <div class="config-field">
@@ -1063,9 +1071,6 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
       </div>
     </div><!-- /analytics -->
 
-  </main>
-</div>
-
     <!-- ========== PRICE LOG TAB ========== -->
     <div class="tab-content" id="tab-log">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
@@ -1079,6 +1084,65 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
         <div id="priceLogTable" style="overflow-x:auto;font-size:12px"></div>
       </div>
     </div><!-- /log -->
+
+    <!-- ========== INTELLIGENCE TAB ========== -->
+    <div class="tab-content" id="tab-intelligence">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+        <div class="card-title" style="margin:0">🕵️ COMPETITOR INTELLIGENCE</div>
+        <span style="font-size:12px;color:var(--muted)">Analysed from your scrape history</span>
+        <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+          <select id="intelDays" onchange="renderIntelligence()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:12px;padding:6px 10px;border-radius:6px;outline:none">
+            <option value="1">Last 24h</option>
+            <option value="7" selected>Last 7 days</option>
+            <option value="14">Last 14 days</option>
+            <option value="30">Last 30 days</option>
+          </select>
+          <button class="btn-secondary" style="width:auto;padding:7px 14px;font-size:12px;color:#818cf8;border-color:#818cf844" onclick="sendDailySummaryNow()">📤 Send Daily Summary Now</button>
+          <button class="btn-secondary" style="width:auto;padding:7px 14px;font-size:12px" onclick="renderIntelligence()">🔄 Refresh</button>
+        </div>
+      </div>
+
+      <!-- Daily Summary Schedule -->
+      <div class="card" style="margin-bottom:16px;padding:14px 20px">
+        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+          <div style="font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">📅 Daily Summary Schedule</div>
+          <label style="font-size:12px;color:var(--text);display:flex;align-items:center;gap:6px">
+            <input type="checkbox" id="dailySummaryEnabled" onchange="saveDailySummarySettings()" style="width:14px;height:14px"> Enable daily Telegram summary
+          </label>
+          <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px">
+            Send at:
+            <input type="time" id="dailySummaryTime" value="08:00" onchange="saveDailySummarySettings()"
+              style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:12px;padding:4px 8px;border-radius:5px;outline:none">
+          </label>
+          <div id="dailySummaryStatus" style="font-size:11px;color:var(--accent);font-family:'Space Mono',monospace"></div>
+        </div>
+      </div>
+
+      <!-- Stats row -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px" id="intelStatsRow"></div>
+
+      <!-- Main grid -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+        <div class="card">
+          <div class="card-title" style="margin-bottom:14px">🏆 Most Active Competitors</div>
+          <div id="intelCompetitors" style="font-size:12px"></div>
+        </div>
+        <div class="card">
+          <div class="card-title" style="margin-bottom:14px">🔥 Most Volatile Products (Most BuyBox Changes)</div>
+          <div id="intelVolatile" style="font-size:12px"></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-title" style="margin-bottom:14px">📊 Per-FSN Competitor Breakdown — Who's Fighting You Most</div>
+        <div id="intelFsnTable" style="overflow-x:auto;font-size:12px"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title" style="margin-bottom:14px">📉 Price Movement Log — All Competitor Price Changes</div>
+        <div id="intelPriceLog" style="overflow-x:auto;font-size:12px;max-height:400px;overflow-y:auto"></div>
+      </div>
+    </div><!-- /intelligence -->
 
   </main>
 </div>
@@ -1406,6 +1470,13 @@ window.addEventListener('message', function(ev) {
     return;
   }
 
+  if (d.type === 'CHALLENGE_DETECTED') {
+    // Makro bot challenge detected — pause scraping and show alert
+    log('err', '🤖 BOT CHALLENGE DETECTED — Makro asked "Are you human?". Solve it in the scraper window, then click Resume.');
+    showChallengeAlert();
+    return;
+  }
+
   if (d.type === 'SCRAPER_LOG') {
     log('info', d.msg || '');
     return;
@@ -1442,7 +1513,7 @@ function setExtStatus(online) {
 // TABS
 // ============================================================
 function switchTab(name) {
-  const names = ['dashboard','products','scraper','pricer','analytics','log'];
+  const names = ['dashboard','products','scraper','pricer','analytics','log','intelligence'];
   document.querySelectorAll('.tab-btn').forEach((b,i) => {
     b.classList.toggle('active', names[i] === name);
   });
@@ -1454,6 +1525,7 @@ function switchTab(name) {
   if (name === 'scraper')   syncSellerConfig();
   if (name === 'pricer')    initPricer();
   if (name === 'log')       renderPriceLog();
+  if (name === 'intelligence') renderIntelligence();
 }
 
 function syncSellerConfig() {
@@ -1623,12 +1695,18 @@ function handleQueueProgress(d) {
       pending_price: prod.pending_price || null
     });
 
-    // ── WHATSAPP ALERT on BuyBox loss ────────────────────────────────────
-    if (status === 'lose') sendTelegramAlert(prod, price, seller);
+    // ── Telegram alerts ──────────────────────────────────────────────────
+    var myCurrentPrice = listingMatch ? listingMatch.myPrice : null;
+    if (status === 'lose') {
+      sendTelegramAlert(prod, price, seller, 'lose', myCurrentPrice);
+    } else if (status === 'win' && prod.min_price > 0 && price < prod.min_price) {
+      sendTelegramAlert(prod, price, seller, 'loss', myCurrentPrice);
+    }
 
     log(isWin ? 'ok' : 'err',
       (isWin ? '✓ WIN ' : '✗ LOSE') + ' | R' + price.toFixed(2) + ' | ' + seller.slice(0,30) +
-      ' | ' + (p.title||'').slice(0,35));
+      ' | ' + (p.title||'').slice(0,35) +
+      (isWin && p.min_price > 0 && price < p.min_price ? ' ⚠ SELLING AT LOSS (min R' + p.min_price + ')' : ''));
   }
 
   if (scrapeIdx >= scrapeQueue.length) finishScraping();
@@ -1664,6 +1742,7 @@ function updateProgress(current, total) {
 
 function log(type, msg) {
   const el = document.getElementById('scrapeLog');
+  if (!el) { console.log('[' + type + ']', msg); return; }  // null guard — scrapeLog only exists on Scraper tab
   const now = new Date().toTimeString().slice(0,8);
   const line = document.createElement('div');
   line.className = 'log-line';
@@ -1673,7 +1752,8 @@ function log(type, msg) {
 }
 
 function clearLog() {
-  document.getElementById('scrapeLog').innerHTML = '';
+  const el = document.getElementById('scrapeLog');
+  if (el) el.innerHTML = '';
 }
 
 // ============================================================
@@ -1738,14 +1818,50 @@ function roundPrice(p) {
 // ── AUTO REPRICE ──────────────────────────────────────────────────────────
 // Called after every scrape. Beats competitor by R1, never below min_price.
 // Updates the listing's myPrice and flags product as pending upload.
+// SAFETY: will NOT reprice if cost_price is missing — can't know the floor without it.
 function autoReprice(prod) {
   if (!prod) return;
   var buybox = prod.buybox_price;
   if (!buybox || buybox <= 0) return;         // no buybox data yet
-  if (prod.status === 'win') return;           // already winning — don't touch price
+  if (prod.status === 'win') {
+    // Even when winning, check if we're selling below min price (at a loss)
+    // If so, flag it as pending so generatePriceUpdate raises it to the floor
+    if (prod.cost_price > 0) {
+      var winMin = prod.min_price || calcMinViablePrice(prod.cost_price);
+      var listings = getListings();
+      var winListing = listings.find(function(l) { return l.fsn === prod.fsn; });
+      var winMyPrice = winListing ? winListing.myPrice : null;
+      if (winMyPrice && winMin && winMyPrice < winMin) {
+        log('info', '⚠ WIN at LOSS: ' + String(prod.title || prod.fsn || '').slice(0,35) +
+          ' | R' + winMyPrice + ' < min R' + winMin + ' — flagged for price raise');
+        prod.pending_price   = winMin;
+        prod.pending_updated = new Date().toISOString();
+        saveProducts();
+        updatePendingBadge();
+      }
+    }
+    return;
+  }
+
+  // ── SAFETY GUARD: never auto-reprice without a cost price ────────────────
+  if (!(prod.cost_price > 0)) {
+    log('info', '⚠ Skipped auto-reprice (no cost): ' + String(prod.title || prod.fsn || '').slice(0, 40));
+    return;
+  }
 
   var minPrice = prod.min_price;
-  if (!minPrice || minPrice <= 0) return;      // no min price set — can't reprice safely
+
+  // Always recalculate min from cost — ensures min is never stale
+  var freshMin = calcMinViablePrice(prod.cost_price);
+  if (freshMin && freshMin > 0) {
+    if (!minPrice || minPrice < freshMin) {
+      minPrice = freshMin;
+      prod.min_price = freshMin;
+      prod.max_price = Math.round(freshMin * 1.20);
+    }
+  }
+
+  if (!minPrice || minPrice <= 0) return;      // no min price — can't reprice safely
 
   var maxPrice = prod.max_price || null;
 
@@ -1792,6 +1908,29 @@ function updatePendingBadge() {
 }
 
 
+
+function showChallengeAlert() {
+  var existing = document.getElementById('challengeBanner');
+  if (existing) return;
+  var banner = document.createElement('div');
+  banner.id = 'challengeBanner';
+  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#1a0a00;border-bottom:2px solid #ff9500;padding:14px 24px;display:flex;align-items:center;gap:16px;font-family:Space Mono,monospace;font-size:13px;color:#ff9500;box-shadow:0 4px 20px rgba(255,149,0,0.3)';
+  banner.innerHTML =
+    '<span style="font-size:22px">🤖</span>' +
+    '<div style="flex:1">' +
+      '<b style="color:#ffd60a">Makro Bot Challenge Detected!</b><br>' +
+      '<span style="font-size:11px;color:#ff9500">Switch to the scraper window and solve the "Are you human?" challenge. Once done, click Resume.</span>' +
+    '</div>' +
+    '<button onclick="resumeAfterChallenge()" style="background:#ff9500;color:#000;border:none;border-radius:6px;padding:10px 20px;font-family:Space Mono,monospace;font-size:12px;font-weight:700;cursor:pointer">▶ Resume Scraping</button>' +
+    '<button onclick="document.getElementById(\'challengeBanner\').remove()" style="background:none;border:1px solid #ff9500;color:#ff9500;border-radius:6px;padding:10px 16px;font-family:Space Mono,monospace;font-size:12px;cursor:pointer;margin-left:4px">✕</button>';
+  document.body.prepend(banner);
+}
+
+function resumeAfterChallenge() {
+  document.getElementById('challengeBanner') && document.getElementById('challengeBanner').remove();
+  window.postMessage({ type: 'RESUME_AFTER_CHALLENGE' }, '*');
+  log('ok', '▶ Resumed — continuing scrape queue...');
+}
 
 function shortUrl(url) {
   try { return new URL(url).pathname.split('/').filter(Boolean).pop() || url; } catch(e) { return url; }
@@ -2064,6 +2203,18 @@ function renderProducts() {
     if (filter === 'no-sku' && p.sku) return false;
     if (filter === 'no-cost' && p.cost_price > 0) return false;
     if (filter === 'pending' && p.pending_price == null) return false;
+    if (filter === 'base-below-max') {
+      var lBP = listingsMap[p.fsn];
+      var bp = lBP && lBP.basePrice > 0 ? lBP.basePrice : 0;
+      var mx = p.max_price || 0;
+      if (!bp || !mx || bp >= mx) return false;
+    }
+    if (filter === 'win-at-loss') {
+      var lWL = listingsMap[p.fsn];
+      if (p.status !== 'win') return false;
+      if (!lWL || !lWL.myPrice) return false;
+      if (!(p.min_price > 0) || lWL.myPrice >= p.min_price) return false;
+    }
     const titleOk = (p.title||'').toLowerCase().includes(search);
     const sellerOk = (p.seller||'').toLowerCase().includes(search);
     const fsnOk = (p.fsn||'').toLowerCase().includes(search);
@@ -2118,13 +2269,16 @@ function renderProducts() {
     const listing = listingsMap[p.fsn] || null;
     const myPrice = listing ? `<span style="color:var(--accent3);font-family:'Space Mono',monospace;font-size:12px">R ${listing.myPrice.toFixed(2)}</span>` : '<span style="color:var(--muted);font-size:11px">—</span>';
     const myStock = listing ? `<span style="color:${listing.myStock > 0 ? 'var(--accent)' : '#ff9500'};font-size:12px">${listing.myStock}</span>` : '<span style="color:var(--muted);font-size:11px">—</span>';
+    // Warn if winning but selling below min price (at a loss)
+    const winAtLoss = p.status === 'win' && listing && p.min_price > 0 && listing.myPrice < p.min_price;
     let priceIndicator = '';
     if (listing && p.buybox_price > 0) {
       if (listing.myPrice > p.buybox_price) priceIndicator = ' <span style="color:#ff9500;font-size:10px">▲above</span>';
       else if (listing.myPrice < p.buybox_price) priceIndicator = ' <span style="color:var(--accent);font-size:10px">▼below</span>';
       else priceIndicator = ' <span style="color:var(--muted);font-size:10px">=match</span>';
     }
-    return `<tr>
+    if (winAtLoss) priceIndicator += ' <span style="color:#ff4d6d;font-size:10px;font-weight:700" title="Winning but selling below min price — at a loss! Will be raised on next price update.">⚠ LOSS</span>';
+    return `<tr style="${winAtLoss ? 'background:rgba(255,77,109,0.04)' : ''}">
       <td><input type="checkbox" class="row-check" data-idx="${realIdx}"></td>
       <td>
         <div class="prod-title">${escHtml((p.title||'Unknown').slice(0,55))}</div>
@@ -2146,6 +2300,23 @@ function renderProducts() {
           ? `<span style="font-family:'Space Mono',monospace;font-size:12px;color:#818cf8;font-weight:600">${escHtml(p.sku)}</span>
              <button class="action-btn" style="font-size:9px;padding:1px 5px;margin-left:3px" onclick="openEditModal(${realIdx})" title="Edit SKU/Cost/Min">✎</button>`
           : `<button class="action-btn" style="font-size:10px;color:#818cf8;border-color:#818cf844" onclick="openEditModal(${realIdx})">+ Add SKU</button>`}
+      </td>
+      <td>
+        ${(() => {
+          var bp = listing && listing.basePrice > 0 ? listing.basePrice : 0;
+          var mp = p.max_price || 0;
+          var warn = bp > 0 && mp > 0 && bp < mp;
+          return `<div style="display:flex;flex-direction:column;gap:2px">
+            <input type="number" step="1" min="0"
+              value="${bp > 0 ? bp.toFixed(0) : ''}"
+              placeholder="—"
+              title="Base Price (RRP) — price will never go above this. Click to edit."
+              style="width:75px;background:var(--surface2);border:1px solid ${warn ? '#ff4d6d' : 'var(--border)'};color:#a78bfa;font-family:'Space Mono',monospace;font-size:11px;padding:3px 5px;border-radius:4px;text-align:right"
+              onchange="saveListingField('${p.fsn}','basePrice',this.value)"
+            >
+            ${warn ? `<span style="font-size:9px;color:#ff4d6d" title="⚠ Base Price R${bp} is below Max Price R${mp} — raise Base Price or lower Max Price">⚠ below max</span>` : ''}
+          </div>`;
+        })()}
       </td>
       <td>${myPrice}${priceIndicator}</td>
       <td>${myStock}</td>
@@ -2346,11 +2517,26 @@ function importListings(input) {
         const fsn      = String(row[4]  || '').trim();
         const sku      = String(row[1]  || '').trim();
         const title    = String(row[0]  || '').trim();
-        const myPrice  = parseFloat(row[9])  || 0;
-        const myStock  = parseInt(row[12])   || 0;
-        const status   = String(row[6]  || '').trim();
-        if (fsn) listings.push({ fsn, sku, title, myPrice, myStock, status });
+        const myPrice   = parseFloat(row[9])  || 0;
+        const basePrice = parseFloat(row[8])  || 0;
+        const myStock   = parseInt(row[12])   || 0;
+        const status    = String(row[6]  || '').trim();
+        if (fsn) listings.push({ fsn, sku, title, myPrice, basePrice, myStock, status });
       }
+
+      // ── AUTO-FIX: if Base Price < Max Price, raise Base Price to equal Max Price ──
+      // Base Price should never be lower than Max Price or the repricing ceiling is broken.
+      var basePriceFixed = 0;
+      const productMaxMap = {};
+      state.products.forEach(function(p) { if (p.fsn && p.max_price > 0) productMaxMap[p.fsn] = p.max_price; });
+      listings.forEach(function(l) {
+        var maxP = productMaxMap[l.fsn] || 0;
+        if (maxP > 0 && l.basePrice > 0 && l.basePrice < maxP) {
+          l.basePrice = maxP;
+          basePriceFixed++;
+        }
+      });
+
       localStorage.setItem('makro_listings', JSON.stringify(listings));
 
       // ── Stamp real SKU onto matched products via FSN ──────────────────────
@@ -2368,8 +2554,27 @@ function importListings(input) {
       });
       if (skuCount > 0) saveProducts();
 
-      alert('✅ Imported ' + listings.length + ' listings!' + (skuCount > 0 ? ' Matched ' + skuCount + ' SKU(s) to products.' : ''));
+      // Auto-refresh everything immediately — no blocking alert
       renderProducts();
+      renderDashboard();
+      updateProductCount();
+      // Only call initPricer if the pricer tab is currently active (element exists)
+      if (document.getElementById('pricerListingsStatus')) initPricer();
+
+      // Show non-blocking confirmation in the UI
+      var msg = '✅ Imported ' + listings.length + ' listings' +
+        (skuCount > 0 ? ', matched ' + skuCount + ' SKU(s)' : '') +
+        (basePriceFixed > 0 ? ', auto-raised ' + basePriceFixed + ' Base Price(s) to Max Price' : '') + '.';
+      var banner = document.getElementById('importBanner');
+      if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'importBanner';
+        banner.style.cssText = 'position:fixed;bottom:24px;right:24px;background:#111418;border:1px solid #00e5a0;color:#00e5a0;font-family:Space Mono,monospace;font-size:12px;padding:12px 20px;border-radius:8px;z-index:999;box-shadow:0 4px 20px rgba(0,229,160,.2)';
+        document.body.appendChild(banner);
+      }
+      banner.textContent = msg;
+      banner.style.display = 'block';
+      setTimeout(function(){ banner.style.display = 'none'; }, 3000);
     } catch(err) {
       alert('❌ Error: ' + err.message);
     }
@@ -2708,6 +2913,29 @@ function setProductPriceSilent(idx, field, val) {
     state.products[idx][field] = v;
   }
   saveProducts();
+}
+
+// Save a field directly on a listing entry (e.g. basePrice) — listings live in localStorage separately from products
+function saveListingField(fsn, field, val) {
+  if (!fsn) return;
+  var listings = getListings();
+  var entry = listings.find(function(l) { return l.fsn === fsn; });
+  if (!entry) return;
+  var v = val === '' ? 0 : parseFloat(val);
+  if (isNaN(v)) return;
+
+  // Auto-raise Base Price to Max Price if entered value is lower
+  if (field === 'basePrice') {
+    var prod = state.products.find(function(p) { return p.fsn === fsn; });
+    var maxP = prod && prod.max_price > 0 ? prod.max_price : 0;
+    if (maxP > 0 && v > 0 && v < maxP) {
+      v = maxP;  // snap up to max price automatically
+    }
+  }
+
+  entry[field] = v;
+  localStorage.setItem('makro_listings', JSON.stringify(listings));
+  renderProducts();
 }
 
 // Legacy wrapper — kept for any remaining calls
@@ -3397,13 +3625,20 @@ document.getElementById('sellerNameConfig').addEventListener('change', function(
 function initPricer() {
   const listings = getListings();
   const el = document.getElementById('pricerListingsStatus');
+  const genBtn = document.getElementById('generateBtn');
+  const hasRaw = !!localStorage.getItem('makro_listings_raw');
   updatePendingBadge();
+  if (!el) return;  // null guard — tab not rendered yet
   if (listings.length === 0) {
     el.innerHTML = '⚠️ <span style="color:#ff9500">No listings imported yet.</span> Go to <b>Products tab → 📂 Import Listings</b> first.';
-    document.getElementById('generateBtn').disabled = true;
+    if (genBtn) genBtn.disabled = true;
+  } else if (!hasRaw) {
+    el.innerHTML = '⚠️ <span style="color:#ff9500"><b>' + listings.length + ' listings loaded but original XLS file is missing from this browser.</b></span><br>' +
+      '<span style="color:var(--muted);font-size:12px">Re-import your S_listing XLS file on this PC (Products tab → 📂 Import Listings) before generating a price update file.</span>';
+    if (genBtn) genBtn.disabled = false;
   } else {
     el.innerHTML = '✅ <span style="color:var(--accent)">' + listings.length + ' listings loaded.</span> Ready to generate.';
-    document.getElementById('generateBtn').disabled = false;
+    if (genBtn) genBtn.disabled = false;
     buildPricerPreview();
   }
 }
@@ -3446,6 +3681,7 @@ function calcNewPrice(myPrice, buyboxPrice, strategy, beatBy, floorPct, minPrice
 }
 
 function buildPricerPreview() {
+  if (!document.getElementById('pricerStrategy')) return;  // pricer tab not active — bail out silently
   const listings    = getListings();
   const strategy    = document.getElementById('pricerStrategy').value;
   const beatBy      = document.getElementById('pricerBeatBy').value;
@@ -3577,6 +3813,7 @@ function generatePriceUpdate() {
   const priceMap = {};  // fsn → { newPrice, sku, title, oldPrice }
   let updateCount = 0;
   let skippedNoCost = 0;
+  let skippedClamped = 0;
   listings.forEach(function(l) {
     const scraped = scrapedMap[l.fsn];
     if (!scraped) return;
@@ -3588,20 +3825,59 @@ function generatePriceUpdate() {
       return;
     }
 
+    // ── ABSOLUTE HARD FLOOR — applied to EVERY price path, no exceptions ───
+    var hardFloor = scraped.min_price;   // guaranteed > 0 (checked above)
+
+    // ── BASE PRICE (RRP) CEILING — never write a price above Makro's Base Price ───
+    // Base Price comes from col I of the S_listing XLS. It is the RRP ceiling on Makro.
+    // If our calculated price exceeds it, clamp down to basePrice.
+    // If basePrice itself is below hardFloor, that is a data problem — skip with warning.
+    var basePrice = l.basePrice && l.basePrice > 0 ? l.basePrice : null;
+    if (basePrice && basePrice < hardFloor) {
+      // Base Price is below min price — product is unprofitable at any valid price, skip it
+      skippedNoCost++;
+      return;
+    }
+    // Effective ceiling = lower of (basePrice, product maxPrice)
+    var effectiveCeiling = basePrice
+      ? (scraped.max_price > 0 ? Math.min(basePrice, scraped.max_price) : basePrice)
+      : (scraped.max_price > 0 ? scraped.max_price : null);
+
+    // Helper: apply floor + ceiling to any candidate price
+    function applyGuards(price) {
+      if (price < hardFloor) price = hardFloor;
+      if (effectiveCeiling && price > effectiveCeiling) price = effectiveCeiling;
+      return price;
+    }
+
     // Priority 1: auto-repriced price (set by autoReprice after scrape)
     if (scraped.pending_price != null) {
-      priceMap[l.fsn] = { newPrice: scraped.pending_price, sku: l.sku, title: l.title, oldPrice: l.myPrice };
+      var safePrice1 = applyGuards(scraped.pending_price);
+      priceMap[l.fsn] = { newPrice: safePrice1, sku: l.sku, title: l.title, oldPrice: l.myPrice,
+        hitFloor: safePrice1 === hardFloor, hitCeiling: effectiveCeiling && safePrice1 === effectiveCeiling };
       updateCount++;
       return;
     }
 
-    // Priority 2: strategy-based calculation
+    // Priority 2: WIN but selling below floor (at a loss) — raise to floor regardless of winsOnly
+    // e.g. winning at R356 but min viable price is R390 — must raise even though we're winning
+    if (scraped.status === 'win' && l.myPrice > 0 && l.myPrice < hardFloor) {
+      var raisedPrice = applyGuards(hardFloor);
+      priceMap[l.fsn] = { newPrice: raisedPrice, sku: l.sku, title: l.title, oldPrice: l.myPrice,
+        hitFloor: true, hitCeiling: effectiveCeiling && raisedPrice === effectiveCeiling, raisedFromLoss: true };
+      updateCount++;
+      return;
+    }
+
+    // Priority 3: strategy-based calculation
     if (skipUnknown && (!scraped.buybox_price || scraped.buybox_price <= 0)) return;
     if (winsOnly && scraped.status === 'win') return;
     const result = calcNewPrice(l.myPrice, scraped.buybox_price, strategy, beatBy, floorPct, minPrice, maxPrice);
     if (!result) return;
     if (result.clamped) { skippedClamped++; return; }
-    priceMap[l.fsn] = { newPrice: result.price, sku: l.sku, title: l.title, oldPrice: l.myPrice };
+    var safePrice2 = applyGuards(result.price);
+    priceMap[l.fsn] = { newPrice: safePrice2, sku: l.sku, title: l.title, oldPrice: l.myPrice,
+      hitFloor: safePrice2 === hardFloor, hitCeiling: effectiveCeiling && safePrice2 === effectiveCeiling };
     updateCount++;
   });
 
@@ -3610,8 +3886,14 @@ function generatePriceUpdate() {
     return;
   }
 
+  // Build base price map — any listing where user manually edited basePrice
+  const basePriceMap = {};  // fsn → basePrice
+  listings.forEach(function(l) {
+    if (l.fsn && l.basePrice > 0) basePriceMap[l.fsn] = l.basePrice;
+  });
+
   // Load the original workbook as template — keep ALL sheets, ALL columns, ALL rows intact
-  // Only modify column J (index 9 = "Your Selling Price") for matching FSNs
+  // Modify col I (index 8 = "Base Price") and col J (index 9 = "Your Selling Price") for matching FSNs
   try {
     const byteStr = atob(rawBase64);
     const bytes   = new Uint8Array(byteStr.length);
@@ -3629,7 +3911,19 @@ function generatePriceUpdate() {
     const changeLog = [];
     for (let r = 2; r < rows.length; r++) {
       const fsn = String(rows[r][4] || '').trim();
-      if (fsn && priceMap[fsn] !== undefined) {
+      if (!fsn) continue;
+
+      // Write Base Price (col 8) if user edited it
+      if (basePriceMap[fsn] !== undefined) {
+        const bpAddr = XLSX.utils.encode_cell({ r: r, c: 8 });
+        if (!sh[bpAddr]) sh[bpAddr] = {};
+        sh[bpAddr].t = 'n';
+        sh[bpAddr].v = basePriceMap[fsn];
+        sh[bpAddr].w = String(basePriceMap[fsn]);
+      }
+
+      // Write Selling Price (col 9)
+      if (priceMap[fsn] !== undefined) {
         const entry = priceMap[fsn];
         const cellAddr = XLSX.utils.encode_cell({ r: r, c: 9 });
         if (!sh[cellAddr]) sh[cellAddr] = {};
@@ -3732,21 +4026,62 @@ function sendFileToPortal() {
 // TELEGRAM ALERTS
 // ============================================================
 function saveTgSettings() {
-  var token  = (document.getElementById('tgBotToken') || {}).value || '';
-  var chatId = (document.getElementById('tgChatId')   || {}).value || '';
-  var enabled= !!(document.getElementById('tgEnabled') || {}).checked;
-  if (token)  localStorage.setItem('tg_token',   token);
-  if (chatId) localStorage.setItem('tg_chat_id', chatId);
+  var token   = ((document.getElementById('tgBotToken') || {}).value || '').trim();
+  var chatId  = ((document.getElementById('tgChatId')   || {}).value || '').trim();
+  var enabled = !!(document.getElementById('tgEnabled') || {}).checked;
+  localStorage.setItem('tg_token',   token);
+  localStorage.setItem('tg_chat_id', chatId);
   localStorage.setItem('tg_enabled', enabled ? '1' : '0');
+  updateTgStatusPanel();
+  // Show brief save confirmation
+  var btn = document.querySelector('[onclick="testTelegram()"]');
+  if (btn && token && chatId) {
+    var orig = btn.textContent;
+    btn.textContent = '✅ Saved';
+    setTimeout(function(){ btn.textContent = orig; }, 1500);
+  }
 }
 
 function loadTgSettings() {
   var tEl = document.getElementById('tgBotToken');
   var cEl = document.getElementById('tgChatId');
   var eEl = document.getElementById('tgEnabled');
-  if (tEl) tEl.value   = localStorage.getItem('tg_token')   || '';
-  if (cEl) cEl.value   = localStorage.getItem('tg_chat_id') || '';
-  if (eEl) eEl.checked = localStorage.getItem('tg_enabled') === '1';
+  var token  = localStorage.getItem('tg_token')   || '';
+  var chatId = localStorage.getItem('tg_chat_id') || '';
+  var enabled = localStorage.getItem('tg_enabled') === '1';
+  if (tEl) tEl.value   = token;
+  if (cEl) cEl.value   = chatId;
+  if (eEl) eEl.checked = enabled;
+  updateTgStatusPanel();
+}
+
+function updateTgStatusPanel() {
+  var el = document.getElementById('tgStatus');
+  if (!el) return;
+  var token   = localStorage.getItem('tg_token')   || '';
+  var chatId  = localStorage.getItem('tg_chat_id') || '';
+  var enabled = localStorage.getItem('tg_enabled') === '1';
+  // Count throttle keys
+  var throttled = 0;
+  for (var i = 0; i < localStorage.length; i++) {
+    if (localStorage.key(i).startsWith('tg_sent_')) throttled++;
+  }
+  var lines = [];
+  lines.push((enabled ? '<span style="color:var(--accent)">✅ Enabled</span>' : '<span style="color:#ff4d6d">❌ Disabled — tick checkbox above</span>'));
+  lines.push(token ? '<span style="color:var(--accent)">✅ Token saved (' + token.slice(0,8) + '...)</span>' : '<span style="color:#ff4d6d">❌ No token saved</span>');
+  lines.push(chatId ? '<span style="color:var(--accent)">✅ Chat ID: ' + chatId + '</span>' : '<span style="color:#ff4d6d">❌ No Chat ID saved</span>');
+  lines.push(throttled > 0 ? '<span style="color:#ffd60a">⏳ ' + throttled + ' product(s) throttled (30min cooldown) — click Reset Throttle to clear</span>' : '<span style="color:var(--muted)">No throttle blocks active</span>');
+  el.innerHTML = lines.join('<br>');
+}
+
+function clearTgThrottle() {
+  var keys = [];
+  for (var i = 0; i < localStorage.length; i++) {
+    if (localStorage.key(i).startsWith('tg_sent_')) keys.push(localStorage.key(i));
+  }
+  keys.forEach(function(k) { localStorage.removeItem(k); });
+  updateTgStatusPanel();
+  log('info', '🔄 Telegram throttle cleared — ' + keys.length + ' cooldown(s) removed');
 }
 
 function updateMinProfitDisplay(val) {
@@ -3765,27 +4100,68 @@ function loadMinProfitSetting() {
 }
 
 var _tgLastAlert = {};
-function sendTelegramAlert(prod, buyboxPrice, seller) {
-  if (localStorage.getItem('tg_enabled') !== '1') return;
+function sendTelegramAlert(prod, buyboxPrice, seller, alertType, myPrice) {
   var token  = localStorage.getItem('tg_token')   || '';
   var chatId = localStorage.getItem('tg_chat_id') || '';
-  if (!token || !chatId) return;
-  var key = prod.fsn || prod.url;
+  var enabled = localStorage.getItem('tg_enabled') === '1';
+
+  if (!enabled) { log('info', '📵 Telegram: alerts disabled — tick Enable alerts in Scraper tab'); return; }
+  if (!token)   { log('info', '📵 Telegram: no Bot Token saved'); return; }
+  if (!chatId)  { log('info', '📵 Telegram: no Chat ID saved'); return; }
+
+  // Throttle: max 1 alert per product per 30 min — stored in localStorage so survives refresh
+  var key = 'tg_sent_' + (prod.fsn || prod.url || '');
+  var lastSent = parseInt(localStorage.getItem(key) || '0');
   var now = Date.now();
-  if (_tgLastAlert[key] && now - _tgLastAlert[key] < 30 * 60 * 1000) return;
-  _tgLastAlert[key] = now;
-  var msg =
-    '🔴 *BuyBox LOST!*\n' +
-    (prod.title || prod.url || '').slice(0, 60) + '\n\n' +
-    '🏷 Competitor: ' + seller + '\n' +
-    '💸 Their price: R' + buyboxPrice.toFixed(2) + '\n' +
-    (prod.pending_price ? '✅ Auto-repriced to: R' + prod.pending_price + '\n' : '') +
-    '🕐 ' + new Date().toLocaleTimeString('en-ZA');
+  if (now - lastSent < 30 * 60 * 1000) {
+    log('info', '📵 Telegram throttled (30min cooldown): ' + String(prod.title||'').slice(0,30));
+    return;
+  }
+  localStorage.setItem(key, String(now));
+
+  var type = alertType || 'lose';
+  var gap = (myPrice && buyboxPrice) ? (myPrice - buyboxPrice) : null;
+
+  var msg;
+  var ref = prod.sku ? 'SKU: ' + prod.sku : (prod.fsn ? 'FSN: ' + prod.fsn : '');
+  if (type === 'loss') {
+    msg = '⚠️ *Winning at a LOSS!*\n' +
+      (prod.title || '').slice(0, 55) + '\n' +
+      (ref ? '🔖 ' + ref + '\n' : '') + '\n' +
+      '💰 My price: R' + (myPrice ? myPrice.toFixed(2) : '?') + '\n' +
+      '🔻 Min floor: R' + (prod.min_price ? prod.min_price.toFixed(2) : '?') + '\n' +
+      (prod.pending_price ? '✅ Will raise to: R' + prod.pending_price + '\n' : '') +
+      '🕐 ' + new Date().toLocaleTimeString('en-ZA');
+  } else {
+    msg = '🔴 *BuyBox LOST!*\n' +
+      (prod.title || '').slice(0, 55) + '\n' +
+      (ref ? '🔖 ' + ref + '\n' : '') + '\n' +
+      '💰 My price:    R' + (myPrice ? myPrice.toFixed(2) : '?') + '\n' +
+      '🏷 Their price: R' + buyboxPrice.toFixed(2) + '\n' +
+      (gap !== null ? '📉 Gap: R' + Math.abs(gap).toFixed(2) + (gap > 0 ? ' above them' : ' below them') + '\n' : '') +
+      '🛒 Seller: ' + seller + '\n' +
+      (prod.pending_price ? '✅ Auto-repriced to: R' + prod.pending_price + '\n' : '⏳ Repricing pending...\n') +
+      '🕐 ' + new Date().toLocaleTimeString('en-ZA');
+  }
+
+  log('info', '📤 Sending Telegram alert: ' + String(prod.title||prod.fsn||'').slice(0,30));
+
   fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ chat_id: chatId, text: msg, parse_mode: 'Markdown' })
-  }).catch(function(){});
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(j) {
+    if (j.ok) {
+      log('ok', '✅ Telegram alert sent: ' + String(prod.title||prod.fsn||'').slice(0,30));
+    } else {
+      log('err', '❌ Telegram failed: ' + (j.description || JSON.stringify(j)));
+    }
+  })
+  .catch(function(e) {
+    log('err', '❌ Telegram error: ' + e.message);
+  });
 }
 
 function testTelegram() {
@@ -4278,6 +4654,367 @@ function openPortalUpload() {
   document.getElementById('pricerResult').innerHTML =
     (document.getElementById('pricerResult').innerHTML || '') +
     '<br><span style="color:#ffd60a">✅ File sent. On the portal, click <b style="color:#00e5a0">🚀 Auto Upload Now</b> in the green overlay.</span>';
+}
+
+// ============================================================
+// COMPETITOR INTELLIGENCE
+// ============================================================
+
+function getIntelDays() {
+  return parseInt((document.getElementById('intelDays') || {}).value || '7');
+}
+
+function saveDailySummarySettings() {
+  var enabled = !!(document.getElementById('dailySummaryEnabled') || {}).checked;
+  var time    = ((document.getElementById('dailySummaryTime') || {}).value) || '08:00';
+  localStorage.setItem('daily_summary_enabled', enabled ? '1' : '0');
+  localStorage.setItem('daily_summary_time', time);
+  updateDailySummaryStatus();
+}
+
+function loadDailySummarySettings() {
+  var el = document.getElementById('dailySummaryEnabled');
+  var tEl = document.getElementById('dailySummaryTime');
+  if (el)  el.checked = localStorage.getItem('daily_summary_enabled') === '1';
+  if (tEl) tEl.value  = localStorage.getItem('daily_summary_time') || '08:00';
+  updateDailySummaryStatus();
+}
+
+function updateDailySummaryStatus() {
+  var el = document.getElementById('dailySummaryStatus');
+  if (!el) return;
+  var enabled = localStorage.getItem('daily_summary_enabled') === '1';
+  var time    = localStorage.getItem('daily_summary_time') || '08:00';
+  var lastSent = localStorage.getItem('daily_summary_last_sent') || 'Never';
+  if (enabled) {
+    el.innerHTML = '✅ Enabled — sends at ' + time + ' daily &nbsp;·&nbsp; Last sent: ' + lastSent;
+  } else {
+    el.innerHTML = '<span style="color:var(--muted)">Disabled</span>';
+  }
+}
+
+// Check every minute if it's time to send daily summary
+setInterval(function() {
+  if (localStorage.getItem('daily_summary_enabled') !== '1') return;
+  var token  = localStorage.getItem('tg_token')   || '';
+  var chatId = localStorage.getItem('tg_chat_id') || '';
+  if (!token || !chatId) return;
+  var schedTime = localStorage.getItem('daily_summary_time') || '08:00';
+  var now = new Date();
+  var nowStr = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
+  if (nowStr !== schedTime) return;
+  var lastSent = localStorage.getItem('daily_summary_last_sent') || '';
+  var today = now.toISOString().slice(0,10);
+  if (lastSent.startsWith(today)) return; // already sent today
+  sendDailySummaryNow();
+}, 60000);
+
+function buildIntelData(days) {
+  var cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  var listingsMap = {};
+  try {
+    var raw = localStorage.getItem('makro_listings');
+    if (raw) JSON.parse(raw).forEach(function(l) { listingsMap[l.fsn] = l; });
+  } catch(e) {}
+
+  // Per-seller stats
+  var sellerStats = {}; // seller → { wins, priceChanges, products: Set }
+  // Per-FSN stats
+  var fsnStats = {};    // fsn → { title, sku, fsn, changes: [{ts,seller,price}], sellers: Set }
+  // Price movement log
+  var priceMovements = [];
+
+  state.products.forEach(function(p) {
+    if (!p.history || p.history.length < 2) return;
+    var fsn   = p.fsn || '';
+    var sku   = p.sku || (listingsMap[fsn] ? listingsMap[fsn].sku : '') || '';
+    var title = (p.title || '').slice(0, 45);
+    var ref   = sku ? sku : (fsn ? fsn : '—');
+
+    if (!fsnStats[fsn]) fsnStats[fsn] = { title, sku, fsn, ref, changes: [], sellers: new Set(), buyboxChanges: 0 };
+
+    var prev = null;
+    p.history.forEach(function(h) {
+      var ts = new Date(h.ts).getTime();
+      if (ts < cutoff) { prev = h; return; }
+
+      // Track seller activity
+      var seller = h.seller || 'Unknown';
+      if (!sellerStats[seller]) sellerStats[seller] = { wins: 0, priceChanges: 0, products: new Set(), undercuts: 0 };
+      if (h.status === 'lose' || (h.status !== 'win' && seller !== getMySellerName())) {
+        sellerStats[seller].wins++;
+        sellerStats[seller].products.add(fsn);
+      }
+
+      fsnStats[fsn].sellers.add(seller);
+
+      // Detect price change
+      if (prev && prev.price !== h.price && prev.price > 0) {
+        fsnStats[fsn].buyboxChanges++;
+        fsnStats[fsn].changes.push({ ts: h.ts, seller, price: h.price, prevPrice: prev.price, diff: h.price - prev.price });
+
+        if (seller !== getMySellerName()) {
+          sellerStats[seller].priceChanges++;
+          var myListing = listingsMap[fsn];
+          var myPrice = myListing ? myListing.myPrice : null;
+          if (myPrice && h.price < myPrice) sellerStats[seller].undercuts++;
+        }
+
+        priceMovements.push({
+          ts: h.ts, fsn, sku, ref, title,
+          seller, price: h.price, prevPrice: prev.price,
+          diff: h.price - prev.price
+        });
+      }
+      prev = h;
+    });
+  });
+
+  return { sellerStats, fsnStats, priceMovements, listingsMap };
+}
+
+function renderIntelligence() {
+  loadDailySummarySettings();
+  var days = getIntelDays();
+  var data = buildIntelData(days);
+  var { sellerStats, fsnStats, priceMovements } = data;
+
+  // ── STATS ROW ──────────────────────────────────────────────────────────
+  var totalChanges = priceMovements.length;
+  var uniqueCompetitors = Object.keys(sellerStats).filter(function(s) { return s !== getMySellerName(); }).length;
+  var totalUndercutProducts = Object.values(fsnStats).filter(function(f) { return f.buyboxChanges > 0; }).length;
+  var mostActiveCompetitor = Object.entries(sellerStats)
+    .filter(function(e) { return e[0] !== getMySellerName(); })
+    .sort(function(a,b) { return b[1].priceChanges - a[1].priceChanges; })[0];
+
+  var statsEl = document.getElementById('intelStatsRow');
+  if (statsEl) statsEl.innerHTML = [
+    { label: 'Price Changes Detected', val: totalChanges, color: 'var(--accent)', cls: '' },
+    { label: 'Active Competitors', val: uniqueCompetitors, color: '#f472b6', cls: 'red' },
+    { label: 'Volatile Products', val: totalUndercutProducts, color: '#ffd60a', cls: 'yellow' },
+    { label: 'Top Competitor', val: mostActiveCompetitor ? mostActiveCompetitor[0].slice(0,18) : '—', color: '#818cf8', cls: 'blue' }
+  ].map(function(s) {
+    return '<div class="stat-card ' + s.cls + '" style="padding:16px">' +
+      '<div class="stat-label">' + s.label + '</div>' +
+      '<div class="stat-value" style="font-size:28px;color:' + s.color + '">' + s.val + '</div>' +
+      '</div>';
+  }).join('');
+
+  // ── COMPETITOR TABLE ────────────────────────────────────────────────────
+  var compEl = document.getElementById('intelCompetitors');
+  if (compEl) {
+    var sellers = Object.entries(sellerStats)
+      .filter(function(e) { return e[0] !== getMySellerName(); })
+      .sort(function(a,b) { return (b[1].priceChanges + b[1].wins) - (a[1].priceChanges + a[1].wins); })
+      .slice(0, 15);
+    if (!sellers.length) {
+      compEl.innerHTML = '<div style="color:var(--muted);padding:12px 0">No competitor data yet — scrape more products to build history.</div>';
+    } else {
+      compEl.innerHTML = '<table style="width:100%;border-collapse:collapse">' +
+        '<thead><tr style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid var(--border)">' +
+        '<th style="text-align:left;padding:6px 8px">Seller</th>' +
+        '<th style="text-align:right;padding:6px 8px">BuyBox Wins</th>' +
+        '<th style="text-align:right;padding:6px 8px">Price Changes</th>' +
+        '<th style="text-align:right;padding:6px 8px">Undercuts</th>' +
+        '<th style="text-align:right;padding:6px 8px">Products</th>' +
+        '</tr></thead><tbody>' +
+        sellers.map(function(e, i) {
+          var s = e[1];
+          var heat = s.priceChanges > 10 ? '#ff4d6d' : s.priceChanges > 4 ? '#ffd60a' : 'var(--accent)';
+          return '<tr style="border-bottom:1px solid rgba(30,37,48,.5)">' +
+            '<td style="padding:8px;font-weight:600;color:var(--text)">' + escHtml(e[0]) + '</td>' +
+            '<td style="text-align:right;padding:8px;font-family:monospace;color:#ff4d6d">' + s.wins + '</td>' +
+            '<td style="text-align:right;padding:8px;font-family:monospace;color:' + heat + '">' + s.priceChanges + '</td>' +
+            '<td style="text-align:right;padding:8px;font-family:monospace;color:#f472b6">' + s.undercuts + '</td>' +
+            '<td style="text-align:right;padding:8px;color:var(--muted)">' + s.products.size + '</td>' +
+            '</tr>';
+        }).join('') + '</tbody></table>';
+    }
+  }
+
+  // ── VOLATILE PRODUCTS ───────────────────────────────────────────────────
+  var volEl = document.getElementById('intelVolatile');
+  if (volEl) {
+    var volatile = Object.values(fsnStats)
+      .filter(function(f) { return f.buyboxChanges > 0; })
+      .sort(function(a,b) { return b.buyboxChanges - a.buyboxChanges })
+      .slice(0, 15);
+    if (!volatile.length) {
+      volEl.innerHTML = '<div style="color:var(--muted);padding:12px 0">No price changes recorded yet in this period.</div>';
+    } else {
+      volEl.innerHTML = '<table style="width:100%;border-collapse:collapse">' +
+        '<thead><tr style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid var(--border)">' +
+        '<th style="text-align:left;padding:6px 8px">Product</th>' +
+        '<th style="text-align:left;padding:6px 8px">FSN / SKU</th>' +
+        '<th style="text-align:right;padding:6px 8px">Changes</th>' +
+        '<th style="text-align:right;padding:6px 8px">Competitors</th>' +
+        '</tr></thead><tbody>' +
+        volatile.map(function(f) {
+          var heat = f.buyboxChanges > 10 ? '#ff4d6d' : f.buyboxChanges > 4 ? '#ffd60a' : 'var(--accent)';
+          return '<tr style="border-bottom:1px solid rgba(30,37,48,.5)">' +
+            '<td style="padding:8px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml(f.title) + '">' + escHtml(f.title) + '</td>' +
+            '<td style="padding:8px;font-family:monospace;font-size:10px;color:#818cf8">' + escHtml(f.sku || f.fsn) + '</td>' +
+            '<td style="text-align:right;padding:8px;font-family:monospace;color:' + heat + ';font-weight:700">' + f.buyboxChanges + '</td>' +
+            '<td style="text-align:right;padding:8px;color:var(--muted)">' + f.sellers.size + '</td>' +
+            '</tr>';
+        }).join('') + '</tbody></table>';
+    }
+  }
+
+  // ── PER-FSN BREAKDOWN TABLE ─────────────────────────────────────────────
+  var fsnEl = document.getElementById('intelFsnTable');
+  if (fsnEl) {
+    var fsnList = Object.values(fsnStats)
+      .filter(function(f) { return f.changes.length > 0; })
+      .sort(function(a,b) { return b.changes.length - a.changes.length })
+      .slice(0, 30);
+    if (!fsnList.length) {
+      fsnEl.innerHTML = '<div style="color:var(--muted);padding:12px 0">No data yet.</div>';
+    } else {
+      fsnEl.innerHTML = '<table style="width:100%;border-collapse:collapse">' +
+        '<thead><tr style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface)">' +
+        '<th style="text-align:left;padding:7px 8px">Product</th>' +
+        '<th style="text-align:left;padding:7px 8px">FSN</th>' +
+        '<th style="text-align:left;padding:7px 8px">SKU</th>' +
+        '<th style="text-align:right;padding:7px 8px">Changes</th>' +
+        '<th style="text-align:left;padding:7px 8px">Top Competitor</th>' +
+        '<th style="text-align:right;padding:7px 8px">Last Price</th>' +
+        '<th style="text-align:right;padding:7px 8px">Last Change</th>' +
+        '</tr></thead><tbody>' +
+        fsnList.map(function(f) {
+          var topSeller = {};
+          f.changes.forEach(function(c) { topSeller[c.seller] = (topSeller[c.seller] || 0) + 1; });
+          var topSellerName = Object.entries(topSeller).sort(function(a,b){return b[1]-a[1];})[0];
+          var last = f.changes[f.changes.length - 1];
+          var diffCol = last.diff < 0 ? 'var(--accent)' : '#ff4d6d';
+          var diffSign = last.diff > 0 ? '+' : '';
+          return '<tr style="border-bottom:1px solid rgba(30,37,48,.4)">' +
+            '<td style="padding:7px 8px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px" title="' + escHtml(f.title) + '">' + escHtml(f.title) + '</td>' +
+            '<td style="padding:7px 8px;font-family:monospace;font-size:10px;color:var(--muted)">' + escHtml(f.fsn) + '</td>' +
+            '<td style="padding:7px 8px;font-family:monospace;font-size:10px;color:#818cf8">' + escHtml(f.sku || '—') + '</td>' +
+            '<td style="text-align:right;padding:7px 8px;font-family:monospace;color:#ffd60a;font-weight:700">' + f.changes.length + '</td>' +
+            '<td style="padding:7px 8px;color:#f472b6;font-size:11px">' + escHtml(topSellerName ? topSellerName[0] : '—') + ' ×' + (topSellerName ? topSellerName[1] : 0) + '</td>' +
+            '<td style="text-align:right;padding:7px 8px;font-family:monospace;color:var(--text)">R' + last.price + '</td>' +
+            '<td style="text-align:right;padding:7px 8px;font-family:monospace;color:' + diffCol + '">' + diffSign + 'R' + last.diff + '</td>' +
+            '</tr>';
+        }).join('') + '</tbody></table>';
+    }
+  }
+
+  // ── PRICE MOVEMENT LOG ──────────────────────────────────────────────────
+  var logEl = document.getElementById('intelPriceLog');
+  if (logEl) {
+    var movements = priceMovements.sort(function(a,b) { return new Date(b.ts) - new Date(a.ts); }).slice(0, 200);
+    if (!movements.length) {
+      logEl.innerHTML = '<div style="color:var(--muted);padding:12px 0">No price movements recorded yet.</div>';
+    } else {
+      logEl.innerHTML = '<table style="width:100%;border-collapse:collapse">' +
+        '<thead><tr style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface)">' +
+        '<th style="text-align:left;padding:6px 8px">Time</th>' +
+        '<th style="text-align:left;padding:6px 8px">Product</th>' +
+        '<th style="text-align:left;padding:6px 8px">FSN / SKU</th>' +
+        '<th style="text-align:left;padding:6px 8px">Seller</th>' +
+        '<th style="text-align:right;padding:6px 8px">Was</th>' +
+        '<th style="text-align:right;padding:6px 8px">Now</th>' +
+        '<th style="text-align:right;padding:6px 8px">Change</th>' +
+        '</tr></thead><tbody>' +
+        movements.map(function(m) {
+          var col = m.diff < 0 ? 'var(--accent)' : '#ff4d6d';
+          var sign = m.diff > 0 ? '+' : '';
+          var t = new Date(m.ts);
+          var tStr = t.toLocaleDateString('en-ZA', {day:'2-digit',month:'short'}) + ' ' + t.toLocaleTimeString('en-ZA',{hour:'2-digit',minute:'2-digit'});
+          return '<tr style="border-bottom:1px solid rgba(30,37,48,.3)">' +
+            '<td style="padding:5px 8px;font-family:monospace;font-size:10px;color:var(--muted);white-space:nowrap">' + tStr + '</td>' +
+            '<td style="padding:5px 8px;font-size:11px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml(m.title) + '">' + escHtml(m.title) + '</td>' +
+            '<td style="padding:5px 8px;font-family:monospace;font-size:10px;color:#818cf8">' + escHtml(m.sku || m.fsn) + '</td>' +
+            '<td style="padding:5px 8px;font-size:11px;color:#f472b6">' + escHtml(m.seller) + '</td>' +
+            '<td style="text-align:right;padding:5px 8px;font-family:monospace;font-size:11px;color:var(--muted)">R' + m.prevPrice + '</td>' +
+            '<td style="text-align:right;padding:5px 8px;font-family:monospace;font-size:11px;font-weight:700">R' + m.price + '</td>' +
+            '<td style="text-align:right;padding:5px 8px;font-family:monospace;font-size:11px;color:' + col + '">' + sign + 'R' + Math.abs(m.diff) + '</td>' +
+            '</tr>';
+        }).join('') + '</tbody></table>';
+    }
+  }
+}
+
+// ── DAILY TELEGRAM SUMMARY ─────────────────────────────────────────────────
+function sendDailySummaryNow() {
+  var token  = localStorage.getItem('tg_token')   || '';
+  var chatId = localStorage.getItem('tg_chat_id') || '';
+  if (!token || !chatId) { alert('Set up Telegram in the Scraper tab first.'); return; }
+
+  var days = getIntelDays();
+  var data = buildIntelData(days);
+  var { sellerStats, fsnStats, priceMovements } = data;
+  var prods = state.products;
+  var wins  = prods.filter(function(p){ return p.status === 'win'; }).length;
+  var loses = prods.filter(function(p){ return p.status === 'lose'; }).length;
+  var winAtLoss = 0;
+  var listingsMap = {};
+  try { JSON.parse(localStorage.getItem('makro_listings')||'[]').forEach(function(l){ listingsMap[l.fsn]=l; }); } catch(e){}
+  prods.forEach(function(p){
+    var l = listingsMap[p.fsn];
+    if (p.status === 'win' && l && p.min_price > 0 && l.myPrice < p.min_price) winAtLoss++;
+  });
+
+  var topCompetitors = Object.entries(sellerStats)
+    .filter(function(e){ return e[0] !== getMySellerName(); })
+    .sort(function(a,b){ return b[1].wins - a[1].wins; })
+    .slice(0, 5);
+
+  var topVolatile = Object.values(fsnStats)
+    .filter(function(f){ return f.buyboxChanges > 0; })
+    .sort(function(a,b){ return b.buyboxChanges - a.buyboxChanges; })
+    .slice(0, 5);
+
+  var now = new Date();
+  var dateStr = now.toLocaleDateString('en-ZA', { weekday:'long', day:'numeric', month:'long' });
+
+  var msg = '📊 *Makro BuyBox Daily Summary*\n' +
+    dateStr + '\n\n' +
+    '🏆 *Performance*\n' +
+    '✅ Winning: ' + wins + '  ❌ Losing: ' + loses + '  ⚠️ Win@Loss: ' + winAtLoss + '\n' +
+    '📉 Price changes detected (' + days + 'd): ' + priceMovements.length + '\n\n';
+
+  if (topCompetitors.length) {
+    msg += '🔥 *Top Competitors*\n';
+    topCompetitors.forEach(function(e, i) {
+      msg += (i+1) + '. ' + e[0] + ' — ' + e[1].wins + ' BuyBox wins, ' + e[1].priceChanges + ' changes\n';
+    });
+    msg += '\n';
+  }
+
+  if (topVolatile.length) {
+    msg += '🌡 *Most Volatile Products*\n';
+    topVolatile.forEach(function(f, i) {
+      var ref = f.sku || f.fsn;
+      msg += (i+1) + '. [' + ref + '] ' + f.title.slice(0,35) + ' — ' + f.buyboxChanges + ' changes\n';
+    });
+    msg += '\n';
+  }
+
+  if (winAtLoss > 0) {
+    msg += '⚠️ *' + winAtLoss + ' product(s) winning at a LOSS* — check Price Updater\n\n';
+  }
+
+  msg += '🕐 ' + now.toLocaleTimeString('en-ZA');
+
+  fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, text: msg, parse_mode: 'Markdown' })
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(j){
+    if (j.ok) {
+      localStorage.setItem('daily_summary_last_sent', new Date().toISOString());
+      updateDailySummaryStatus();
+      alert('✅ Daily summary sent to Telegram!');
+    } else {
+      alert('❌ Failed: ' + (j.description || 'Check Telegram settings'));
+    }
+  })
+  .catch(function(e){ alert('❌ Error: ' + e.message); });
 }
 </script>
 </body>

@@ -11,10 +11,16 @@ let queue        = [];
 let active       = false;
 let totalUrls    = 0;
 let doneCount    = 0;
-let concurrency  = 1;      // max parallel tabs (1–3)
-let scrapeWinId  = null;   // one shared window all tabs live in
-// activeTabs: Map<tabId, { url, timeoutId, waitingForLoad }>
+let concurrency  = 1;
+let scrapeWinId  = null;
 let activeTabs   = new Map();
+
+// ── CATALOGUE SEARCH STATE ────────────────────────────────────────────────
+let catSearchMode    = false;
+let catSearchQueue   = [];   // [{sku, query}]
+let catSearchTotal   = 0;
+let catSearchDone    = 0;
+let catSearchResults = {};   // {sku: {url, title}}
 
 // ── HUMAN-LIKE DELAY: 3-8 seconds per slot ───────────────────────────────
 function humanDelay() {
@@ -34,6 +40,92 @@ function isChallengeUrl(url) {
 
 // ── MESSAGE HANDLER ───────────────────────────────────────────────────────
 chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
+
+  // ── CATALOGUE SEARCH: START ──────────────────────────────────────────────
+  if (msg.action === 'cat_search_start') {
+    if (active) { sendResponse({ error: 'Scraper already running — stop it first' }); return true; }
+    catSearchQueue   = [...(msg.items || [])];  // [{sku, query}]
+    catSearchTotal   = catSearchQueue.length;
+    catSearchDone    = 0;
+    catSearchResults = {};
+    concurrency      = Math.min(Math.max(parseInt(msg.concurrency) || 2, 1), 3);
+    active           = true;
+    scrapeWinId      = null;
+    activeTabs.clear();
+    catSearchMode    = true;
+    sendResponse({ started: true, total: catSearchTotal });
+    openCatSearchWindow();
+    return true;
+  }
+
+  // ── CATALOGUE SEARCH: RESULT FROM search_content.js ──────────────────────
+  if (msg.action === 'search_scraped') {
+    if (!active || !catSearchMode) { sendResponse({ ok: true }); return true; }
+    const tabId = sender.tab && sender.tab.id;
+    const slot  = tabId ? activeTabs.get(tabId) : null;
+    if (slot && slot.timeoutId) clearTimeout(slot.timeoutId);
+    if (tabId) activeTabs.delete(tabId);
+
+    const d = msg.data || {};
+    if (d.foundUrl && slot && slot.sku) {
+      catSearchResults[slot.sku] = { url: d.foundUrl, title: d.foundTitle, sku: slot.sku };
+    }
+    catSearchDone++;
+
+    // Persist results to storage every 10 finds
+    if (catSearchDone % 10 === 0) {
+      chrome.storage.local.set({ cat_search_results: catSearchResults });
+    }
+
+    notifyDashboard({
+      action:   'cat_search_progress',
+      done:     catSearchDone,
+      total:    catSearchTotal,
+      found:    Object.keys(catSearchResults).length,
+      lastSku:  slot ? slot.sku : '',
+      lastUrl:  d.foundUrl || ''
+    });
+
+    if (challengePaused) { sendResponse({ ok: true }); return true; }
+
+    const delay = humanDelay() + (activeTabs.size * 1200);
+    if (active && catSearchQueue.length > 0) {
+      setTimeout(function() { loadNextSearchInTab(tabId); }, delay);
+    } else if (active && catSearchQueue.length === 0 && activeTabs.size === 0) {
+      finishCatSearch();
+    }
+    sendResponse({ ok: true });
+    return true;
+  }
+
+  // ── CATALOGUE SEARCH: STOP ────────────────────────────────────────────────
+  if (msg.action === 'cat_search_stop') {
+    chrome.storage.local.set({ cat_search_results: catSearchResults });
+    shutdownAll();
+    catSearchMode = false;
+    sendResponse({ stopped: true, found: Object.keys(catSearchResults).length });
+    return true;
+  }
+
+  // ── CATALOGUE SEARCH: GET RESULTS ─────────────────────────────────────────
+  if (msg.action === 'cat_search_get_results') {
+    chrome.storage.local.get(['cat_search_results'], function(r) {
+      sendResponse({ results: r.cat_search_results || catSearchResults });
+    });
+    return true;
+  }
+
+  // ── CATALOGUE SEARCH: STATUS ──────────────────────────────────────────────
+  if (msg.action === 'cat_search_status') {
+    sendResponse({
+      active: active && catSearchMode,
+      done: catSearchDone,
+      total: catSearchTotal,
+      found: Object.keys(catSearchResults).length,
+      remaining: catSearchQueue.length
+    });
+    return true;
+  }
 
   // ── START QUEUE ──────────────────────────────────────────────────────────
   if (msg.action === 'queue_scrape') {
@@ -202,6 +294,102 @@ function loadNextUrlInTab(tabId) {
   });
 }
 
+// ── CAT SEARCH: OPEN FIRST WINDOW ────────────────────────────────────────
+function openCatSearchWindow() {
+  if (catSearchQueue.length === 0) return;
+  const item   = catSearchQueue.shift();
+  const searchUrl = 'https://www.makro.co.za/search?q=' + encodeURIComponent(item.query);
+
+  chrome.windows.create({
+    url: searchUrl, type: 'normal',
+    width: 1280, height: 900, left: 50, top: 50, focused: true
+  }, function(win) {
+    scrapeWinId = win.id;
+    const tabId = win.tabs[0].id;
+    registerSearchTab(tabId, item);
+
+    for (let i = 1; i < concurrency; i++) {
+      if (catSearchQueue.length === 0) break;
+      const next = catSearchQueue.shift();
+      const delay = i * 900;
+      setTimeout(function() {
+        if (!active || !scrapeWinId) return;
+        chrome.tabs.create({
+          windowId: scrapeWinId,
+          url: 'https://www.makro.co.za/search?q=' + encodeURIComponent(next.query),
+          active: false
+        }, function(tab) {
+          if (tab) registerSearchTab(tab.id, next);
+        });
+      }, delay);
+    }
+  });
+}
+
+// ── CAT SEARCH: REGISTER TAB ──────────────────────────────────────────────
+function registerSearchTab(tabId, item) {
+  const timeoutId = setTimeout(function() {
+    if (activeTabs.has(tabId)) {
+      activeTabs.delete(tabId);
+      catSearchDone++;
+      notifyDashboard({ action: 'cat_search_progress', done: catSearchDone, total: catSearchTotal, found: Object.keys(catSearchResults).length });
+      if (active && catSearchQueue.length > 0) {
+        setTimeout(function() { loadNextSearchInTab(tabId); }, humanDelay());
+      } else if (active && catSearchQueue.length === 0 && activeTabs.size === 0) {
+        finishCatSearch();
+      }
+    }
+  }, 18000);
+
+  activeTabs.set(tabId, { url: 'https://www.makro.co.za/search?q=' + encodeURIComponent(item.query), sku: item.sku, query: item.query, timeoutId });
+}
+
+// ── CAT SEARCH: LOAD NEXT ─────────────────────────────────────────────────
+function loadNextSearchInTab(tabId) {
+  if (!active || catSearchQueue.length === 0) {
+    if (activeTabs.size === 0) finishCatSearch();
+    return;
+  }
+  const item = catSearchQueue.shift();
+  const url  = 'https://www.makro.co.za/search?q=' + encodeURIComponent(item.query);
+
+  chrome.tabs.get(tabId, function(tab) {
+    if (chrome.runtime.lastError || !tab || tab.windowId !== scrapeWinId) {
+      if (scrapeWinId) {
+        chrome.tabs.create({ windowId: scrapeWinId, url: url, active: false }, function(t) {
+          if (t) registerSearchTab(t.id, item);
+        });
+      } else {
+        catSearchQueue.unshift(item);
+        openCatSearchWindow();
+      }
+      return;
+    }
+    chrome.tabs.update(tabId, { url: url });
+    registerSearchTab(tabId, item);
+  });
+}
+
+// ── CAT SEARCH: FINISH ────────────────────────────────────────────────────
+function finishCatSearch() {
+  active        = false;
+  catSearchMode = false;
+  chrome.storage.local.set({ cat_search_results: catSearchResults });
+  setTimeout(function() {
+    notifyDashboard({
+      action: 'cat_search_finished',
+      done:   catSearchDone,
+      total:  catSearchTotal,
+      found:  Object.keys(catSearchResults).length
+    });
+    setTimeout(function() {
+      if (scrapeWinId) chrome.windows.remove(scrapeWinId, function() {});
+      scrapeWinId = null;
+      activeTabs.clear();
+    }, 2000);
+  }, 500);
+}
+
 // ── FINISH QUEUE ─────────────────────────────────────────────────────────
 function finishQueue() {
   active = false;
@@ -217,8 +405,10 @@ function finishQueue() {
 
 // ── SHUTDOWN EVERYTHING ───────────────────────────────────────────────────
 function shutdownAll() {
-  active = false;
-  queue  = [];
+  active        = false;
+  catSearchMode = false;
+  queue         = [];
+  catSearchQueue = [];
   activeTabs.forEach(function(slot) { clearTimeout(slot.timeoutId); });
   activeTabs.clear();
   if (scrapeWinId) {

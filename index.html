@@ -538,6 +538,7 @@
     <button class="tab-btn" onclick="switchTab('pricer')">💰 Price Updater</button>
     <button class="tab-btn" onclick="switchTab('analytics')">📈 Analytics</button>
     <button class="tab-btn" onclick="switchTab('log')">📋 Price Log</button>
+    <button class="tab-btn" onclick="switchTab('catalogue')" style="background:rgba(255,165,0,.15);color:#ffa500">🔍 Catalogue Search</button>
     <button class="tab-btn" onclick="switchTab('intelligence')">🕵️ Intelligence</button>
   </nav>
 
@@ -1144,6 +1145,119 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
       </div>
     </div><!-- /intelligence -->
 
+  
+  <!-- CATALOGUE SEARCH TAB -->
+  <div class="tab-content" id="tab-catalogue">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+      <div class="card-title" style="margin:0">🔍 MAKRO CATALOGUE URL FINDER</div>
+      <span style="font-size:12px;color:var(--muted)">Automatically finds Makro product URLs for your Esquire catalogue</span>
+    </div>
+
+    <div id="catExtBanner" style="display:none;padding:10px 14px;border-radius:8px;background:rgba(255,100,0,.1);border:1px solid rgba(255,100,0,.3);color:#ff6b35;font-size:13px;margin-bottom:16px">
+      ⚠️ Extension offline — install and enable the BuyBox Pro extension first
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px">
+      <div class="stat-card">
+        <div class="stat-val" id="catTotalProducts">0</div>
+        <div class="stat-label">Esquire Products</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val" id="catMatchedCount" style="color:var(--green,#4caf50)">0</div>
+        <div class="stat-label">URLs Found</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val" id="catRemainingCount" style="color:var(--orange)">0</div>
+        <div class="stat-label">Still to Search</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val" id="catProgressPct">0%</div>
+        <div class="stat-label">Progress</div>
+      </div>
+    </div>
+
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px">
+      <div style="font-size:13px;font-weight:600;margin-bottom:12px">Search Settings</div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+        <label style="font-size:12px;color:var(--muted)">
+          Tabs:
+          <select id="catConcurrency" style="margin-left:6px;font-size:12px;padding:3px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);color:var(--text)">
+            <option value="1">1 (safe)</option>
+            <option value="2" selected>2 (recommended)</option>
+            <option value="3">3 (fast)</option>
+          </select>
+        </label>
+        <label style="font-size:12px;color:var(--muted)">
+          Category filter:
+          <select id="catCategory" style="margin-left:6px;font-size:12px;padding:3px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);color:var(--text)">
+            <option value="">All categories</option>
+            <option value="printer">Printers</option>
+            <option value="laptop">Laptops</option>
+            <option value="monitor">Monitors</option>
+            <option value="router">Networking</option>
+            <option value="gaming">Gaming</option>
+            <option value="camera">Cameras/CCTV</option>
+            <option value="ups">UPS/Solar</option>
+            <option value="headphone">Headsets/Audio</option>
+            <option value="keyboard">Keyboards/Mice</option>
+          </select>
+        </label>
+        <label style="font-size:12px;color:var(--muted)">
+          Max searches:
+          <input type="number" id="catMaxSearch" value="200" min="10" max="4000"
+            style="margin-left:6px;width:70px;font-size:12px;padding:3px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);color:var(--text)"/>
+        </label>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+      <button id="catStartBtn" onclick="catSearchStart()"
+        style="background:var(--orange);border:none;color:#fff;padding:10px 22px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">
+        ▶ Start Catalogue Search
+      </button>
+      <button id="catStopBtn" onclick="catSearchStop()" disabled
+        style="background:var(--bg2);border:1px solid var(--border);color:var(--muted);padding:10px 22px;border-radius:8px;font-size:13px;cursor:not-allowed">
+        ⏹ Stop
+      </button>
+      <button onclick="catDownloadXLS()"
+        style="background:var(--bg2);border:1px solid var(--border);color:var(--text);padding:10px 22px;border-radius:8px;font-size:13px;cursor:pointer">
+        ⬇ Download Matched XLS
+      </button>
+      <button onclick="catClearResults()"
+        style="background:var(--bg2);border:1px solid var(--border);color:var(--muted);padding:10px 16px;border-radius:8px;font-size:12px;cursor:pointer">
+        🗑 Clear Results
+      </button>
+    </div>
+
+    <div id="catProgressBar" style="display:none;height:6px;background:var(--border);border-radius:3px;margin-bottom:12px;overflow:hidden">
+      <div id="catProgressFill" style="height:100%;background:var(--orange);width:0%;transition:width .3s;border-radius:3px"></div>
+    </div>
+
+    <div id="catStatusMsg" style="font-size:12px;color:var(--muted);margin-bottom:16px;min-height:18px"></div>
+
+    <div id="catResultsTable" style="display:none">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="font-size:13px;font-weight:600">Matched Products</div>
+        <input id="catSearch" placeholder="Search results..." oninput="catFilterResults()"
+          style="font-size:12px;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);color:var(--text);width:200px"/>
+      </div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead>
+            <tr style="background:var(--bg2);color:var(--muted)">
+              <th style="padding:8px 10px;text-align:left;font-weight:600;border-bottom:1px solid var(--border)">SKU</th>
+              <th style="padding:8px 10px;text-align:left;font-weight:600;border-bottom:1px solid var(--border)">Esquire Product</th>
+              <th style="padding:8px 10px;text-align:left;font-weight:600;border-bottom:1px solid var(--border)">Makro Title</th>
+              <th style="padding:8px 10px;text-align:left;font-weight:600;border-bottom:1px solid var(--border)">Makro URL</th>
+              <th style="padding:8px 10px;text-align:left;font-weight:600;border-bottom:1px solid var(--border)">Action</th>
+            </tr>
+          </thead>
+          <tbody id="catResultsBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
   </main>
 </div>
 
@@ -1459,6 +1573,21 @@ window.addEventListener('message', function(ev) {
     return;
   }
 
+  if (d.type === 'CAT_SEARCH_PROGRESS') {
+    catHandleProgress(d);
+    return;
+  }
+
+  if (d.type === 'CAT_SEARCH_FINISHED') {
+    catHandleFinished(d);
+    return;
+  }
+
+  if (d.type === 'CAT_RESULTS') {
+    if (d.results) { catResults = d.results; catRenderResults(); }
+    return;
+  }
+
   if (d.type === 'QUEUE_FINISHED') {
     handleQueueFinished();
     return;
@@ -1513,7 +1642,7 @@ function setExtStatus(online) {
 // TABS
 // ============================================================
 function switchTab(name) {
-  const names = ['dashboard','products','scraper','pricer','analytics','log','intelligence'];
+  const names = ['dashboard','products','scraper','pricer','analytics','log','intelligence','catalogue'];
   document.querySelectorAll('.tab-btn').forEach((b,i) => {
     b.classList.toggle('active', names[i] === name);
   });
@@ -5016,6 +5145,222 @@ function sendDailySummaryNow() {
   })
   .catch(function(e){ alert('❌ Error: ' + e.message); });
 }
+
+// ── CATALOGUE SEARCH ──────────────────────────────────────────────────────
+var catAllProducts = [];
+var catResults     = {};
+
+function catInit() {
+  // Load saved results
+  if (typeof chrome !== 'undefined' && chrome.runtime) {
+    chrome.runtime.sendMessage({ action: 'cat_search_get_results' }, function(r) {
+      if (r && r.results) {
+        catResults = r.results;
+        catRenderResults();
+      }
+    });
+  }
+  // Load Esquire products from localStorage
+  try {
+    var prods = JSON.parse(localStorage.getItem('products_smart') || '[]');
+    if (!prods.length) prods = JSON.parse(localStorage.getItem('makro_buybox_v2') || '[]');
+    catAllProducts = Array.isArray(prods) ? prods : [];
+    document.getElementById('catTotalProducts').textContent = catAllProducts.length;
+    document.getElementById('catRemainingCount').textContent = catAllProducts.length - Object.keys(catResults).length;
+  } catch(e) {}
+}
+
+function catBuildQueue() {
+  var catFilter   = document.getElementById('catCategory').value.toLowerCase();
+  var maxSearch   = parseInt(document.getElementById('catMaxSearch').value) || 200;
+  var alreadyFound = Object.keys(catResults);
+
+  var items = catAllProducts
+    .filter(function(p) {
+      if (!p.name || !p.code) return false;
+      if (alreadyFound.indexOf(p.code) >= 0) return false;
+      if (catFilter && p.name.toLowerCase().indexOf(catFilter) < 0 &&
+          (p.category||'').toLowerCase().indexOf(catFilter) < 0) return false;
+      return true;
+    })
+    .slice(0, maxSearch)
+    .map(function(p) {
+      // Build smart search query: brand + model number
+      var q = p.name.replace(/[^\w\s]/g,'').trim();
+      // Truncate to first 5 words for better search precision
+      q = q.split(' ').slice(0, 5).join(' ');
+      return { sku: p.code, query: q, name: p.name, cost: p.cost || p.price || 0 };
+    });
+
+  return items;
+}
+
+function catSearchStart() {
+  var items = catBuildQueue();
+  if (!items.length) {
+    document.getElementById('catStatusMsg').textContent = 'No products to search — all matched or none match filter.';
+    return;
+  }
+
+  if (typeof chrome === 'undefined' || !chrome.runtime) {
+    alert('Extension offline — enable the BuyBox Pro extension first.');
+    return;
+  }
+
+  var concurrency = parseInt(document.getElementById('catConcurrency').value) || 2;
+  document.getElementById('catStartBtn').disabled = true;
+  document.getElementById('catStopBtn').disabled  = false;
+  document.getElementById('catProgressBar').style.display = 'block';
+  document.getElementById('catStatusMsg').textContent = 'Starting search for ' + items.length + ' products...';
+
+  window.postMessage({ type: 'CAT_SEARCH_START', items: items, concurrency: concurrency }, '*');
+}
+
+function catSearchStop() {
+  window.postMessage({ type: 'CAT_SEARCH_STOP' }, '*');
+  document.getElementById('catStartBtn').disabled = false;
+  document.getElementById('catStopBtn').disabled  = true;
+  document.getElementById('catStatusMsg').textContent = 'Stopped. Found ' + Object.keys(catResults).length + ' URLs so far.';
+}
+
+function catHandleProgress(msg) {
+  catResults = catResults || {};
+  if (msg.lastSku && msg.lastUrl) {
+    catResults[msg.lastSku] = { url: msg.lastUrl, sku: msg.lastSku };
+    catRenderResults();
+  }
+  var pct = msg.total > 0 ? Math.round((msg.done / msg.total) * 100) : 0;
+  document.getElementById('catProgressFill').style.width = pct + '%';
+  document.getElementById('catProgressPct').textContent  = pct + '%';
+  document.getElementById('catMatchedCount').textContent  = msg.found || 0;
+  document.getElementById('catRemainingCount').textContent = (msg.total - msg.done) || 0;
+  document.getElementById('catStatusMsg').textContent =
+    'Searching: ' + msg.done + '/' + msg.total + ' — Found ' + msg.found + ' URLs — Last: ' + (msg.lastSku || '');
+}
+
+function catHandleFinished(msg) {
+  document.getElementById('catStartBtn').disabled = false;
+  document.getElementById('catStopBtn').disabled  = true;
+  document.getElementById('catStatusMsg').textContent =
+    '✅ Complete! Found ' + msg.found + ' Makro URLs out of ' + msg.total + ' products searched.';
+  catRenderResults();
+}
+
+function catRenderResults() {
+  var tbody = document.getElementById('catResultsBody');
+  if (!tbody) return;
+  var keys  = Object.keys(catResults);
+  document.getElementById('catMatchedCount').textContent = keys.length;
+  if (!keys.length) {
+    document.getElementById('catResultsTable').style.display = 'none';
+    return;
+  }
+  document.getElementById('catResultsTable').style.display = 'block';
+
+  // Build product name lookup
+  var nameLookup = {};
+  catAllProducts.forEach(function(p) { if (p.code) nameLookup[p.code] = p.name; });
+
+  var filter = (document.getElementById('catSearch') || {}).value || '';
+  var rows   = '';
+  keys.filter(function(sku) {
+    if (!filter) return true;
+    var r = catResults[sku];
+    return sku.toLowerCase().indexOf(filter.toLowerCase()) >= 0 ||
+           (r.title||'').toLowerCase().indexOf(filter.toLowerCase()) >= 0 ||
+           (nameLookup[sku]||'').toLowerCase().indexOf(filter.toLowerCase()) >= 0;
+  }).slice(0, 100).forEach(function(sku) {
+    var r    = catResults[sku];
+    var name = nameLookup[sku] || sku;
+    rows += '<tr style="border-bottom:1px solid var(--border)">' +
+      '<td style="padding:7px 10px;font-family:monospace;font-size:11px">' + sku + '</td>' +
+      '<td style="padding:7px 10px;font-size:12px">' + (name||'').substring(0,45) + '</td>' +
+      '<td style="padding:7px 10px;font-size:12px;color:var(--muted)">' + (r.title||'').substring(0,45) + '</td>' +
+      '<td style="padding:7px 10px;font-size:11px"><a href="' + r.url + '" target="_blank" style="color:var(--orange)">' +
+        r.url.replace('https://www.makro.co.za/','').substring(0,50) + '</a></td>' +
+      '<td style="padding:7px 10px"><button onclick="catCopySku(\'' + sku + '\')" ' +
+        'style="font-size:10px;padding:3px 8px;border-radius:5px;border:1px solid var(--border);cursor:pointer;background:var(--bg2);color:var(--text)">Copy</button></td>' +
+      '</tr>';
+  });
+  tbody.innerHTML = rows;
+}
+
+function catFilterResults() { catRenderResults(); }
+
+function catCopySku(sku) {
+  var r = catResults[sku];
+  if (r) navigator.clipboard && navigator.clipboard.writeText(r.url);
+}
+
+function catClearResults() {
+  if (!confirm('Clear all found URLs?')) return;
+  catResults = {};
+  if (typeof chrome !== 'undefined' && chrome.storage) {
+    chrome.storage.local.set({ cat_search_results: {} });
+  }
+  catRenderResults();
+  document.getElementById('catStatusMsg').textContent = 'Results cleared.';
+}
+
+function catDownloadXLS() {
+  var keys = Object.keys(catResults);
+  if (!keys.length) { alert('No results to download yet.'); return; }
+
+  // Build a simple CSV the user can paste into the Makro template
+  var nameLookup = {};
+  catAllProducts.forEach(function(p) { if (p.code) nameLookup[p.code] = { name: p.name, cost: p.cost||p.price||0 }; });
+
+  var rows = [['Makro Product Link', 'Seller SKU ID', 'Base Price (R)', 'Your selling price (R)',
+               'Fullfilment By', 'Pick Pack SLA (DAY)', 'Minimum Order Quantity',
+               'Maximum Order Quantity', 'Listing Status', 'Packer Details']];
+
+  keys.forEach(function(sku) {
+    var r    = catResults[sku];
+    var info = nameLookup[sku] || { cost: 0 };
+    var cost = parseFloat(info.cost) || 0;
+    var sell = catSmartPrice(cost);
+    var base = Math.round(sell * 1.05);
+    rows.push([r.url, sku, base, sell, 'Seller', 3, 1, 5, 'ACTIVE', 'Online TechHub']);
+  });
+
+  var csv = rows.map(function(r) {
+    return r.map(function(c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(',');
+  }).join('\n');
+
+  var blob = new Blob([csv], { type: 'text/csv' });
+  var a    = document.createElement('a');
+  a.href   = URL.createObjectURL(blob);
+  a.download = 'makro_catalogue_matches_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+}
+
+function catSmartPrice(cost) {
+  if (cost <= 50)    return Math.round(cost * 1.60 + 120);
+  if (cost <= 150)   return Math.round(cost * 1.60 + 90);
+  if (cost <= 300)   return Math.round(cost * 1.55 + 60);
+  if (cost <= 500)   return Math.round(cost * 1.45 + 40);
+  if (cost <= 1000)  return Math.round(cost * 1.30 + 20);
+  if (cost <= 2000)  return Math.round(cost * 1.20);
+  if (cost <= 5000)  return Math.round(cost * 1.15);
+  if (cost <= 20000) return Math.round(cost * 1.10);
+  return Math.round(cost * 1.08);
+}
+
+// Hook into existing bridge message handler
+(function() {
+  var _orig = window.handleExtMsg || function(){};
+  window.handleExtMsg = function(msg) {
+    _orig(msg);
+    if (msg.action === 'cat_search_progress') catHandleProgress(msg);
+    if (msg.action === 'cat_search_finished')  catHandleFinished(msg);
+  };
+})();
+
+// Init when catalogue tab opens
+document.addEventListener('DOMContentLoaded', function() {
+  // Delay init so products load first
+  setTimeout(catInit, 1500);
+});
 </script>
 </body>
 </html>

@@ -28,6 +28,15 @@
     },
     {
       "matches": [
+        "https://www.makro.co.za/search*"
+      ],
+      "js": [
+        "search_content.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
         "https://davidbard1226.github.io/makro-buybox-pro/*"
       ],
       "js": [

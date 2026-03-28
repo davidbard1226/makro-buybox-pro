@@ -1,0 +1,20 @@
+# ── ONLINE TECHHUB MANUAL PRICE OVERRIDES ───────────────────────
+# Format:  SKU = price
+# Example: ABC123 = 299
+#
+# Rules:
+# - One override per line
+# - SKU must match exactly (case-insensitive)
+# - Price is your final selling price in Rands (no R symbol)
+# - Lines starting with # are comments and are ignored
+# - Blank lines are ignored
+#
+# To change a price: add/edit the line below and tell Claude "deploy price overrides"
+# Claude will apply them to the live site automatically.
+#
+# ── ADD YOUR OVERRIDES BELOW THIS LINE ──────────────────────────
+
+# Example (remove the # to activate):
+# AS7112RDX = 55000
+# FS6712X = 42000
+
