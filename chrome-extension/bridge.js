@@ -236,6 +236,9 @@
       if (msg.action === 'cat_search_finished') {
         window.postMessage({ type: 'CAT_SEARCH_FINISHED', done: msg.done, total: msg.total, found: msg.found }, '*');
       }
+      if (msg.action === 'sellers_updated') {
+        window.postMessage({ type: 'SELLERS_UPDATED', fsn: msg.fsn, count: msg.count }, '*');
+      }
     });
   });
 

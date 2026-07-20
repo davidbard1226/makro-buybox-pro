@@ -15,6 +15,10 @@ let concurrency  = 1;
 let scrapeWinId  = null;
 let activeTabs   = new Map();
 
+// ── SELLERS FETCH STATE ────────────────────────────────────────────────────
+let pendingSellers  = {};   // {tabId: {fsn, sellersUrl, productUrl}}
+let sellersTimer    = null;
+
 // ── CATALOGUE SEARCH STATE ────────────────────────────────────────────────
 let catSearchMode    = false;
 let catSearchQueue   = [];   // [{sku, query}]
@@ -177,6 +181,17 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
 
     doneCount++;
     notifyDashboard({ action: 'scrape_done', data: msg.data, done: doneCount, total: totalUrls });
+
+    // If sellers URL found, fetch sellers in a separate tab (best-effort)
+    if (msg.data && msg.data.sellersUrl && msg.data.fsn) {
+      var su = msg.data.sellersUrl;
+      if (su.startsWith('/')) su = 'https://www.makro.co.za' + su;
+      chrome.tabs.create({ url: su, active: false }, function(tab) {
+        pendingSellers[tab.id] = { fsn: msg.data.fsn, sellersUrl: su };
+        registerSellersTab(tab.id, msg.data.fsn, su);
+      });
+    }
+
     sendResponse({ ok: true });
 
     // Slight stagger so tabs don't fire simultaneously
@@ -194,6 +209,52 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
   // ── PORTAL UPLOAD ─────────────────────────────────────────────────────────
   if (msg.action === 'portal_upload_ready') {
     notifyDashboard({ action: 'portal_upload_ready' });
+    sendResponse({ ok: true });
+    return true;
+  }
+
+  // ── FETCH SELLERS (from product page scrape) ─────────────────────────────
+  if (msg.action === 'fetch_sellers') {
+    var fsn = msg.fsn;
+    var sellersUrl = msg.sellersUrl;
+    if (!fsn || !sellersUrl) { sendResponse({ ok: false }); return true; }
+
+    // Make absolute URL if relative
+    if (sellersUrl.startsWith('/')) sellersUrl = 'https://www.makro.co.za' + sellersUrl;
+
+    chrome.tabs.create({ url: sellersUrl, active: false }, function(tab) {
+      pendingSellers[tab.id] = { fsn: fsn, sellersUrl: sellersUrl };
+      // Register tab for challenge detection
+      registerSellersTab(tab.id, fsn, sellersUrl);
+    });
+    sendResponse({ ok: true });
+    return true;
+  }
+
+  // ── SELLERS SCRAPED (from sellers page content.js) ──────────────────────
+  if (msg.action === 'sellers_scraped') {
+    var fsn = msg.fsn;
+    var sellers = msg.sellers || [];
+    if (!fsn || sellers.length === 0) { sendResponse({ ok: true }); return true; }
+
+    // Merge into storage
+    chrome.storage.local.get(['buybox_products'], function(r) {
+      var products = r.buybox_products || [];
+      var idx = products.findIndex(function(p) { return p.fsn === fsn; });
+      if (idx >= 0) {
+        products[idx].sellers = sellers;
+        products[idx].sellersCount = sellers.length;
+        products[idx].sellersChecked = new Date().toISOString();
+        chrome.storage.local.set({ buybox_products: products });
+        notifyDashboard({ action: 'sellers_updated', fsn: fsn, count: sellers.length });
+      }
+    });
+
+    // Close the tab that was opened for sellers
+    if (sender.tab && sender.tab.id) {
+      clearPendingSellersTab(sender.tab.id);
+      chrome.tabs.remove(sender.tab.id, function() {});
+    }
     sendResponse({ ok: true });
     return true;
   }
@@ -419,6 +480,43 @@ function finishQueue() {
   }, 500);
 }
 
+// ── SELLERS TAB MANAGEMENT ────────────────────────────────────────────────
+function registerSellersTab(tabId, fsn, url) {
+  var timeoutId = setTimeout(function() {
+    if (pendingSellers[tabId]) {
+      delete pendingSellers[tabId];
+      chrome.tabs.remove(tabId, function() {});
+    }
+  }, 30000);
+
+  // Also watch for challenges
+  chrome.tabs.onUpdated.addListener(function onUpdated(tId, info) {
+    if (tId !== tabId) return;
+    if (info.url && isChallengeUrl(info.url)) {
+      challengePaused = true;
+      challengeTabId = tabId;
+      notifyDashboard({ action: 'challenge_detected', tabId: tabId, url: info.url });
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+    }
+    if (info.status === 'complete') {
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+    }
+  });
+}
+
+function clearPendingSellersTab(tabId) {
+  if (pendingSellers[tabId]) {
+    delete pendingSellers[tabId];
+  }
+}
+
+function closeAllSellersTabs() {
+  Object.keys(pendingSellers).forEach(function(tabId) {
+    chrome.tabs.remove(parseInt(tabId), function() {});
+  });
+  pendingSellers = {};
+}
+
 // ── SHUTDOWN EVERYTHING ───────────────────────────────────────────────────
 function shutdownAll() {
   active        = false;
@@ -427,6 +525,7 @@ function shutdownAll() {
   catSearchQueue = [];
   activeTabs.forEach(function(slot) { clearTimeout(slot.timeoutId); });
   activeTabs.clear();
+  closeAllSellersTabs();
   if (scrapeWinId) {
     chrome.windows.remove(scrapeWinId, function() {});
     scrapeWinId = null;

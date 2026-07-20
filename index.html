@@ -251,6 +251,7 @@
   .price-cell { font-family:'Space Mono',monospace; font-size:14px; font-weight:700; }
   .price-cell.win { color:var(--accent); }
   .price-cell.lose { color:var(--accent2); }
+  .price-cell.has-sellers { cursor:help; border-bottom:1px dashed rgba(255,214,10,0.3); }
 
   .status-pill {
     display:inline-flex;
@@ -1605,6 +1606,13 @@ window.addEventListener('message', function(ev) {
     return;
   }
 
+  if (d.type === 'SELLERS_UPDATED') {
+    // Reload and refresh to show updated sellers tooltip
+    loadProducts();
+    renderProducts();
+    return;
+  }
+
   if (d.type === 'CHALLENGE_DETECTED') {
     // Makro bot challenge detected — pause scraping and show alert
     log('err', '🤖 BOT CHALLENGE DETECTED — Makro asked "Are you human?". Solve it in the scraper window, then click Resume.');
@@ -1806,7 +1814,8 @@ function handleQueueProgress(d) {
         url: p.url, fsn: p.fsn || '', sku: p.sku || '',
         title: p.title || p.url, buybox_price: price,
         seller, status, lastChecked: new Date().toISOString(),
-        history: [{ price, seller, status, ts: new Date().toISOString() }]
+        history: [{ price, seller, status, ts: new Date().toISOString() }],
+        sellers: p.sellers || []
       });
     }
     saveProducts();
@@ -2073,6 +2082,14 @@ function shortUrl(url) {
 
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function buyBoxTooltip(p) {
+  if (!p.sellers || p.sellers.length === 0) return 'title="Buy Box Price"';
+  var lines = p.sellers.map(function(s) {
+    return escHtml(s.seller) + ' — R' + (s.price || 0).toFixed(2);
+  });
+  return 'title="' + lines.join('&#10;') + '"';
 }
 
 // ============================================================
@@ -2455,7 +2472,7 @@ function renderProducts() {
       </td>
       <td>${myPrice}${priceIndicator}</td>
       <td>${myStock}</td>
-      <td><span class="price-cell ${p.status==='win'?'win':'lose'}">R ${(p.buybox_price||0).toFixed(2)}</span></td>
+      <td><span class="price-cell ${p.status==='win'?'win':'lose'}${p.sellers && p.sellers.length ? ' has-sellers' : ''}" ${buyBoxTooltip(p)}">R ${(p.buybox_price||0).toFixed(2)}</span></td>
       <td>
         ${p.cost_price > 0
           ? `<div style="display:flex;align-items:center;gap:4px">

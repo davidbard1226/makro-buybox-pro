@@ -199,6 +199,10 @@
         data.hasBuyBox = true;
       }
 
+      // Sellers URL (link to page with all sellers for this product)
+      const sellersLink = document.querySelector('a[href*="/sellers?pid="]');
+      if (sellersLink) data.sellersUrl = sellersLink.href;
+
       // Stock
       const body = document.body.innerText || '';
       if (/out of stock|unavailable|sold out/i.test(body)) data.inStock = false;
@@ -233,6 +237,61 @@
     });
   }
 
+  // ── SELLERS PAGE EXTRACTION ───────────────────────────────────────────────
+  function isSellersPage() {
+    return /\/sellers\?pid=/i.test(window.location.href);
+  }
+
+  function scrapeSellersPage() {
+    return new Promise(function(resolve) {
+      function tryExtract() {
+        var sellers = [];
+        var spans = document.querySelectorAll('span');
+        for (var i = 0; i < spans.length; i++) {
+          var txt = (spans[i].textContent || '').trim();
+          if (txt === 'Seller') {
+            var row = spans[i].parentElement;
+            while (row) {
+              var inner = (row.textContent || '').trim();
+              if (/^[A-Z]/.test(inner) && /R\s*[\d,]/.test(inner) && inner.length < 120) {
+                var pm = inner.match(/R\s*([\d,]+(?:\.\d{1,2})?)/);
+                if (pm) {
+                  var price = parseFloat(pm[1].replace(/,/g, ''));
+                  if (price > 1) {
+                    var name = inner.replace(/R\s*[\d,]+(?:\.\d{1,2})?/g, '').trim();
+                    name = name.replace(/\s*Free|\d+\s*-\s*\d+\s*(Days|Business|Working)/gi, '').trim();
+                    if (name && name.length > 1 && name.length < 80) {
+                      sellers.push({ seller: name, price: price });
+                    }
+                  }
+                }
+              }
+              row = row.nextElementSibling;
+            }
+            break;
+          }
+        }
+        return sellers;
+      }
+
+      var immediate = tryExtract();
+      if (immediate.length > 0) { resolve(immediate); return; }
+
+      var attempts = 0;
+      var observer = new MutationObserver(function() {
+        var result = tryExtract();
+        if (result.length > 0) { observer.disconnect(); resolve(result); }
+        if (++attempts > 100) { observer.disconnect(); resolve(result); }
+      });
+      observer.observe(document.body, { childList: true, subtree: true, attributes: false });
+
+      setTimeout(function() {
+        observer.disconnect();
+        resolve(tryExtract());
+      }, 10000);
+    });
+  }
+
   // ── AUTO SCRAPE ────────────────────────────────────────────────────────────
   if (/\/p\/[A-Za-z0-9_]+/.test(window.location.pathname)) {
     const run = function() {
@@ -242,9 +301,31 @@
       try {
         chrome.runtime.sendMessage({ action: 'page_scraped', data: d });
       } catch(e) {}
+      // If sellers URL found, tell background to fetch seller data
+      if (d && d.sellersUrl && d.fsn) {
+        try {
+          chrome.runtime.sendMessage({ action: 'fetch_sellers', fsn: d.fsn, sellersUrl: d.sellersUrl });
+        } catch(e) {}
+      }
     };
     if (document.readyState === 'complete') setTimeout(run, 1500);
     else window.addEventListener('load', function() { setTimeout(run, 2000); });
+  }
+
+  // ── SELLERS PAGE AUTO-SCRAPE ───────────────────────────────────────────────
+  if (isSellersPage()) {
+    var sellersRun = function() {
+      scrapeSellersPage().then(function(sellers) {
+        if (sellers.length === 0) return;
+        var fsn = (window.location.search.match(/[?&]pid=([A-Z0-9]{8,})/i) || [])[1];
+        if (!fsn) return;
+        try {
+          chrome.runtime.sendMessage({ action: 'sellers_scraped', fsn: fsn.toUpperCase(), sellers: sellers });
+        } catch(e) {}
+      });
+    };
+    if (document.readyState === 'complete') setTimeout(sellersRun, 3000);
+    else window.addEventListener('load', function() { setTimeout(sellersRun, 3500); });
   }
 
   // ── MESSAGES ───────────────────────────────────────────────────────────────
@@ -254,6 +335,17 @@
       const d = scrapeProduct();
       saveProduct(d);
       sendResponse({ success: true, data: d });
+      if (d && d.sellersUrl && d.fsn) {
+        try { chrome.runtime.sendMessage({ action: 'fetch_sellers', fsn: d.fsn, sellersUrl: d.sellersUrl }); } catch(e) {}
+      }
+      return true;
+    }
+    // SCRAPE SELLERS PAGE (called from background)
+    if (msg.action === 'scrape_sellers') {
+      scrapeSellersPage().then(function(sellers) {
+        var fsn = (window.location.search.match(/[?&]pid=([A-Z0-9]{8,})/i) || [])[1];
+        sendResponse({ success: true, fsn: fsn ? fsn.toUpperCase() : '', sellers: sellers });
+      });
       return true;
     }
     // DEBUG: return raw seller candidates
