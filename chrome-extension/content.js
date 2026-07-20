@@ -264,75 +264,47 @@
 
       function tryExtract() {
         var sellers = [];
-        var seen = {};
 
-        // Strategy 1: DOM — find seller name spans in _3enH42 containers
-        var nameSpans = document.querySelectorAll('div._3enH42 > span');
-        for (var s = 0; s < nameSpans.length; s++) {
-          var name = (nameSpans[s].textContent || '').trim();
-          if (!name || seen[name] || name.length > 80) continue;
-          var row = nameSpans[s].closest('div._2Y3EWJ');
-          if (!row) { seen[name] = true; sellers.push({ seller: name, price: 0 }); continue; }
-          var priceMain = row.querySelector('span._8TW4TR');
-          var priceCent = row.querySelector('span._1rSsFO');
-          var price = 0;
-          if (priceMain) {
-            var raw = (priceMain.textContent || '').replace(/R\s*/g, '').trim();
-            if (priceCent) raw += (priceCent.textContent || '').trim();
-            price = parseSellerPrice(raw);
-          }
-          seen[name] = true;
-          sellers.push({ seller: name, price: price });
-        }
-        if (sellers.length > 0) return sellers;
-
-        // Strategy 2: Text-based — split body text, find seller blocks
-        var bodyText = document.body ? (document.body.innerText || '') : '';
-        var parts = bodyText.split(/\s*Buy Now\s*/);
-        for (var b = 1; b < parts.length; b++) { // skip first block (header/nav)
-          var lines = parts[b - 1].trim().split('\n').map(function(l) { return l.trim(); }).filter(Boolean);
-          // Walk backwards from end — seller name is the uppercase line right before the R price lines
-          var priceRaw = '';
-          var name = '';
-          for (var l = lines.length - 1; l >= 0; l--) {
-            var line = lines[l];
-            if (/^R\s*[\d,]/.test(line)) {
-              if (!priceRaw) {
-                var pm = line.match(/R\s*([\d,]+)/);
-                if (pm) priceRaw = pm[1];
-              }
-              continue;
-            }
-            if (/FREE\s+Delivery|^Add to cart|^\d+%\s*off|^\d+-\d+\s*Days/i.test(line)) continue;
-            if (!name && /^[A-Z]/.test(line) && line.length > 1 && line.length < 60) {
-              name = line;
-              break;
-            }
-          }
-          if (!name || !priceRaw || name.length > 80 || seen[name]) continue;
-          var price = parseSellerPrice(priceRaw);
-          if (price > 1) { seen[name] = true; sellers.push({ seller: name, price: price }); }
+        // Exactly match the HTML the user provided:
+        // Each seller row: <div class="_2Y3EWJ">
+        //   Name: <div class="isp3v_ col-3-12"><div class="tWzK1p"><div class="_3enH42"><span>Name</span>
+        //   Price: <span class="_8TW4TR">R 8,270</span><span class="_1rSsFO">00</span>
+        var rows = document.querySelectorAll('div._2Y3EWJ');
+        for (var i = 0; i < rows.length; i++) {
+          var nameEl = rows[i].querySelector('span');
+          var priceMain = rows[i].querySelector('span._8TW4TR');
+          var priceCent = rows[i].querySelector('span._1rSsFO');
+          if (!nameEl || !priceMain) continue;
+          var name = nameEl.textContent.trim();
+          var raw = priceMain.textContent.replace(/R\s*/g, '').trim();
+          if (priceCent) raw += priceCent.textContent.trim();
+          if (name && raw) sellers.push({ seller: name, price: parseSellerPrice(raw) });
         }
         return sellers;
       }
 
-      // Immediate attempt
       var immediate = tryExtract();
-      if (immediate.length > 0) { console.log('[BuyBox v4] Sellers found immediately:', immediate.length); resolve(immediate); return; }
+      console.log('[BuyBox v4] Immediate extract:', immediate.length, JSON.stringify(immediate));
+      if (immediate.length > 0) { resolve(immediate); return; }
 
-      // MutationObserver with 15s timeout
       var attempts = 0;
       var observer = new MutationObserver(function() {
         var result = tryExtract();
-        if (result.length > 0) { console.log('[BuyBox v4] Sellers found via observer:', result.length); observer.disconnect(); resolve(result); }
-        if (++attempts > 150) { console.log('[BuyBox v4] Observer max attempts'); observer.disconnect(); resolve(result); }
+        if (result.length > 0) { console.log('[BuyBox v4] Found via observer:', result.length); observer.disconnect(); resolve(result); }
+        if (++attempts > 150) { observer.disconnect(); resolve(result); }
       });
       observer.observe(document.body, { childList: true, subtree: true });
 
       setTimeout(function() {
         observer.disconnect();
         var final = tryExtract();
-        console.log('[BuyBox v4] Sellers after timeout:', final.length, final);
+        console.log('[BuyBox v4] After timeout:', final.length, JSON.stringify(final));
+        // Debug: dump page structure
+        console.log('[BuyBox v4] _2Y3EWJ count:', document.querySelectorAll('div._2Y3EWJ').length);
+        console.log('[BuyBox v4] _8TW4TR count:', document.querySelectorAll('span._8TW4TR').length);
+        console.log('[BuyBox v4] _3enH42 count:', document.querySelectorAll('div._3enH42').length);
+        console.log('[BuyBox v4] body children:', document.body.children.length, 'first child tag:', document.body.children[0] ? document.body.children[0].tagName : 'none');
+        console.log('[BuyBox v4] body text (500):', (document.body.innerText || '').substring(0, 500));
         resolve(final);
       }, maxWait);
     });
