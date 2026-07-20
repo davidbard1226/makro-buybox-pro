@@ -260,24 +260,19 @@
 
   function scrapeSellersPage() {
     return new Promise(function(resolve) {
-      // Wait up to 15 seconds for React to render
       var maxWait = 15000;
-      var start = Date.now();
 
       function tryExtract() {
         var sellers = [];
         var seen = {};
 
-        // Strategy 1: Direct DOM — each seller name in div._3enH42 span
+        // Strategy 1: DOM — find seller name spans in _3enH42 containers
         var nameSpans = document.querySelectorAll('div._3enH42 > span');
         for (var s = 0; s < nameSpans.length; s++) {
           var name = (nameSpans[s].textContent || '').trim();
           if (!name || seen[name] || name.length > 80) continue;
-
-          // Walk up to the row container (_2Y3EWJ) then find price spans
           var row = nameSpans[s].closest('div._2Y3EWJ');
           if (!row) { seen[name] = true; sellers.push({ seller: name, price: 0 }); continue; }
-
           var priceMain = row.querySelector('span._8TW4TR');
           var priceCent = row.querySelector('span._1rSsFO');
           var price = 0;
@@ -287,38 +282,36 @@
             price = parseSellerPrice(raw);
           }
           seen[name] = true;
-          if (price > 1) sellers.push({ seller: name, price: price });
-          else sellers.push({ seller: name, price: 0 });
+          sellers.push({ seller: name, price: price });
         }
         if (sellers.length > 0) return sellers;
 
-        // Strategy 2: Text-based — split body by "Buy Now" blocks
+        // Strategy 2: Text-based — split body text, find seller blocks
         var bodyText = document.body ? (document.body.innerText || '') : '';
-        var blocks = bodyText.split(/\s*Buy Now\s*/);
-        for (var b = 0; b < blocks.length; b++) {
-          var lines = blocks[b].trim().split('\n').map(function(l) { return l.trim(); }).filter(Boolean);
-          var name2 = '';
-          var priceRaw2 = '';
-          for (var l = 0; l < lines.length; l++) {
+        var parts = bodyText.split(/\s*Buy Now\s*/);
+        for (var b = 1; b < parts.length; b++) { // skip first block (header/nav)
+          var lines = parts[b - 1].trim().split('\n').map(function(l) { return l.trim(); }).filter(Boolean);
+          // Walk backwards from end — seller name is the uppercase line right before the R price lines
+          var priceRaw = '';
+          var name = '';
+          for (var l = lines.length - 1; l >= 0; l--) {
             var line = lines[l];
             if (/^R\s*[\d,]/.test(line)) {
-              // Only take the FIRST price (selling price, not original crossed-out price)
-              if (!priceRaw2) {
+              if (!priceRaw) {
                 var pm = line.match(/R\s*([\d,]+)/);
-                if (pm) priceRaw2 = pm[1];
+                if (pm) priceRaw = pm[1];
               }
               continue;
             }
-            if (/^FREE\s+Delivery/i.test(line) || /Add to cart/i.test(line) ||
-                /^\d+%\s*off/i.test(line) || /^\d+-\d+\s*(Days|Business)/i.test(line) ||
-                /^\d+\s*(kg|g|l|ml)/i.test(line)) continue;
-            if (!name2 && /^[A-Z]/.test(line) && line.length > 1 && line.length < 60) {
-              if (!/add to cart|buy now|delivery|free/i.test(line)) name2 = line;
+            if (/FREE\s+Delivery|^Add to cart|^\d+%\s*off|^\d+-\d+\s*Days/i.test(line)) continue;
+            if (!name && /^[A-Z]/.test(line) && line.length > 1 && line.length < 60) {
+              name = line;
+              break;
             }
           }
-          if (!name2 || !priceRaw2 || name2.length > 80 || seen[name2]) continue;
-          var price2 = parseSellerPrice(priceRaw2);
-          if (price2 > 1) { seen[name2] = true; sellers.push({ seller: name2, price: price2 }); }
+          if (!name || !priceRaw || name.length > 80 || seen[name]) continue;
+          var price = parseSellerPrice(priceRaw);
+          if (price > 1) { seen[name] = true; sellers.push({ seller: name, price: price }); }
         }
         return sellers;
       }
