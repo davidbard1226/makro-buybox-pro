@@ -247,88 +247,96 @@
   }
 
   function parseSellerPrice(s) {
-    // Makro sellers page uses format: R 8,27000 (comma=thousands, last 2 digits=cents, no decimal point)
+    // Makro sellers page uses format: "8,270"+"00" or "8,27000" (comma=thousands, last 2 digits=cents)
+    if (!s) return 0;
     var cleaned = s.replace(/,/g, '');
     if (cleaned.indexOf('.') >= 0) return parseFloat(cleaned);
     if (cleaned.length <= 2) return parseFloat(cleaned);
-    return parseFloat(cleaned.slice(0, -2) + '.' + cleaned.slice(-2));
+    if (/^\d{4,}$/.test(cleaned)) {
+      return parseFloat(cleaned.slice(0, -2) + '.' + cleaned.slice(-2));
+    }
+    return parseFloat(cleaned);
   }
 
   function scrapeSellersPage() {
     return new Promise(function(resolve) {
       function tryExtract() {
         var sellers = [];
-        // Strategy 1: Find "Seller" heading span, walk sibling rows
-        var spans = document.querySelectorAll('span');
-        for (var i = 0; i < spans.length; i++) {
-          var txt = (spans[i].textContent || '').trim();
-          if (txt === 'Seller') {
-            var row = spans[i].parentElement;
-            while (row) {
-              var inner = (row.textContent || '').trim();
-              if (/^[A-Z]/.test(inner) && /R\s*[\d,]/.test(inner) && inner.length < 120) {
-                var pm = inner.match(/R\s*([\d,]+)/);
-                if (pm) {
-                  var price = parseSellerPrice(pm[1]);
-                  if (price > 1) {
-                    var name = inner.replace(/R\s*[\d,]+/g, '').trim();
-                    name = name.replace(/\s*Free|\d+\s*-\s*\d+\s*(Days|Business|Working)/gi, '').trim();
-                    if (name && name.length > 1 && name.length < 80) {
-                      sellers.push({ seller: name, price: price });
-                    }
-                  }
-                }
-              }
-              row = row.nextElementSibling;
+        var seen = {};
+
+        // Strategy 1: Split body text by "Buy Now" (each seller row ends with this button)
+        var bodyText = document.body ? (document.body.innerText || '') : '';
+        var blocks = bodyText.split(/\bBuy Now\b/);
+        for (var b = 0; b < blocks.length; b++) {
+          var lines = blocks[b].trim().split('\n').map(function(l) { return l.trim(); }).filter(Boolean);
+          var name = '';
+          var priceRaw = '';
+          for (var l = 0; l < lines.length; l++) {
+            var line = lines[l];
+            // Skip known non-name lines
+            if (/^R\s*[\d,]/.test(line)) {
+              // Collect price text
+              var pm = line.match(/R\s*([\d,]+)/);
+              if (pm) priceRaw = pm[1];
+              continue;
             }
-            break;
+            if (/^FREE\s+Delivery/i.test(line) || /Add to cart/i.test(line) ||
+                /^\d+%\s*off/i.test(line) || /^\d+-\d+\s*(Days|Business)/i.test(line) ||
+                /^\d+\s*(kg|g|l|ml)/i.test(line) || /\bsvg\b/i.test(line)) continue;
+            if (!name && /^[A-Z]/.test(line) && line.length > 1 && line.length < 60) {
+              // Check it's not a button/label
+              if (!/add to cart|buy now|delivery/i.test(line)) name = line;
+            }
+          }
+          if (!name || !priceRaw || name.length > 80 || seen[name]) continue;
+          var price = parseSellerPrice(priceRaw);
+          if (price > 1) {
+            seen[name] = true;
+            sellers.push({ seller: name, price: price });
           }
         }
         if (sellers.length > 0) return sellers;
 
-        // Strategy 2: Look for table structure (table with seller rows)
-        var tables = document.querySelectorAll('table');
-        for (var t = 0; t < tables.length; t++) {
-          var rows2 = tables[t].querySelectorAll('tr');
-          for (var r = 0; r < rows2.length; r++) {
-            var cells = rows2[r].querySelectorAll('td, th');
-            if (cells.length >= 2) {
-              var sellerName = (cells[0].textContent || '').trim();
-              var priceText = '';
-              for (var c = 1; c < cells.length; c++) {
-                var ct = (cells[c].textContent || '').trim();
-                if (/R\s*[\d,]/.test(ct)) { priceText = ct; break; }
-              }
-              if (sellerName && priceText && /^[A-Z]/.test(sellerName) && sellerName.length < 80) {
-                var pm2 = priceText.match(/R\s*([\d,]+)/);
-                if (pm2) {
-                  var price2 = parseSellerPrice(pm2[1]);
-                  if (price2 > 1) sellers.push({ seller: sellerName, price: price2 });
-                }
-              }
-            }
+        // Strategy 2: Makro sellers page DOM (class-based, might change with React builds)
+        var rows = document.querySelectorAll('div._2Y3EWJ');
+        for (var i = 0; i < rows.length; i++) {
+          var row = rows[i];
+          var nameEl = row.querySelector('.col-3-12 span') || row.querySelector('div[class*="col-3-12"] span');
+          if (!nameEl) continue;
+          name = (nameEl.textContent || '').trim();
+          if (!name || name.length > 80 || seen[name]) continue;
+          var priceMain = row.querySelector('._8TW4TR');
+          var priceCent = row.querySelector('._1rSsFO');
+          var priceRaw2 = '';
+          if (priceMain) {
+            priceRaw2 = (priceMain.textContent || '').replace(/R\s*/g, '').trim();
+            if (priceCent) priceRaw2 += (priceCent.textContent || '').trim();
           }
-          if (sellers.length > 0) return sellers;
+          var price2 = priceRaw2 ? parseSellerPrice(priceRaw2) : 0;
+          if (price2 > 1) {
+            seen[name] = true;
+            sellers.push({ seller: name, price: price2 });
+          }
         }
+        if (sellers.length > 0) return sellers;
 
-        // Strategy 3: Scan all elements for seller rows (flexbox/grid layout)
-        var rows3 = document.querySelectorAll('[class*="row"],[class*="Row"],[class*="item"],[class*="seller-list"] > *, [class*="sellerList"] > *');
-        for (var s = 0; s < rows3.length; s++) {
-          var inner3 = (rows3[s].textContent || '').trim();
-          if (/^[A-Z]/.test(inner3) && /R\s*[\d,]/.test(inner3) && inner3.length < 120) {
-            var pm3 = inner3.match(/R\s*([\d,]+)/);
-            if (pm3) {
-              var price3 = parseSellerPrice(pm3[1]);
+        // Strategy 3: Generic text scan for "R X,XXXYY" near uppercase names
+        var lines2 = bodyText.split('\n').map(function(l) { return l.trim(); }).filter(Boolean);
+        for (var n = 0; n < lines2.length - 1; n++) {
+          if (!/^[A-Z]/.test(lines2[n]) || lines2[n].length < 2 || lines2[n].length > 60) continue;
+          if (/add to cart|buy now|delivery|free/i.test(lines2[n])) continue;
+          name = lines2[n];
+          if (seen[name]) continue;
+          // Look ahead for price line
+          for (var k = n + 1; k < Math.min(n + 4, lines2.length); k++) {
+            var pm2 = lines2[k].match(/R\s*([\d,]+)/);
+            if (pm2) {
+              var price3 = parseSellerPrice(pm2[1]);
               if (price3 > 1) {
-                var name3 = inner3.replace(/R\s*[\d,]+/g, '').trim();
-                name3 = name3.replace(/\s*Free|\d+\s*-\s*\d+\s*(Days|Business|Working)/gi, '').trim();
-                if (name3 && name3.length > 1 && name3.length < 80) {
-                  // Avoid duplicates
-                  if (!sellers.some(function(ex) { return ex.seller === name3 && Math.abs(ex.price - price3) < 0.01; })) {
-                    sellers.push({ seller: name3, price: price3 });
-                  }
-                }
+                seen[name] = true;
+                sellers.push({ seller: name, price: price3 });
               }
+              break;
             }
           }
         }
