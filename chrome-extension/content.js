@@ -242,10 +242,19 @@
     return /\/sellers\?pid=/i.test(window.location.href);
   }
 
+  function parseSellerPrice(s) {
+    // Makro sellers page uses format: R 8,27000 (comma=thousands, last 2 digits=cents, no decimal point)
+    var cleaned = s.replace(/,/g, '');
+    if (cleaned.indexOf('.') >= 0) return parseFloat(cleaned);
+    if (cleaned.length <= 2) return parseFloat(cleaned);
+    return parseFloat(cleaned.slice(0, -2) + '.' + cleaned.slice(-2));
+  }
+
   function scrapeSellersPage() {
     return new Promise(function(resolve) {
       function tryExtract() {
         var sellers = [];
+        // Strategy 1: Find "Seller" heading span, walk sibling rows
         var spans = document.querySelectorAll('span');
         for (var i = 0; i < spans.length; i++) {
           var txt = (spans[i].textContent || '').trim();
@@ -254,11 +263,11 @@
             while (row) {
               var inner = (row.textContent || '').trim();
               if (/^[A-Z]/.test(inner) && /R\s*[\d,]/.test(inner) && inner.length < 120) {
-                var pm = inner.match(/R\s*([\d,]+(?:\.\d{1,2})?)/);
+                var pm = inner.match(/R\s*([\d,]+)/);
                 if (pm) {
-                  var price = parseFloat(pm[1].replace(/,/g, ''));
+                  var price = parseSellerPrice(pm[1]);
                   if (price > 1) {
-                    var name = inner.replace(/R\s*[\d,]+(?:\.\d{1,2})?/g, '').trim();
+                    var name = inner.replace(/R\s*[\d,]+/g, '').trim();
                     name = name.replace(/\s*Free|\d+\s*-\s*\d+\s*(Days|Business|Working)/gi, '').trim();
                     if (name && name.length > 1 && name.length < 80) {
                       sellers.push({ seller: name, price: price });
@@ -269,6 +278,54 @@
               row = row.nextElementSibling;
             }
             break;
+          }
+        }
+        if (sellers.length > 0) return sellers;
+
+        // Strategy 2: Look for table structure (table with seller rows)
+        var tables = document.querySelectorAll('table');
+        for (var t = 0; t < tables.length; t++) {
+          var rows2 = tables[t].querySelectorAll('tr');
+          for (var r = 0; r < rows2.length; r++) {
+            var cells = rows2[r].querySelectorAll('td, th');
+            if (cells.length >= 2) {
+              var sellerName = (cells[0].textContent || '').trim();
+              var priceText = '';
+              for (var c = 1; c < cells.length; c++) {
+                var ct = (cells[c].textContent || '').trim();
+                if (/R\s*[\d,]/.test(ct)) { priceText = ct; break; }
+              }
+              if (sellerName && priceText && /^[A-Z]/.test(sellerName) && sellerName.length < 80) {
+                var pm2 = priceText.match(/R\s*([\d,]+)/);
+                if (pm2) {
+                  var price2 = parseSellerPrice(pm2[1]);
+                  if (price2 > 1) sellers.push({ seller: sellerName, price: price2 });
+                }
+              }
+            }
+          }
+          if (sellers.length > 0) return sellers;
+        }
+
+        // Strategy 3: Scan all elements for seller rows (flexbox/grid layout)
+        var rows3 = document.querySelectorAll('[class*="row"],[class*="Row"],[class*="item"],[class*="seller-list"] > *, [class*="sellerList"] > *');
+        for (var s = 0; s < rows3.length; s++) {
+          var inner3 = (rows3[s].textContent || '').trim();
+          if (/^[A-Z]/.test(inner3) && /R\s*[\d,]/.test(inner3) && inner3.length < 120) {
+            var pm3 = inner3.match(/R\s*([\d,]+)/);
+            if (pm3) {
+              var price3 = parseSellerPrice(pm3[1]);
+              if (price3 > 1) {
+                var name3 = inner3.replace(/R\s*[\d,]+/g, '').trim();
+                name3 = name3.replace(/\s*Free|\d+\s*-\s*\d+\s*(Days|Business|Working)/gi, '').trim();
+                if (name3 && name3.length > 1 && name3.length < 80) {
+                  // Avoid duplicates
+                  if (!sellers.some(function(ex) { return ex.seller === name3 && Math.abs(ex.price - price3) < 0.01; })) {
+                    sellers.push({ seller: name3, price: price3 });
+                  }
+                }
+              }
+            }
           }
         }
         return sellers;
