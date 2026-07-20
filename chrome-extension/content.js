@@ -200,8 +200,12 @@
       }
 
       // Sellers URL (link to page with all sellers for this product)
-      const sellersLink = document.querySelector('a[href*="/sellers?pid="]');
+      var sellersLink = document.querySelector('a[href*="/sellers?pid="]');
+      if (!sellersLink) sellersLink = document.querySelector('a[href*="sellers"][href*="pid="]');
+      if (!sellersLink) sellersLink = document.querySelector('[class*="seller"][href*="pid"]');
+      if (!sellersLink) sellersLink = document.querySelector('a[href*="sellers"]');
       if (sellersLink) data.sellersUrl = sellersLink.href;
+      console.log('[BuyBox v4] Sellers link found:', sellersLink ? sellersLink.href : 'none');
 
       // Stock
       const body = document.body.innerText || '';
@@ -372,13 +376,16 @@
   // ── SELLERS PAGE AUTO-SCRAPE ───────────────────────────────────────────────
   if (isSellersPage()) {
     var sellersRun = function() {
+      console.log('[BuyBox v4] Sellers page detected, scraping...');
       scrapeSellersPage().then(function(sellers) {
+        console.log('[BuyBox v4] Sellers scraped:', sellers.length, 'results', sellers);
         if (sellers.length === 0) return;
         var fsn = (window.location.search.match(/[?&]pid=([A-Z0-9]{8,})/i) || [])[1];
-        if (!fsn) return;
+        if (!fsn) { console.log('[BuyBox v4] No FSN in sellers URL'); return; }
         try {
           chrome.runtime.sendMessage({ action: 'sellers_scraped', fsn: fsn.toUpperCase(), sellers: sellers });
-        } catch(e) {}
+          console.log('[BuyBox v4] sellers_scraped sent for', fsn);
+        } catch(e) { console.log('[BuyBox v4] Error sending sellers_scraped:', e); }
       });
     };
     if (document.readyState === 'complete') setTimeout(sellersRun, 3000);
@@ -399,8 +406,10 @@
     }
     // SCRAPE SELLERS PAGE (called from background)
     if (msg.action === 'scrape_sellers') {
+      console.log('[BuyBox v4] scrape_sellers message received');
       scrapeSellersPage().then(function(sellers) {
         var fsn = (window.location.search.match(/[?&]pid=([A-Z0-9]{8,})/i) || [])[1];
+        console.log('[BuyBox v4] scrape_sellers result:', sellers.length, 'sellers for FSN', fsn);
         sendResponse({ success: true, fsn: fsn ? fsn.toUpperCase() : '', sellers: sellers });
       });
       return true;
