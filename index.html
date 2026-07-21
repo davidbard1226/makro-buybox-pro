@@ -2086,16 +2086,15 @@ function escHtml(s) {
 
 function buyBoxTooltip(p) {
   if (p.sellers && p.sellers.length > 0) {
-    var lines = p.sellers.map(function(s) {
-      return escHtml(s.seller) + ' — R' + (s.price || 0).toFixed(2);
+    var lines = p.sellers.map(function(s, i) {
+      return (i+1) + '. ' + escHtml(s.seller) + ' — R' + (s.price || 0).toFixed(2);
     });
     return 'title="' + lines.join('&#10;') + '"';
   }
-  // Fallback to single-seller data from product page scrape
   if (p.buyBoxSeller || p.seller) {
     return 'title="' + escHtml(p.buyBoxSeller || p.seller) + ' — R' + (p.buybox_price || 0).toFixed(2) + '"';
   }
-  return 'title="Buy Box Price"';
+  return 'title="No seller data yet"';
 }
 
 // ============================================================
