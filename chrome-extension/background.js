@@ -221,94 +221,118 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
 
     if (sellersUrl.startsWith('/')) sellersUrl = 'https://www.makro.co.za' + sellersUrl;
 
+    function injectSellerScraper(tabId) {
+      chrome.tabs.get(tabId, function(tab) {
+        if (chrome.runtime.lastError || !tab) {
+          delete pendingSellers[tabId];
+          return;
+        }
+        // Wait 5s for React SPA to render seller data
+        setTimeout(function() {
+          chrome.tabs.get(tabId, function(tab2) {
+            if (chrome.runtime.lastError || !tab2) {
+              delete pendingSellers[tabId];
+              return;
+            }
+            chrome.scripting.executeScript({
+              target: { tabId: tabId },
+              func: function() {
+                function parseSellerPrice(s) {
+                  if (!s) return 0;
+                  var cleaned = s.replace(/,/g, '');
+                  if (cleaned.indexOf('.') >= 0) return parseFloat(cleaned);
+                  if (cleaned.length <= 2) return parseFloat(cleaned);
+                  if (/^\d{4,}$/.test(cleaned)) {
+                    return parseFloat(cleaned.slice(0, -2) + '.' + cleaned.slice(-2));
+                  }
+                  return parseFloat(cleaned);
+                }
+                var sellers = [];
+                // Strategy 1: Exact DOM from user's HTML
+                var rows = document.querySelectorAll('div._2Y3EWJ');
+                for (var i = 0; i < rows.length; i++) {
+                  var nameEl = rows[i].querySelector('span');
+                  var priceMain = rows[i].querySelector('span._8TW4TR');
+                  var priceCent = rows[i].querySelector('span._1rSsFO');
+                  if (!nameEl || !priceMain) continue;
+                  var name = nameEl.textContent.trim();
+                  var raw = priceMain.textContent.replace(/R\s*/g, '').trim();
+                  if (priceCent) raw += priceCent.textContent.trim();
+                  if (name && raw) sellers.push({ seller: name, price: parseSellerPrice(raw) });
+                }
+                if (sellers.length > 0) return sellers;
+
+                // Strategy 2: Walk every div for seller name + price pattern
+                var allDivs = document.querySelectorAll('div');
+                for (var e = 0; e < allDivs.length; e++) {
+                  var el = allDivs[e];
+                  if (el.children.length > 5 || el.children.length < 2) continue;
+                  var t = (el.textContent || '').trim();
+                  if (t.length < 5 || t.length > 200) continue;
+                  // Check if this div has a seller name and price
+                  var spans = el.querySelectorAll('span');
+                  var nameCandidate = '';
+                  var priceCandidate = '';
+                  for (var s = 0; s < spans.length; s++) {
+                    var st = spans[s].textContent.trim();
+                    if (/^R\s*[\d,]/.test(st) && !priceCandidate) {
+                      var pm = st.match(/R\s*([\d,]+)/);
+                      if (pm) priceCandidate = pm[1];
+                    } else if (/^[A-Z]/.test(st) && st.length > 1 && st.length < 60 &&
+                               !/Buy Now|Add to cart|Delivery|Seller|Price|Cart/i.test(st)) {
+                      nameCandidate = st;
+                    }
+                  }
+                  if (nameCandidate && priceCandidate && !sellers.some(function(x) { return x.seller === nameCandidate; })) {
+                    sellers.push({ seller: nameCandidate, price: parseSellerPrice(priceCandidate) });
+                  }
+                }
+                return sellers;
+              }
+            }, function(results) {
+              try { var sellers = (results && results[0] && results[0].result) || []; } catch(e) { var sellers = []; }
+              if (sellers.length > 0) {
+                chrome.storage.local.get(['buybox_products'], function(r) {
+                  var products = r.buybox_products || [];
+                  var idx = products.findIndex(function(p) { return p.fsn === fsn; });
+                  if (idx >= 0) {
+                    products[idx].sellers = sellers;
+                    products[idx].sellersCount = sellers.length;
+                    products[idx].sellersChecked = new Date().toISOString();
+                    chrome.storage.local.set({ buybox_products: products });
+                    notifyDashboard({ action: 'sellers_updated', fsn: fsn, count: sellers.length });
+                  }
+                });
+              }
+              delete pendingSellers[tabId];
+              chrome.tabs.remove(tabId, function() {});
+            });
+          });
+        }, 5000);
+      });
+    }
+
     chrome.tabs.create({ url: sellersUrl, active: false }, function(tab) {
       var tabId = tab.id;
       pendingSellers[tabId] = { fsn: fsn, sellersUrl: sellersUrl };
 
-      // Wait for page to fully load, then inject scraper directly
       var loadListener = function(tId, info) {
-        if (tId !== tabId || info.status !== 'complete') return;
-        chrome.tabs.onUpdated.removeListener(loadListener);
-
-        // Inject scraper function directly into the tab
-        chrome.scripting.executeScript({
-          target: { tabId: tabId },
-          func: function() {
-            function parseSellerPrice(s) {
-              if (!s) return 0;
-              var cleaned = s.replace(/,/g, '');
-              if (cleaned.indexOf('.') >= 0) return parseFloat(cleaned);
-              if (cleaned.length <= 2) return parseFloat(cleaned);
-              if (/^\d{4,}$/.test(cleaned)) {
-                return parseFloat(cleaned.slice(0, -2) + '.' + cleaned.slice(-2));
-              }
-              return parseFloat(cleaned);
-            }
-            var sellers = [];
-            // Strategy 1: Exact DOM from user's HTML
-            var rows = document.querySelectorAll('div._2Y3EWJ');
-            for (var i = 0; i < rows.length; i++) {
-              var nameEl = rows[i].querySelector('span');
-              var priceMain = rows[i].querySelector('span._8TW4TR');
-              var priceCent = rows[i].querySelector('span._1rSsFO');
-              if (!nameEl || !priceMain) continue;
-              var name = nameEl.textContent.trim();
-              var raw = priceMain.textContent.replace(/R\s*/g, '').trim();
-              if (priceCent) raw += priceCent.textContent.trim();
-              if (name && raw) sellers.push({ seller: name, price: parseSellerPrice(raw) });
-            }
-            if (sellers.length > 0) return sellers;
-
-            // Strategy 2: Walk every element for "R X,XXX" pattern near a name
-            var allEls = document.querySelectorAll('div, span, p, li');
-            for (var e = 0; e < allEls.length; e++) {
-              var el = allEls[e];
-              if (el.children.length > 5) continue;
-              var t = (el.textContent || '').trim();
-              if (!/^[A-Z]/.test(t) || t.length < 2 || t.length > 60) continue;
-              if (/Buy Now|Add to cart|Delivery|Seller|Price/i.test(t)) continue;
-              // Check next sibling or nearby element for price
-              var sib = el.nextElementSibling;
-              if (!sib) continue;
-              var st = (sib.textContent || '').trim();
-              var pm = st.match(/R\s*([\d,]+)/);
-              if (pm && !sellers.some(function(x) { return x.seller === t; })) {
-                sellers.push({ seller: t, price: parseSellerPrice(pm[1]) });
-              }
-            }
-            return sellers;
-          }
-        }, function(results) {
-          var sellers = (results && results[0] && results[0].result) || [];
-          if (sellers.length > 0) {
-            // Merge into storage
-            chrome.storage.local.get(['buybox_products'], function(r) {
-              var products = r.buybox_products || [];
-              var idx = products.findIndex(function(p) { return p.fsn === fsn; });
-              if (idx >= 0) {
-                products[idx].sellers = sellers;
-                products[idx].sellersCount = sellers.length;
-                products[idx].sellersChecked = new Date().toISOString();
-                chrome.storage.local.set({ buybox_products: products });
-                notifyDashboard({ action: 'sellers_updated', fsn: fsn, count: sellers.length });
-              }
-            });
-          }
-          // Close the sellers tab
-          delete pendingSellers[tabId];
-          chrome.tabs.remove(tabId, function() {});
-        });
+        if (tId !== tabId) return;
+        if (info.status === 'complete') {
+          chrome.tabs.onUpdated.removeListener(loadListener);
+          injectSellerScraper(tabId);
+        }
       };
       chrome.tabs.onUpdated.addListener(loadListener);
 
-      // Safety: close tab after 25s even if something fails
+      // Safety timeout
       setTimeout(function() {
         chrome.tabs.onUpdated.removeListener(loadListener);
         if (pendingSellers[tabId]) {
           delete pendingSellers[tabId];
           chrome.tabs.remove(tabId, function() {});
         }
-      }, 25000);
+      }, 30000);
     });
     sendResponse({ ok: true });
     return true;
