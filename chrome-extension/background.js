@@ -182,15 +182,8 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
     doneCount++;
     notifyDashboard({ action: 'scrape_done', data: msg.data, done: doneCount, total: totalUrls });
 
-    // If sellers URL found, fetch sellers in a separate tab (best-effort)
-    if (msg.data && msg.data.sellersUrl && msg.data.fsn) {
-      var su = msg.data.sellersUrl;
-      if (su.startsWith('/')) su = 'https://www.makro.co.za' + su;
-      chrome.tabs.create({ url: su, active: false }, function(tab) {
-        pendingSellers[tab.id] = { fsn: msg.data.fsn, sellersUrl: su };
-        registerSellersTab(tab.id, msg.data.fsn, su);
-      });
-    }
+    // Sellers will be fetched by content.js sending 'fetch_sellers' message
+    // No need to open a duplicate tab here
 
     sendResponse({ ok: true });
 
