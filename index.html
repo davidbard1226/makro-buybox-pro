@@ -3189,6 +3189,10 @@ function clearAllConfirm() {
 function clearAll() {
   state.products = [];
   saveProducts();
+  // Also clear chrome.storage.local so the bridge doesn't repopulate
+  try { window.postMessage({ type: 'CLEAR_ALL_PRODUCTS' }, '*'); } catch(e) {}
+  // Clear the deleted blocklist too
+  try { localStorage.removeItem('makro_deleted'); } catch(e) {}
   document.getElementById('clearModal').classList.remove('show');
   renderProducts();
   updateProductCount();

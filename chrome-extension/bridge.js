@@ -141,6 +141,13 @@
       });
     }
 
+    if (ev.data.type === 'CLEAR_ALL_PRODUCTS') {
+      safe(function() {
+        chrome.storage.local.set({ buybox_products: [] });
+        localStorage.removeItem('makro_deleted');
+      });
+    }
+
     if (ev.data.type === 'SAVE_PORTAL_FILE') {
       safe(function() {
         chrome.storage.local.set({
