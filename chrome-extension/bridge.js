@@ -90,7 +90,8 @@
               seller:       seller,
               status:       'unknown',
               lastChecked:  p.timestamp || new Date().toISOString(),
-              history:      []
+              history:      [],
+              sellersUrl:   p.sellersUrl || ''
             };
 
             if (idx >= 0) {

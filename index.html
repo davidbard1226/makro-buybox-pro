@@ -1454,7 +1454,7 @@ function deduplicateProducts(products) {
       var existing = result[seen[key]];
       var fields = ['sku','title','url','seller','status','buybox_price','cost_price',
                     'min_price','max_price','cost_supplier','lastChecked','pending_price',
-                    'pending_updated','history'];
+                    'pending_updated','history','sellers','sellersUrl'];
       fields.forEach(function(f) {
         if (f === 'history') {
           // Merge history arrays, dedupe by ts
@@ -1806,6 +1806,7 @@ function handleQueueProgress(d) {
       existing.lastChecked  = new Date().toISOString();
       existing.title        = p.title || existing.title;
       existing.fsn          = p.fsn || existing.fsn || '';
+      existing.sellersUrl   = p.sellersUrl || existing.sellersUrl || '';
       existing.history      = existing.history || [];
       existing.history.push({ price, seller, status, ts: new Date().toISOString() });
       if (existing.history.length > 30) existing.history.shift();
@@ -1815,7 +1816,8 @@ function handleQueueProgress(d) {
         title: p.title || p.url, buybox_price: price,
         seller, status, lastChecked: new Date().toISOString(),
         history: [{ price, seller, status, ts: new Date().toISOString() }],
-        sellers: p.sellers || []
+        sellers: p.sellers || [],
+        sellersUrl: p.sellersUrl || ''
       });
     }
     saveProducts();
@@ -2103,11 +2105,15 @@ function sellersTooltip(p) {
     p.sellers.forEach(function(s) {
       lines.push(escHtml(s.seller) + '\tR ' + (s.price || 0).toFixed(2));
     });
+    if (p.sellersUrl) lines.push('', '🔗 Click seller name to view all on Makro');
     return 'title="' + lines.join('&#10;') + '"';
   }
   if (p.seller) {
-    return 'title="' + escHtml(p.seller) + ' — R' + (p.buybox_price || 0).toFixed(2) + '"';
+    var tip = escHtml(p.seller) + ' — R' + (p.buybox_price || 0).toFixed(2);
+    if (p.sellersUrl) tip += '\n🔗 Click seller name to view all on Makro';
+    return 'title="' + tip + '"';
   }
+  if (p.sellersUrl) return 'title="🔗 Click seller name to view all sellers on Makro"';
   return '';
 }
 
@@ -2581,7 +2587,11 @@ function renderProducts() {
             '</div>';
         })()}
       </td>
-      <td style="font-size:12px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" ${sellersTooltip(p)}>${escHtml((p.seller||'Unknown').slice(0,20))}</td>
+      <td style="font-size:12px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" ${sellersTooltip(p)}>${
+        p.sellersUrl
+          ? '<a href="' + p.sellersUrl + '" target="_blank" rel="noopener" style="color:var(--accent3);text-decoration:none;border-bottom:1px dashed rgba(255,214,10,0.3)">' + escHtml((p.seller||'Unknown').slice(0,20)) + '</a>'
+          : escHtml((p.seller||'Unknown').slice(0,20))
+      }</td>
       <td><span class="status-pill ${statusClass}">${statusLabel}</span></td>
       <td style="font-size:11px;color:var(--muted);white-space:nowrap">${t}</td>
       <td style="display:flex;gap:4px">

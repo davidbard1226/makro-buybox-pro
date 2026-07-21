@@ -113,7 +113,8 @@
         buyBoxPrice: null,
         buyBoxSeller: null,
         hasBuyBox: false,
-        inStock: null
+        inStock: null,
+        sellersUrl: null
       };
 
       // SKU from URL path (itm... part)
@@ -319,12 +320,6 @@
       try {
         chrome.runtime.sendMessage({ action: 'page_scraped', data: d });
       } catch(e) {}
-      // If sellers URL found, tell background to fetch seller data
-      if (d && d.sellersUrl && d.fsn) {
-        try {
-          chrome.runtime.sendMessage({ action: 'fetch_sellers', fsn: d.fsn, sellersUrl: d.sellersUrl });
-        } catch(e) {}
-      }
     };
     if (document.readyState === 'complete') setTimeout(run, 1500);
     else window.addEventListener('load', function() { setTimeout(run, 2000); });
@@ -356,26 +351,6 @@
       const d = scrapeProduct();
       saveProduct(d);
       sendResponse({ success: true, data: d });
-      if (d && d.sellersUrl && d.fsn) {
-        try { chrome.runtime.sendMessage({ action: 'fetch_sellers', fsn: d.fsn, sellersUrl: d.sellersUrl }); } catch(e) {}
-      }
-      return true;
-    }
-    // SCRAPE SELLERS PAGE (called from background)
-    if (msg.action === 'scrape_sellers') {
-      console.log('[BuyBox v4] scrape_sellers message received');
-      scrapeSellersPage().then(function(sellers) {
-        var fsn = (window.location.search.match(/[?&]pid=([A-Z0-9]{8,})/i) || [])[1];
-        console.log('[BuyBox v4] scrape_sellers result:', sellers.length, 'sellers for FSN', fsn);
-        sendResponse({ success: true, fsn: fsn ? fsn.toUpperCase() : '', sellers: sellers });
-      });
-      return true;
-    }
-    // DEBUG: return raw seller candidates
-    if (msg.action === 'debug_seller') {
-      const body = document.body.innerText || '';
-      const lines = body.split('\n').filter(l => /sold|seller|fulfill/i.test(l)).slice(0,10);
-      sendResponse({ lines });
       return true;
     }
   });
