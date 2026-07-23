@@ -542,6 +542,7 @@
     <button class="tab-btn" onclick="switchTab('log')">📋 Price Log</button>
     <button class="tab-btn" onclick="switchTab('catalogue')" style="background:rgba(255,165,0,.15);color:#ffa500">🔍 Catalogue Search</button>
     <button class="tab-btn" onclick="switchTab('intelligence')">🕵️ Intelligence</button>
+    <button class="tab-btn" onclick="switchTab('orders')" style="background:rgba(0,229,160,.1);color:#00e5a0">📑 Orders</button>
   </nav>
 
   <!-- MAIN -->
@@ -1265,6 +1266,112 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
     </div>
   </div>
 
+    <!-- ========== ORDERS TAB ========== -->
+    <div class="tab-content" id="tab-orders">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+        <div class="card-title" style="margin:0">📑 ORDER RECONCILIATION</div>
+        <span style="font-size:12px;color:var(--muted)">Match Makro orders with your accounting invoices</span>
+      </div>
+
+      <!-- Stats row -->
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px" id="orderStatsRow">
+        <div class="stat-card"><div class="stat-label">Total Orders</div><div class="stat-value accent" id="o-total">0</div></div>
+        <div class="stat-card"><div class="stat-label">Matched / Reconciled</div><div class="stat-value accent" id="o-matched">0</div><div class="stat-sub" id="o-match-pct">0% reconciled</div></div>
+        <div class="stat-card yellow"><div class="stat-label">Unmatched (Shipped)</div><div class="stat-value yellow" id="o-unmatched">0</div><div class="stat-sub">orders without invoice</div></div>
+        <div class="stat-card" style="border-color:rgba(129,140,248,0.3)"><div class="stat-label" style="color:#818cf8">Unpaid (No Payout)</div><div class="stat-value" id="o-unpaid" style="color:#818cf8">0</div><div class="stat-sub">awaiting Makro payment</div></div>
+        <div class="stat-card red"><div class="stat-label">Discrepancies</div><div class="stat-value red" id="o-discrep">0</div><div class="stat-sub">amount mismatches</div></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+        <!-- Import Makro Orders -->
+        <div class="card">
+          <div class="card-title">📦 IMPORT MAKRO ORDERS</div>
+          <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Export orders from seller.makro.co.za → Orders → Export</p>
+          <label class="btn-secondary" style="width:100%;cursor:pointer;justify-content:center">
+            📂 Upload Makro Orders CSV
+            <input type="file" id="makroOrdersFile" accept=".csv,.xls,.xlsx" style="display:none" onchange="importMakroOrders(this)">
+          </label>
+          <div id="makroOrdersStatus" style="font-size:11px;color:var(--muted);margin-top:8px"></div>
+          <div style="margin-top:8px;display:flex;gap:6px">
+            <button class="action-btn" onclick="clearMakroOrders()" style="font-size:10px">🗑 Clear Orders</button>
+            <button class="action-btn" onclick="exportMakroOrders()" style="font-size:10px;color:var(--accent)">⬇ Export</button>
+          </div>
+        </div>
+
+        <!-- Import Accounting/Invoices -->
+        <div class="card">
+          <div class="card-title">💰 IMPORT INVOICES / ACCOUNTING</div>
+          <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Export invoices from your accounting system (Excel/CSV)</p>
+          <label class="btn-secondary" style="width:100%;cursor:pointer;justify-content:center">
+            📂 Upload Invoice CSV
+            <input type="file" id="invoiceFile" accept=".csv,.xls,.xlsx" style="display:none" onchange="importInvoices(this)">
+          </label>
+          <div id="invoiceStatus" style="font-size:11px;color:var(--muted);margin-top:8px"></div>
+          <div style="margin-top:8px;display:flex;gap:6px">
+            <button class="action-btn" onclick="clearInvoices()" style="font-size:10px">🗑 Clear Invoices</button>
+            <button class="action-btn" onclick="exportInvoices()" style="font-size:10px;color:var(--accent)">⬇ Export</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Match Controls -->
+      <div class="card" style="margin-bottom:16px;padding:14px 20px">
+        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+          <button class="btn-primary" onclick="matchOrders()" style="width:auto;padding:10px 24px">🔗 Match Orders to Invoices</button>
+          <button class="btn-secondary" onclick="autoMatchOrders()" style="width:auto;padding:10px 24px;color:var(--accent);border-color:#00e5a044">⚡ Auto-Match (Amount + Date)</button>
+          <button class="btn-secondary" onclick="reconcileAll()" style="width:auto;padding:10px 24px;color:var(--accent3);border-color:#ffd60a44">✅ Mark All Matched as Reconciled</button>
+          <button class="btn-secondary danger" onclick="clearReconciliation()" style="width:auto;padding:10px 24px">🔄 Reset Reconciliation</button>
+          <span id="matchStatus" style="font-size:11px;color:var(--muted)"></span>
+        </div>
+      </div>
+
+      <!-- Filter + Table -->
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+          <div class="card-title" style="margin:0">📋 ALL ORDERS</div>
+          <select id="orderFilter" onchange="renderOrders()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:12px;padding:5px 10px;border-radius:6px">
+            <option value="all">All Orders</option>
+            <option value="reconciled">✅ Reconciled</option>
+            <option value="matched">🔗 Matched (not reconciled)</option>
+            <option value="unmatched">⚠ Unmatched</option>
+            <option value="unpaid">💰 Awaiting Payout</option>
+          </select>
+          <input id="orderSearch" placeholder="Search orders..." oninput="renderOrders()" style="font-size:12px;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);width:200px">
+          <span id="orderCount" style="font-size:11px;color:var(--muted);margin-left:auto"></span>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="product-table">
+            <thead>
+              <tr>
+                <th><input type="checkbox" id="selectAllOrders" onchange="toggleSelectAllOrders(this)"></th>
+                <th>Order ID</th>
+                <th>Date</th>
+                <th>Product</th>
+                <th>Qty</th>
+                <th>Order Total</th>
+                <th>Makro Commission</th>
+                <th>Payout</th>
+                <th>Status</th>
+                <th>Invoice Ref</th>
+                <th>Invoice Amt</th>
+                <th>Match</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="ordersBody">
+              <tr><td colspan="13">
+                <div class="empty-state">
+                  <div class="empty-icon">📑</div>
+                  <div class="empty-title">No Orders Yet</div>
+                  <div class="empty-text">Import your Makro orders CSV and accounting invoices to start matching.</div>
+                </div>
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div><!-- /orders -->
+
   </main>
 </div>
 
@@ -1656,7 +1763,7 @@ function setExtStatus(online) {
 // TABS
 // ============================================================
 function switchTab(name) {
-  const names = ['dashboard','products','scraper','pricer','analytics','log','intelligence','catalogue'];
+  const names = ['dashboard','products','scraper','pricer','analytics','log','intelligence','catalogue','orders'];
   document.querySelectorAll('.tab-btn').forEach((b,i) => {
     b.classList.toggle('active', names[i] === name);
   });
@@ -1669,6 +1776,7 @@ function switchTab(name) {
   if (name === 'pricer')    initPricer();
   if (name === 'log')       renderPriceLog();
   if (name === 'intelligence') renderIntelligence();
+  if (name === 'orders') renderOrders();
 }
 
 function syncSellerConfig() {
@@ -5430,6 +5538,379 @@ document.addEventListener('DOMContentLoaded', function() {
   // Delay init so products load first
   setTimeout(catInit, 1500);
 });
+
+// ============================================================
+// ORDERS TAB — Order Reconciliation
+// ============================================================
+const ORDERS_KEY = 'makro_orders';
+const INVOICES_KEY = 'makro_invoices';
+const RECONCILED_KEY = 'makro_reconciled';
+
+function getOrders() { try { return JSON.parse(localStorage.getItem(ORDERS_KEY) || '[]'); } catch(e) { return []; } }
+function saveOrders(o) { localStorage.setItem(ORDERS_KEY, JSON.stringify(o)); }
+function getInvoices() { try { return JSON.parse(localStorage.getItem(INVOICES_KEY) || '[]'); } catch(e) { return []; } }
+function saveInvoices(i) { localStorage.setItem(INVOICES_KEY, JSON.stringify(i)); }
+function getReconciled() { try { return JSON.parse(localStorage.getItem(RECONCILED_KEY) || '{}'); } catch(e) { return {}; } }
+function saveReconciled(r) { localStorage.setItem(RECONCILED_KEY, JSON.stringify(r)); }
+
+function importMakroOrders(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const statusEl = document.getElementById('makroOrdersStatus');
+  statusEl.textContent = 'Reading file...';
+  statusEl.style.color = 'var(--muted)';
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const text = e.target.result;
+    const lines = text.split('\n').filter(l => l.trim());
+    if (lines.length < 2) { statusEl.textContent = '⚠ No data rows found'; statusEl.style.color = '#ff9500'; return; }
+
+    // Parse header — find column indices
+    const header = parseCSVLine(lines[0]);
+    const colMap = {};
+    header.forEach(function(h, i) {
+      const hl = h.toLowerCase().trim();
+      if (hl.includes('order id') || hl.includes('orderid') || hl === 'id') colMap.orderId = i;
+      if (hl.includes('order date') || hl.includes('created') || hl.includes('date')) colMap.date = i;
+      if (hl.includes('product') && (hl.includes('name') || hl.includes('title'))) colMap.product = i;
+      if (hl.includes('sku') || hl.includes('fsn') || hl.includes('item code')) colMap.sku = i;
+      if (hl.includes('quantity') || hl === 'qty') colMap.qty = i;
+      if (hl.includes('order total') || hl.includes('total') || hl.includes('amount')) colMap.total = i;
+      if (hl.includes('commission') || hl.includes('makro fee') || hl.includes('fee')) colMap.commission = i;
+      if (hl.includes('payout') || hl.includes('net') || hl.includes('seller amount') || hl.includes('you receive')) colMap.payout = i;
+      if (hl.includes('status') || hl.includes('order status')) colMap.status = i;
+    });
+
+    if (colMap.orderId === undefined) {
+      // Fallback: assume standard Makro export columns
+      // Order ID, Date, Product, Qty, Total, Commission, Payout, Status
+      colMap.orderId = 0; colMap.date = 1; colMap.product = 2; colMap.qty = 3;
+      colMap.total = 4; colMap.commission = 5; colMap.payout = 6; colMap.status = 7;
+    }
+
+    const orders = getOrders();
+    const existingIds = new Set(orders.map(o => o.orderId));
+    let added = 0, skipped = 0;
+
+    for (let i = 1; i < lines.length; i++) {
+      const fields = parseCSVLine(lines[i]);
+      if (fields.length < 3) continue;
+      const orderId = (fields[colMap.orderId] || '').trim().replace(/^"|"$/g, '');
+      if (!orderId || existingIds.has(orderId)) { skipped++; continue; }
+
+      orders.push({
+        orderId: orderId,
+        date: (fields[colMap.date] || '').trim().replace(/^"|"$/g, ''),
+        product: (fields[colMap.product] || '').trim().replace(/^"|"$/g, ''),
+        sku: (fields[colMap.sku] || '').trim().replace(/^"|"$/g, ''),
+        qty: parseInt(fields[colMap.qty]) || 1,
+        total: parseMoney(fields[colMap.total]),
+        commission: parseMoney(fields[colMap.commission]),
+        payout: parseMoney(fields[colMap.payout]),
+        status: (fields[colMap.status] || '').trim().replace(/^"|"$/g, ''),
+        invoiceRef: '',
+        invoiceAmt: 0
+      });
+      existingIds.add(orderId);
+      added++;
+    }
+
+    saveOrders(orders);
+    statusEl.textContent = '✅ ' + added + ' orders imported' + (skipped ? ' (' + skipped + ' duplicates skipped)' : '');
+    statusEl.style.color = '#00e5a0';
+    renderOrders();
+  };
+  reader.readAsText(file);
+}
+
+function importInvoices(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const statusEl = document.getElementById('invoiceStatus');
+  statusEl.textContent = 'Reading file...';
+  statusEl.style.color = 'var(--muted)';
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const text = e.target.result;
+    const lines = text.split('\n').filter(l => l.trim());
+    if (lines.length < 2) { statusEl.textContent = '⚠ No data rows found'; statusEl.style.color = '#ff9500'; return; }
+
+    const header = parseCSVLine(lines[0]);
+    const colMap = {};
+    header.forEach(function(h, i) {
+      const hl = h.toLowerCase().trim();
+      if (hl.includes('invoice') && (hl.includes('number') || hl.includes('no') || hl.includes('#') || hl === 'invoice')) colMap.invoiceNo = i;
+      if (hl.includes('order') && (hl.includes('ref') || hl.includes('id') || hl.includes('number'))) colMap.orderRef = i;
+      if (hl.includes('amount') || hl.includes('total') || hl.includes('value')) colMap.amount = i;
+      if (hl.includes('date')) colMap.date = i;
+      if (hl.includes('status') || hl.includes('paid')) colMap.status = i;
+      if (hl.includes('customer') || hl.includes('client')) colMap.customer = i;
+    });
+
+    if (colMap.invoiceNo === undefined) colMap.invoiceNo = 0;
+    if (colMap.orderRef === undefined) colMap.orderRef = 1;
+    if (colMap.amount === undefined) colMap.amount = 2;
+
+    const invoices = getInvoices();
+    const existingRefs = new Set(invoices.map(i => i.invoiceNo));
+    let added = 0, skipped = 0;
+
+    for (let i = 1; i < lines.length; i++) {
+      const fields = parseCSVLine(lines[i]);
+      if (fields.length < 2) continue;
+      const invoiceNo = (fields[colMap.invoiceNo] || '').trim().replace(/^"|"$/g, '');
+      if (!invoiceNo || existingRefs.has(invoiceNo)) { skipped++; continue; }
+
+      invoices.push({
+        invoiceNo: invoiceNo,
+        orderRef: (fields[colMap.orderRef] || '').trim().replace(/^"|"$/g, ''),
+        amount: parseMoney(fields[colMap.amount]),
+        date: colMap.date !== undefined ? (fields[colMap.date] || '').trim().replace(/^"|"$/g, '') : '',
+        status: colMap.status !== undefined ? (fields[colMap.status] || '').trim().replace(/^"|"$/g, '') : '',
+        customer: colMap.customer !== undefined ? (fields[colMap.customer] || '').trim().replace(/^"|"$/g, '') : ''
+      });
+      existingRefs.add(invoiceNo);
+      added++;
+    }
+
+    saveInvoices(invoices);
+    statusEl.textContent = '✅ ' + added + ' invoices imported' + (skipped ? ' (' + skipped + ' duplicates skipped)' : '');
+    statusEl.style.color = '#00e5a0';
+    renderOrders();
+  };
+  reader.readAsText(file);
+}
+
+function parseCSVLine(line) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') { inQuotes = !inQuotes; }
+    else if (ch === ',' && !inQuotes) { result.push(current); current = ''; }
+    else { current += ch; }
+  }
+  result.push(current);
+  return result;
+}
+
+function parseMoney(s) {
+  if (!s) return 0;
+  var cleaned = String(s).replace(/[R\s]/gi, '').replace(/,/g, '').trim();
+  var v = parseFloat(cleaned);
+  return isNaN(v) ? 0 : v;
+}
+
+function matchOrders() {
+  const orders = getOrders();
+  const invoices = getInvoices();
+  const recon = getReconciled();
+  let matched = 0;
+
+  invoices.forEach(function(inv) {
+    if (!inv.orderRef) return;
+    // Find order by order ID matching invoice orderRef
+    var order = orders.find(function(o) { return o.orderId === inv.orderRef; });
+    if (order) {
+      order.invoiceRef = inv.invoiceNo;
+      order.invoiceAmt = inv.amount;
+      matched++;
+    }
+  });
+
+  saveOrders(orders);
+  document.getElementById('matchStatus').textContent = '✅ ' + matched + ' orders matched to invoices';
+  document.getElementById('matchStatus').style.color = '#00e5a0';
+  renderOrders();
+}
+
+function autoMatchOrders() {
+  const orders = getOrders();
+  const invoices = getInvoices();
+  let matched = 0;
+
+  // First pass: match by exact order ID in invoice orderRef
+  invoices.forEach(function(inv) {
+    if (inv._matched) return;
+    if (inv.orderRef) {
+      var order = orders.find(function(o) { return o.orderId === inv.orderRef && !o.invoiceRef; });
+      if (order) { order.invoiceRef = inv.invoiceNo; order.invoiceAmt = inv.amount; inv._matched = true; matched++; }
+    }
+  });
+
+  // Second pass: match by amount (close match within R1)
+  invoices.forEach(function(inv) {
+    if (inv._matched) return;
+    var order = orders.find(function(o) {
+      return !o.invoiceRef && Math.abs(o.total - inv.amount) < 1;
+    });
+    if (order) { order.invoiceRef = inv.invoiceNo; order.invoiceAmt = inv.amount; inv._matched = true; matched++; }
+  });
+
+  saveOrders(orders);
+  document.getElementById('matchStatus').textContent = '⚡ ' + matched + ' orders auto-matched';
+  document.getElementById('matchStatus').style.color = 'var(--accent3)';
+  renderOrders();
+}
+
+function reconcileAll() {
+  const orders = getOrders();
+  const recon = getReconciled();
+  let count = 0;
+  orders.forEach(function(o) {
+    if (o.invoiceRef && !recon[o.orderId]) {
+      recon[o.orderId] = { reconciled: true, ts: new Date().toISOString() };
+      count++;
+    }
+  });
+  saveReconciled(recon);
+  document.getElementById('matchStatus').textContent = '✅ ' + count + ' orders marked as reconciled';
+  document.getElementById('matchStatus').style.color = 'var(--accent)';
+  renderOrders();
+}
+
+function toggleReconcile(orderId) {
+  const recon = getReconciled();
+  if (recon[orderId]) { delete recon[orderId]; }
+  else { recon[orderId] = { reconciled: true, ts: new Date().toISOString() }; }
+  saveReconciled(recon);
+  renderOrders();
+}
+
+function clearReconciliation() {
+  saveReconciled({});
+  renderOrders();
+}
+
+function clearMakroOrders() {
+  if (!confirm('Clear all imported Makro orders?')) return;
+  saveOrders([]);
+  renderOrders();
+}
+
+function clearInvoices() {
+  if (!confirm('Clear all imported invoices?')) return;
+  saveInvoices([]);
+  renderOrders();
+}
+
+function exportMakroOrders() {
+  const orders = getOrders();
+  if (!orders.length) { alert('No orders to export.'); return; }
+  var csv = 'Order ID,Date,Product,SKU,Qty,Total,Commission,Payout,Status,Invoice Ref,Invoice Amt,Reconciled\n';
+  var recon = getReconciled();
+  orders.forEach(function(o) {
+    csv += '"' + o.orderId + '","' + o.date + '","' + (o.product||'').replace(/"/g,'""') + '","' + (o.sku||'').replace(/"/g,'""') + '",' + o.qty + ',' + o.total.toFixed(2) + ',' + o.commission.toFixed(2) + ',' + o.payout.toFixed(2) + ',"' + o.status + '","' + (o.invoiceRef||'') + '",' + (o.invoiceAmt||0).toFixed(2) + ',' + (recon[o.orderId] ? 'Yes' : 'No') + '\n';
+  });
+  downloadFile(csv, 'makro-orders-export-' + new Date().toISOString().slice(0,10) + '.csv');
+}
+
+function exportInvoices() {
+  const invoices = getInvoices();
+  if (!invoices.length) { alert('No invoices to export.'); return; }
+  var csv = 'Invoice No,Order Ref,Amount,Date,Status,Customer\n';
+  invoices.forEach(function(i) {
+    csv += '"' + i.invoiceNo + '","' + (i.orderRef||'') + '",' + i.amount.toFixed(2) + ',"' + (i.date||'') + '","' + (i.status||'') + '","' + (i.customer||'') + '\n';
+  });
+  downloadFile(csv, 'invoices-export-' + new Date().toISOString().slice(0,10) + '.csv');
+}
+
+function downloadFile(content, filename) {
+  var blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+  var link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  link.click();
+}
+
+function renderOrders() {
+  var orders = getOrders();
+  var invoices = getInvoices();
+  var recon = getReconciled();
+  var filter = document.getElementById('orderFilter').value;
+  var search = (document.getElementById('orderSearch').value || '').toLowerCase();
+
+  // Stats
+  var total = orders.length;
+  var matched = orders.filter(function(o) { return o.invoiceRef; }).length;
+  var reconciled = orders.filter(function(o) { return recon[o.orderId]; }).length;
+  var unmatched = orders.filter(function(o) { return !o.invoiceRef; }).length;
+  var unpaid = orders.filter(function(o) { return o.payout <= 0 && o.status.toLowerCase().includes('deliver'); }).length;
+  var discrep = orders.filter(function(o) { return o.invoiceRef && Math.abs(o.total - o.invoiceAmt) > 1; }).length;
+
+  document.getElementById('o-total').textContent = total;
+  document.getElementById('o-matched').textContent = matched;
+  document.getElementById('o-match-pct').textContent = total > 0 ? Math.round((reconciled/total)*100) + '% reconciled' : '0%';
+  document.getElementById('o-unmatched').textContent = unmatched;
+  document.getElementById('o-unpaid').textContent = unpaid;
+  document.getElementById('o-discrep').textContent = discrep;
+  document.getElementById('orderCount').textContent = total + ' orders, ' + invoices.length + ' invoices';
+
+  // Filter
+  var filtered = orders.filter(function(o) {
+    if (filter === 'reconciled' && !recon[o.orderId]) return false;
+    if (filter === 'matched' && (!o.invoiceRef || recon[o.orderId])) return false;
+    if (filter === 'unmatched' && o.invoiceRef) return false;
+    if (filter === 'unpaid' && !(o.payout <= 0)) return false;
+    if (search) {
+      var hay = (o.orderId + ' ' + o.product + ' ' + o.sku + ' ' + o.status + ' ' + o.invoiceRef).toLowerCase();
+      if (hay.indexOf(search) === -1) return false;
+    }
+    return true;
+  });
+
+  var tbody = document.getElementById('ordersBody');
+  if (!filtered.length) {
+    tbody.innerHTML = '<tr><td colspan="13"><div class="empty-state"><div class="empty-icon">📑</div><div class="empty-title">No Orders</div><div class="empty-text">Import Makro orders and invoices to get started.</div></div></td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(function(o, i) {
+    var ri = orders.indexOf(o);
+    var isReconciled = !!recon[o.orderId];
+    var hasInvoice = !!o.invoiceRef;
+    var hasDiscrep = hasInvoice && Math.abs(o.total - o.invoiceAmt) > 1;
+    var rowBg = isReconciled ? 'rgba(0,229,160,.05)' : hasDiscrep ? 'rgba(255,77,109,.05)' : '';
+
+    return '<tr style="background:' + rowBg + '">' +
+      '<td><input type="checkbox" class="order-check" data-idx="' + ri + '"></td>' +
+      '<td style="font-family:monospace;font-size:12px;font-weight:600">' + escHtml(o.orderId) + '</td>' +
+      '<td style="font-size:11px;color:var(--muted);white-space:nowrap">' + escHtml(o.date) + '</td>' +
+      '<td style="font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml(o.product) + '">' + escHtml((o.product||'').slice(0,35)) + '</td>' +
+      '<td style="text-align:center">' + o.qty + '</td>' +
+      '<td style="font-family:monospace;font-size:13px;font-weight:700">R ' + o.total.toFixed(2) + '</td>' +
+      '<td style="font-family:monospace;font-size:12px;color:var(--accent2)">' + (o.commission > 0 ? 'R ' + o.commission.toFixed(2) : '—') + '</td>' +
+      '<td style="font-family:monospace;font-size:13px;font-weight:700;color:var(--accent)">' + (o.payout > 0 ? 'R ' + o.payout.toFixed(2) : '—') + '</td>' +
+      '<td><span class="status-pill ' + (o.status.toLowerCase().includes('deliver') ? 'win' : o.status.toLowerCase().includes('cancel') ? 'lose' : 'unknown') + '">' + escHtml((o.status||'Unknown').slice(0,15)) + '</span></td>' +
+      '<td style="font-size:12px;font-family:monospace">' + (o.invoiceRef ? escHtml(o.invoiceRef) : '<span style="color:var(--muted)">—</span>') + '</td>' +
+      '<td style="font-family:monospace;font-size:12px">' + (o.invoiceAmt > 0 ? 'R ' + o.invoiceAmt.toFixed(2) : '<span style="color:var(--muted)">—</span>') + '</td>' +
+      '<td style="text-align:center">' +
+        (isReconciled ? '<span title="Reconciled" style="color:var(--accent);cursor:pointer;font-size:16px" onclick="toggleReconcile(\'' + o.orderId + '\')">✅</span>' :
+         hasInvoice ? '<span title="Click to reconcile" style="color:var(--accent3);cursor:pointer;font-size:16px" onclick="toggleReconcile(\'' + o.orderId + '\')">🔗</span>' :
+         '<span title="No invoice matched" style="color:var(--muted);font-size:16px">⚠</span>') +
+      '</td>' +
+      '<td>' +
+        '<button class="action-btn" onclick="deleteOrder(' + ri + ')" title="Delete" style="font-size:9px">✕</button>' +
+      '</td>' +
+    '</tr>';
+  }).join('');
+}
+
+function deleteOrder(idx) {
+  var orders = getOrders();
+  if (idx >= 0 && idx < orders.length) {
+    orders.splice(idx, 1);
+    saveOrders(orders);
+    renderOrders();
+  }
+}
+
+function toggleSelectAllOrders(el) {
+  document.querySelectorAll('.order-check').forEach(function(cb) { cb.checked = el.checked; });
+}
 </script>
 </body>
 </html>
