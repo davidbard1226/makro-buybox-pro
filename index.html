@@ -4762,13 +4762,24 @@ function saveBulkSkus() {
     if (p.fsn && map[p.fsn]) { p.sku = map[p.fsn]; matched++; }
   });
 
+  // Debug: show sample FSNs if no matches
+  var debugInfo = '';
+  if (matched === 0 && pairs.length > 0) {
+    var csvFsns = pairs.slice(0, 3).map(function(p) { return p.fsn; }).join(', ');
+    var prodFsns = state.products.filter(function(p) { return p.fsn; }).slice(0, 3).map(function(p) { return p.fsn; }).join(', ');
+    debugInfo = '<br><span style="color:#ff9500;font-size:11px">Debug - CSV FSNs: ' + csvFsns + '<br>Product FSNs: ' + prodFsns + '<br>Products with FSN: ' + state.products.filter(function(p) { return p.fsn; ).length + '/' + state.products.length + '</span>';
+    console.log('[BulkSKU] CSV FSNs sample:', csvFsns);
+    console.log('[BulkSKU] Product FSNs sample:', prodFsns);
+    console.log('[BulkSKU] Total products:', state.products.length, 'with FSN:', state.products.filter(function(p) { return p.fsn; }).length);
+  }
+
   var listings = getListings();
   listings.forEach(function(l) { if (l.fsn && map[l.fsn]) l.sku = map[l.fsn]; });
   localStorage.setItem('makro_listings', JSON.stringify(listings));
   saveProducts();
 
   document.getElementById('bulkSkuResult').innerHTML =
-    '<span style="color:var(--accent)">✅ Imported ' + pairs.length + ' rows — matched and saved SKUs for ' + matched + ' products.</span>';
+    '<span style="color:var(--accent)">✅ Imported ' + pairs.length + ' rows — matched and saved SKUs for ' + matched + ' products.</span>' + debugInfo;
   setTimeout(function() {
     document.getElementById('bulkSkuModal').classList.remove('show');
     renderProducts();
