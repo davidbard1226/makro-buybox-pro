@@ -747,6 +747,12 @@
 
       <div class="toolbar">
         <input class="filter-input" id="prodSearch" placeholder="🔍 Search or paste Makro URL to add..." oninput="prodPage=1;renderProducts();handleSearchInput(this.value)">
+        <select class="filter-select" id="prodChannelFilter" onchange="prodPage=1;renderProducts()" title="Filter by marketplace channel">
+          <option value="all">All Channels</option>
+          <option value="makro">Makro</option>
+          <option value="takealot">Takealot</option>
+          <option value="amazon">Amazon</option>
+        </select>
         <select class="filter-select" id="prodFilter" onchange="prodPage=1;renderProducts()">
           <option value="all">All Status</option>
           <option value="win">Winning</option>
@@ -771,6 +777,10 @@
             📂 Import Listings
             <input type="file" id="listingsFileInput" accept=".xls,.xlsx,.csv" style="display:none" onchange="importListings(this)">
           </label>
+          <label class="btn-secondary" style="width:auto;padding:8px 16px;cursor:pointer;color:#60a5fd;border-color:rgba(96,165,250,0.4)" title="Import products from Wherehouse multi-channel CSV export">
+            📦 Import Multi-Channel Products
+            <input type="file" id="productsFileInput" accept=".csv,.xls,.xlsx" style="display:none" onchange="importMultiChannelProducts(this)">
+          </label>
           <button class="btn-secondary" id="syncCostsBtn" style="width:auto;padding:8px 16px;color:#60a5fa;border-color:rgba(96,165,250,0.4)" onclick="syncCostsFromSheet()" title="Fetch cost prices from Google Sheet by matching SKU">📊 Sync Costs</button>
           <button class="btn-secondary" style="width:auto;padding:8px 16px;color:#00e5a0;border-color:rgba(0,229,160,0.3)" onclick="recalcAllMinPrices()" title="Recalculate all min prices using current profit % setting">🔄 Recalc Min Prices</button>
           <button class="btn-secondary" style="width:auto;padding:8px 16px;color:#818cf8;border-color:#818cf844" onclick="openBulkSkuModal()" title="Bulk import SKU → FSN mappings">🔗 Bulk SKU Import</button>
@@ -790,6 +800,7 @@
               <th>Product</th>
               <th>FSN</th>
               <th>SKU</th>
+              <th style="width:100px">Channel</th>
               <th title="RRP / Base Price from your S_listing">Base Price</th>
               <th>My Price</th>
               <th>Stock</th>
@@ -2395,6 +2406,7 @@ function drawDonut(wins, loses, unk) {
 function renderProducts() {
   const search = (document.getElementById('prodSearch').value || '').toLowerCase();
   const filter = document.getElementById('prodFilter').value;
+  const channelFilter = document.getElementById('prodChannelFilter').value;
 
   // ── PRESERVE checked state before re-render ───────────────────────────────
   const prevChecked = new Set();
@@ -2418,6 +2430,7 @@ function renderProducts() {
   if (maxNeedsSave) saveProducts();
 
   let prods = state.products.filter(p => {
+    if (channelFilter !== 'all' && (p.channel||'makro') !== channelFilter) return false;
     if (filter === 'win' && p.status !== 'win') return false;
     if (filter === 'lose' && p.status !== 'lose') return false;
     if (filter === 'unknown' && p.status !== 'unknown' && p.status) return false;
@@ -2474,7 +2487,7 @@ function renderProducts() {
   }
 
   if (prods.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="16"><div class="empty-state">
+    tbody.innerHTML = `<tr><td colspan="17"><div class="empty-state">
       <div class="empty-icon">📦</div>
       <div class="empty-title">${state.products.length === 0 ? 'No Products Yet' : 'No Matches'}</div>
       <div class="empty-text">${state.products.length === 0 ? 'Use the Scraper tab to add products.' : 'Try changing your filters.'}</div>
@@ -2517,14 +2530,21 @@ function renderProducts() {
         >
       </td>
       <td>
-        ${p.sku
-          ? `<span style="font-family:'Space Mono',monospace;font-size:12px;color:#818cf8;font-weight:600">${escHtml(p.sku)}</span>
-             <button class="action-btn" style="font-size:9px;padding:1px 5px;margin-left:3px" onclick="openEditModal(${realIdx})" title="Edit SKU/Cost/Min">✎</button>`
-          : `<button class="action-btn" style="font-size:10px;color:#818cf8;border-color:#818cf844" onclick="openEditModal(${realIdx})">+ Add SKU</button>`}
-      </td>
+         ${p.sku
+           ? `<span style="font-family:'Space Mono',monospace;font-size:12px;color:#818cf8;font-weight:600">${escHtml(p.sku)}</span>
+              <button class="action-btn" style="font-size:9px;padding:1px 5px;margin-left:3px" onclick="openEditModal(${realIdx})" title="Edit SKU/Cost/Min">✎</button>`
+           : `<button class="action-btn" style="font-size:10px;color:#818cf8;border-color:#818cf844" onclick="openEditModal(${realIdx})">+ Add SKU</button>`}
+       </td>
+       <td style="text-align:center">
+         ${(() => {
+           var ch = (p.channel||'makro').toLowerCase();
+           var label = ch === 'takealot' ? 'Takealot' : ch === 'amazon' ? 'Amazon' : 'Makro';
+           return '<span class="channel-badge channel-' + ch + '">' + label + '</span>';
+         })()}
+       </td>
       <td>
-        ${(() => {
-          var bp = listing && listing.basePrice > 0 ? listing.basePrice : 0;
+         ${(() => {
+           var bp = listing && listing.basePrice > 0 ? listing.basePrice : 0;
           var mp = p.max_price || 0;
           var warn = bp > 0 && mp > 0 && bp < mp;
           return `<div style="display:flex;flex-direction:column;gap:2px">
@@ -5605,6 +5625,129 @@ function renderOrders() {
       '</td>' +
     '</tr>';
   }).join('');
+}
+
+// ====================================================================
+// MULTI-CHANNEL PRODUCT IMPORT (Takealot / Amazon / Makro CSV)
+// ====================================================================
+function importMultiChannelProducts(input) {
+  const file = input.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const text = e.target.result;
+    const lines = text.split('\n').filter(l => l.trim());
+    if (lines.length < 2) {
+      alert('No data rows found in file');
+      return;
+    }
+
+    const header = parseCSVLine(lines[0]);
+    const colMap = {};
+    header.forEach(function(h, i) {
+      const hl = h.toLowerCase().trim();
+      if (hl.includes('title') || hl.includes('product name') || hl.includes('name')) colMap.title = i;
+      if (hl.includes('sku') || (hl.includes('code') && !hl.includes('barcode'))) colMap.sku = i;
+      if (hl.includes('fsn') || hl.includes('product id') || hl.includes('pid') || hl.includes('lps')) colMap.fsn = i;
+      if (hl.includes('barcode')) colMap.barcode = i;
+      if (hl.includes('makro') && (hl.includes('price') || hl.includes('rrp') || hl.includes('sale'))) colMap.makroPrice = i;
+      if (hl.includes('takealot') && (hl.includes('price') || hl.includes('rrp') || hl.includes('sale'))) colMap.takealotPrice = i;
+      if (hl.includes('amazon') && (hl.includes('price') || hl.includes('rrp') || hl.includes('sale'))) colMap.amazonPrice = i;
+      if (hl.includes('retail') || (hl.includes('price') && !hl.includes('cost') && !hl.includes('sale') && !hl.includes('wholesale'))) colMap.retailPrice = i;
+      if (hl.includes('cost')) colMap.costPrice = i;
+      if (hl.includes('sale') || hl.includes('your price')) colMap.salePrice = i;
+      if (hl.includes('soh') || hl.includes('stock')) colMap.stock = i;
+      if (hl.includes('category')) colMap.category = i;
+      if (hl.includes('brand')) colMap.brand = i;
+      if (hl.includes('makro_url') || (hl.includes('makro') && hl.includes('url'))) colMap.makroUrl = i;
+      if (hl.includes('takealot_url') || (hl.includes('takealot') && hl.includes('url'))) colMap.takealotUrl = i;
+      if (hl.includes('amazon_url') || (hl.includes('amazon') && hl.includes('url'))) colMap.amazonUrl = i;
+    });
+
+    if (colMap.title === undefined) {
+      alert('Could not detect product columns. Expected columns like: title, sku, fsn, barcode, prices...');
+      return;
+    }
+
+    let added = 0, updated = 0, skipped = 0;
+
+    for (let i = 1; i < lines.length; i++) {
+      const fields = parseCSVLine(lines[i]);
+      if (fields.length < 2) continue;
+
+      const sku = colMap.sku !== undefined ? (fields[colMap.sku] || '').trim().replace(/^"|"$/g, '') : '';
+      const fsn = colMap.fsn !== undefined ? (fields[colMap.fsn] || '').trim().replace(/^"|"$/g, '') : '';
+      const title = colMap.title !== undefined ? (fields[colMap.title] || '').trim().replace(/^"|"$/g, '') : '';
+      if (!sku && !fsn && !title) { skipped++; continue; }
+
+      // Detect channel from which URL/price columns have data
+      var channel = 'makro';
+      var hasTakealot = colMap.takealotUrl !== undefined && fields[colMap.takealotUrl] && fields[colMap.takealotUrl].trim();
+      var hasAmazon = colMap.amazonUrl !== undefined && fields[colMap.amazonUrl] && fields[colMap.amazonUrl].trim();
+      if (hasTakealot) channel = 'takealot';
+      else if (hasAmazon) channel = 'amazon';
+
+      // Also check boolean columns (takealot=true, amazon=true, makro=true)
+      header.forEach(function(h, idx) {
+        if (h.trim().toLowerCase() === 'takealot' && fields[idx] && fields[idx].trim().toLowerCase() === 'true') channel = 'takealot';
+        if (h.trim().toLowerCase() === 'amazon' && fields[idx] && fields[idx].trim().toLowerCase() === 'true') channel = 'amazon';
+        if (h.trim().toLowerCase() === 'makro' && fields[idx] && fields[idx].trim().toLowerCase() === 'true') channel = 'makro';
+      });
+
+      var productUrl = '';
+      var buyboxPrice = 0;
+      if (channel === 'takealot' && colMap.takealotUrl !== undefined) productUrl = fields[colMap.takealotUrl];
+      else if (channel === 'amazon' && colMap.amazonUrl !== undefined) productUrl = fields[colMap.amazonUrl];
+      else if (colMap.makroUrl !== undefined) productUrl = fields[colMap.makroUrl];
+
+      // Use the channel-specific price if available
+      if (channel === 'takealot' && colMap.takealotPrice !== undefined) buyboxPrice = parseMoney(fields[colMap.takealotPrice]);
+      else if (channel === 'amazon' && colMap.amazonPrice !== undefined) buyboxPrice = parseMoney(fields[colMap.amazonPrice]);
+      else if (colMap.retailPrice !== undefined) buyboxPrice = parseMoney(fields[colMap.retailPrice]);
+      else if (colMap.salePrice !== undefined) buyboxPrice = parseMoney(fields[colMap.salePrice]);
+
+      var costPrice = colMap.costPrice !== undefined ? parseMoney(fields[colMap.costPrice]) : 0;
+
+      var existing = state.products.find(function(p) {
+        return (p.url === productUrl && productUrl) || (p.fsn && p.fsn === fsn && fsn) || (p.sku && p.sku === sku && sku);
+      });
+
+      if (existing) {
+        existing.channel = channel;
+        existing.url = productUrl || existing.url;
+        if (title) existing.title = title;
+        if (fsn) existing.fsn = fsn;
+        if (sku) existing.sku = sku;
+        existing.buybox_price = buyboxPrice > 0 ? buyboxPrice : existing.buybox_price;
+        if (costPrice > 0) existing.cost_price = costPrice;
+        existing.lastChecked = new Date().toISOString();
+        updated++;
+      } else {
+        state.products.push({
+          url: productUrl || '',
+          fsn: fsn,
+          title: title,
+          sku: sku || '',
+          channel: channel,
+          buybox_price: buyboxPrice,
+          cost_price: costPrice,
+          status: '',
+          seller: '',
+          lastChecked: new Date().toISOString(),
+          history: []
+        });
+        added++;
+      }
+    }
+
+    saveProducts();
+    updateProductCount();
+    renderProducts();
+    var alertMsg = 'Product import: ' + added + ' new, ' + updated + ' updated' + (skipped ? ', ' + skipped + ' skipped' : '');
+    alert(alertMsg);
+  };
+  reader.readAsText(file);
 }
 </script>
 </body>
