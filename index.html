@@ -4657,12 +4657,23 @@ function processBulkSkuFile(file) {
         var data = new Uint8Array(e.target.result);
         var wb = XLSX.read(data, { type: 'array' });
         var sh = wb.Sheets[wb.SheetNames[0]];
-        var rows = XLSX.utils.sheet_to_json(sh, { header: 1 });
-        // Convert to CSV text for the textarea
-        var csv = rows.map(function(r) { return (r[0]||'') + ',' + (r[1]||''); }).join('\n');
-        document.getElementById('bulkSkuInput').value = csv;
-        var pairs = parseBulkSkuText(csv);
-        showBulkSkuPreview(pairs, file.name);
+         var rows = XLSX.utils.sheet_to_json(sh, { header: 1 });
+        var headerRow = rows[0] || [];
+        var isMakroExport = headerRow[0] && headerRow[0].toString().toLowerCase().includes('fsn') &&
+                            headerRow[2] && headerRow[2].toString().toLowerCase().includes('sku');
+        if (isMakroExport) {
+          // Format: FSN,Title,SKU,...
+          var csv = rows.map(function(r) { return (r[0]||'') + ',' + (r[1]||'') + ',' + (r[2]||''); }).join('\n');
+          document.getElementById('bulkSkuInput').value = csv;
+          var pairs = parseBulkSkuText(csv);
+          showBulkSkuPreview(pairs, file.name);
+        } else {
+          // Standard 2-column SKU,FSN format
+          var csv = rows.map(function(r) { return (r[0]||'') + ',' + (r[1]||''); }).join('\n');
+          document.getElementById('bulkSkuInput').value = csv;
+          var pairs = parseBulkSkuText(csv);
+          showBulkSkuPreview(pairs, file.name);
+        }
       } catch(err) {
         document.getElementById('bulkSkuResult').textContent = '❌ Could not read Excel file: ' + err.message;
       }
@@ -4677,22 +4688,34 @@ function processBulkSkuFile(file) {
 function parseBulkSkuText(text) {
   var lines = text.split('\n').map(function(l){ return l.trim(); }).filter(Boolean);
   var pairs = [];
+  var isHeader = true;
   lines.forEach(function(line) {
-    // Support: comma, tab, or 2+ spaces as delimiter
-    var parts;
-    if (line.includes('\t')) {
-      parts = line.split('\t');
-    } else if (line.includes(',')) {
-      parts = line.split(',');
-    } else {
-      // Split on 2 or more whitespace characters (handles space-padded columns)
-      parts = line.split(/\s{2,}/);
-    }
+    isHeader = false;
+    // Use proper CSV parser to handle quoted fields
+    var parts = parseCSVLine(line);
     if (parts.length < 2) return;
-    var a = parts[0].trim().replace(/^["']|["']$/g, '');
-    var b = parts[1].trim().replace(/^["']|["']$/g, '');
+
+    // Detect Makro export CSV format: header like "FSN","Title","SKU (fill this in)",...
+    var headerLine = lines[0] ? parseCSVLine(lines[0]) : [];
+    var isMakroExport = headerLine[0] && headerLine[0].toLowerCase().includes('fsn') &&
+                        headerLine[2] && headerLine[2].toLowerCase().includes('sku');
+
+    if (isMakroExport) {
+      // Format: FSN,Title,SKU,Price,Status,LastChecked
+      // Skip header row
+      if (lines.indexOf(line) === 0) return;
+      var fsn = parts[0] ? parts[0].trim().replace(/^["'|]|["']$/g, '') : '';
+      var sku = parts[2] ? parts[2].trim().replace(/^["'|]|["']$/g, '') : '';
+      if (!fsn || !sku) return;
+      var looksLikeFsn = /^[A-Z0-9]{10,24}$/.test(fsn);
+      if (looksLikeFsn) pairs.push({ sku: sku, fsn: fsn });
+      return;
+    }
+
+    // Standard two-column format: SKU,FSN or FSN,SKU
+    var a = parts[0].trim().replace(/^["'|]|["']$/g, '');
+    var b = parts[1].trim().replace(/^["'|]|["']$/g, '');
     if (!a || !b) return;
-    // Skip header rows — FSN is uppercase alphanumeric 10-20 chars
     var looksLikeFsnA = /^[A-Z0-9]{10,24}$/.test(a);
     var looksLikeFsnB = /^[A-Z0-9]{10,24}$/.test(b);
     if (!looksLikeFsnA && !looksLikeFsnB) return;
