@@ -1743,6 +1743,13 @@ window.addEventListener('message', function(ev) {
     log('info', d.msg || '');
     return;
   }
+
+  if (d.type === 'SELLERS_UPDATED') {
+    // Sellers were scraped from another tab — refresh inline display
+    log('info', '📊 Sellers updated for ' + (d.fsn||'') + ': ' + (d.count||0) + ' sellers');
+    loadAllSellersInline();
+    return;
+  }
 });
 
 // Also check via chrome.runtime if available (same page)
