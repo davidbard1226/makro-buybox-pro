@@ -1394,6 +1394,7 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
 
     <div class="modal-actions" style="margin-top:14px">
       <button class="btn-secondary" style="width:auto" onclick="document.getElementById('bulkSkuModal').classList.remove('show')">Cancel</button>
+      <button class="btn-secondary" style="width:auto;color:#818cf8;border-color:#818cf844" onclick="showProductFsns()" title="Show FSNs of products on dashboard">🔍 Show Product FSNs</button>
       <button class="btn-primary" style="width:auto;min-width:120px" onclick="saveBulkSkus()">💾 Import SKUs</button>
     </div>
   </div>
@@ -4624,6 +4625,24 @@ function openBulkSkuModal() {
   setTimeout(function(){ document.getElementById('bulkSkuInput').focus(); }, 100);
 }
 
+function showProductFsns() {
+  var withFsn = state.products.filter(function(p) { return p.fsn; });
+  var withoutFsn = state.products.filter(function(p) { return !p.fsn; });
+  var lines = [];
+  lines.push('Products with FSN (' + withFsn.length + '):');
+  withFsn.slice(0, 15).forEach(function(p) {
+    lines.push('  FSN: ' + p.fsn + '  SKU: ' + (p.sku || '(none)') + '  Title: ' + (p.title || '(none)').substring(0, 40));
+  });
+  if (withFsn.length > 15) lines.push('  ... and ' + (withFsn.length - 15) + ' more');
+  lines.push('');
+  lines.push('Products without FSN (' + withoutFsn.length + '):');
+  withoutFsn.slice(0, 10).forEach(function(p) {
+    lines.push('  URL: ' + (p.url || '(none)').substring(0, 60));
+  });
+  if (withoutFsn.length > 10) lines.push('  ... and ' + (withoutFsn.length - 10) + ' more');
+  alert(lines.join('\n'));
+}
+
 function bulkSkuDropped(event) {
   event.preventDefault();
   document.getElementById('bulkSkuDropZone').style.borderColor = 'var(--border)';
@@ -4684,46 +4703,44 @@ function processBulkSkuFile(file) {
   }
 }
 
-// Parse the text area content into [{sku, fsn}] pairs, auto-skipping headers
+// Parse bulk SKU text into [{sku, fsn}] pairs
+// Supports: SKU,FSN | FSN,SKU | "FSN","Title","SKN",... (Makro export)
 function parseBulkSkuText(text) {
   var lines = text.split('\n').map(function(l){ return l.trim(); }).filter(Boolean);
+  if (!lines.length) return [];
+
   var pairs = [];
-  var isHeader = true;
-  lines.forEach(function(line) {
-    isHeader = false;
-    // Use proper CSV parser to handle quoted fields
+  var headerLine = parseCSVLine(lines[0]);
+
+  // Detect Makro export: header has FSN in col 0 and SKU in col 2
+  var isMakroExport = headerLine[0] && headerLine[0].toLowerCase().includes('fsn') &&
+                      headerLine[2] && headerLine[2].toLowerCase().includes('sku');
+
+  lines.forEach(function(line, idx) {
+    if (idx === 0 && isMakroExport) return; // skip header
+
     var parts = parseCSVLine(line);
     if (parts.length < 2) return;
 
-    // Detect Makro export CSV format: header like "FSN","Title","SKU (fill this in)",...
-    var headerLine = lines[0] ? parseCSVLine(lines[0]) : [];
-    var isMakroExport = headerLine[0] && headerLine[0].toLowerCase().includes('fsn') &&
-                        headerLine[2] && headerLine[2].toLowerCase().includes('sku');
+    var a = (parts[0] || '').trim().replace(/^["']|["']$/g, '');
+    var b = (parts[1] || '').trim().replace(/^["']|["']$/g, '');
+    var c = (parts[2] || '').trim().replace(/^["']|["']$/g, '');
 
     if (isMakroExport) {
-      // Format: FSN,Title,SKU,Price,Status,LastChecked
-      // Skip header row
-      if (lines.indexOf(line) === 0) return;
-      var fsn = parts[0] ? parts[0].trim().replace(/^["'|]|["']$/g, '') : '';
-      var sku = parts[2] ? parts[2].trim().replace(/^["'|]|["']$/g, '') : '';
-      if (!fsn || !sku) return;
-      var looksLikeFsn = /^[A-Z0-9]{10,24}$/.test(fsn);
-      if (looksLikeFsn) pairs.push({ sku: sku, fsn: fsn });
+      // Col 0 = FSN, Col 2 = SKU
+      var fsn = a, sku = c;
+      if (fsn && sku) pairs.push({ sku: sku, fsn: fsn });
       return;
     }
 
-    // Standard two-column format: SKU,FSN or FSN,SKU
-    var a = parts[0].trim().replace(/^["'|]|["']$/g, '');
-    var b = parts[1].trim().replace(/^["'|]|["']$/g, '');
-    if (!a || !b) return;
-    var looksLikeFsnA = /^[A-Z0-9]{10,24}$/.test(a);
-    var looksLikeFsnB = /^[A-Z0-9]{10,24}$/.test(b);
-    if (!looksLikeFsnA && !looksLikeFsnB) return;
-    var sku, fsn;
-    if (looksLikeFsnB && !looksLikeFsnA) { sku = a; fsn = b; }
-    else if (looksLikeFsnA && !looksLikeFsnB) { sku = b; fsn = a; }
-    else { sku = a; fsn = b; }
-    pairs.push({ sku: sku, fsn: fsn });
+    // Two-column: figure out which is FSN (uppercase alphanumeric 10-24 chars)
+    var aIsFsn = /^[A-Za-z0-9]{10,24}$/.test(a);
+    var bIsFsn = /^[A-Za-z0-9]{10,24}$/.test(b);
+
+    if (aIsFsn && !bIsFsn) { pairs.push({ sku: b, fsn: a }); }
+    else if (bIsFsn && !aIsFsn) { pairs.push({ sku: a, fsn: b }); }
+    else if (aIsFsn && bIsFsn) { pairs.push({ sku: b, fsn: a }); } // both look like FSN, first wins
+    // else: neither looks like FSN, skip
   });
   return pairs;
 }
@@ -4754,36 +4771,52 @@ function saveBulkSkus() {
     return;
   }
 
+  // Build lookup: normalized FSN -> SKU
   var map = {};
-  pairs.forEach(function(p) { map[p.fsn] = p.sku; });
-
-  var matched = 0;
-  state.products.forEach(function(p) {
-    if (p.fsn && map[p.fsn]) { p.sku = map[p.fsn]; matched++; }
+  pairs.forEach(function(p) {
+    var fsn = (p.fsn || '').trim().toUpperCase();
+    if (fsn) map[fsn] = p.sku;
   });
 
-  // Debug: show sample FSNs if no matches
-  var debugInfo = '';
-  if (matched === 0 && pairs.length > 0) {
-    var csvFsns = pairs.slice(0, 3).map(function(p) { return p.fsn; }).join(', ');
-    var prodFsns = state.products.filter(function(p) { return p.fsn; }).slice(0, 3).map(function(p) { return p.fsn; }).join(', ');
-    debugInfo = '<br><span style="color:#ff9500;font-size:11px">Debug - CSV FSNs: ' + csvFsns + '<br>Product FSNs: ' + prodFsns + '<br>Products with FSN: ' + state.products.filter(function(p) { return p.fsn; ).length + '/' + state.products.length + '</span>';
-    console.log('[BulkSKU] CSV FSNs sample:', csvFsns);
-    console.log('[BulkSKU] Product FSNs sample:', prodFsns);
-    console.log('[BulkSKU] Total products:', state.products.length, 'with FSN:', state.products.filter(function(p) { return p.fsn; }).length);
-  }
+  // Match against products (normalize FSN for comparison)
+  var matched = 0;
+  state.products.forEach(function(p) {
+    var pFsn = (p.fsn || '').trim().toUpperCase();
+    if (pFsn && map[pFsn]) { p.sku = map[pFsn]; matched++; }
+  });
 
+  // Also match listings
   var listings = getListings();
-  listings.forEach(function(l) { if (l.fsn && map[l.fsn]) l.sku = map[l.fsn]; });
+  listings.forEach(function(l) {
+    var lFsn = (l.fsn || '').trim().toUpperCase();
+    if (lFsn && map[lFsn]) l.sku = map[lFsn];
+  });
   localStorage.setItem('makro_listings', JSON.stringify(listings));
   saveProducts();
 
-  document.getElementById('bulkSkuResult').innerHTML =
-    '<span style="color:var(--accent)">✅ Imported ' + pairs.length + ' rows — matched and saved SKUs for ' + matched + ' products.</span>' + debugInfo;
+  // Build result message
+  var msg = '<span style="color:var(--accent)">✅ Imported ' + pairs.length + ' rows — matched ' + matched + ' products.</span>';
+
+  // Debug info if no matches
+  if (matched === 0) {
+    var csvFsns = pairs.slice(0, 5).map(function(p) { return p.fsn; }).join(', ');
+    var prodFsns = state.products.filter(function(p) { return p.fsn; }).slice(0, 5).map(function(p) { return p.fsn; }).join(', ');
+    var noFsnCount = state.products.filter(function(p) { return !p.fsn; }).length;
+    msg += '<br><br><span style="color:#ff9500;font-size:12px">' +
+      '<b>⚠ No matches found!</b><br>' +
+      '<b>CSV FSNs (first 5):</b> ' + (csvFsns || '(none)') + '<br>' +
+      '<b>Product FSNs (first 5):</b> ' + (prodFsns || '(none)') + '<br>' +
+      '<b>Products without FSN:</b> ' + noFsnCount + ' / ' + state.products.length + '<br>' +
+      '<br><i>Check that FSNs in your CSV exactly match the FSNs on your products.</i>' +
+      '</span>';
+    console.log('[BulkSKU] No matches. CSV FSNs:', csvFsns, '| Product FSNs:', prodFsns);
+  }
+
+  document.getElementById('bulkSkuResult').innerHTML = msg;
   setTimeout(function() {
     document.getElementById('bulkSkuModal').classList.remove('show');
     renderProducts();
-  }, 1400);
+  }, matched > 0 ? 1400 : 6000);
 }
 
 // ============================================================
