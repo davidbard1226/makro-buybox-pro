@@ -5005,8 +5005,8 @@ function loadAllSellersInline() {
 
     var sellers = getSellersFromCache(p);
     if (!sellers || sellers.length === 0) {
-      // No cached data - show clickable prompt
-      el.innerHTML = '<span style="color:var(--muted);cursor:pointer" onclick="fetchAndDisplaySellers(' + idx + ')">⏳ Click to load sellers</span>';
+      // No cached data - show link to Makro
+      el.innerHTML = '<a href="https://www.makro.co.za/sellers?pid=' + (p.pid||p.fsn) + '" target="_blank" style="color:var(--accent);font-size:10px">🔗 View sellers</a>';
       return;
     }
 
@@ -5035,26 +5035,8 @@ function fetchAndDisplaySellers(idx) {
   var el = document.getElementById('sellers-inline-' + idx);
   if (!el) return;
 
-  el.innerHTML = '<span style="color:var(--muted)">⏳ Loading...</span>';
-
-  fetchSellers(p.fsn || p.pid)
-  .then(function(data) {
-    var sellers = parseSellersFromResponse(data);
-    if (sellers.length === 0) {
-      el.innerHTML = '<span style="color:#ff9500">⚠ No data</span>';
-      return;
-    }
-    // Cache the data
-    var store = JSON.parse(localStorage.getItem('makro_sellers_data') || '{}');
-    store[p.pid || p.fsn] = { pid: p.pid || p.fsn, sellers: sellers, timestamp: new Date().toISOString() };
-    localStorage.setItem('makro_sellers_data', JSON.stringify(store));
-    // Re-render all inline
-    loadAllSellersInline();
-  })
-  .catch(function(err) {
-    el.innerHTML = '<span style="color:#ff9500">⚠ Error</span>';
-    console.error('[Sellers] Error:', err.message);
-  });
+  // Show link to open Makro sellers page (can't fetch server-side due to bot protection)
+  el.innerHTML = '<a href="https://www.makro.co.za/sellers?pid=' + (p.pid||p.fsn) + '" target="_blank" style="color:var(--accent);font-size:10px">🔗 View all sellers on Makro</a>';
 }
 
 function renderSellersList(el, sellers, p) {
