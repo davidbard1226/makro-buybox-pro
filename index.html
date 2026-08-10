@@ -5648,7 +5648,8 @@ function importMultiChannelProducts(input) {
     header.forEach(function(h, i) {
       const hl = h.toLowerCase().trim();
       if (hl.includes('title') || hl.includes('product name') || hl.includes('name')) colMap.title = i;
-      if (hl.includes('sku') || (hl.includes('code') && !hl.includes('barcode'))) colMap.sku = i;
+      if (hl === 'sku') colMap.sku = i;
+      if (hl === 'code' && colMap.sku === undefined) colMap.sku = i;
       if (hl.includes('fsn') || hl.includes('product id') || hl.includes('pid') || hl.includes('lps')) colMap.fsn = i;
       if (hl.includes('barcode')) colMap.barcode = i;
       if (hl.includes('makro') && (hl.includes('price') || hl.includes('rrp') || hl.includes('sale'))) colMap.makroPrice = i;
