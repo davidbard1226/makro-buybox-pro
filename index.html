@@ -4986,13 +4986,19 @@ function getSellersFromCache(p) {
   // Check localStorage for cached seller data from content script
   try {
     var data = JSON.parse(localStorage.getItem('makro_sellers_data') || '{}');
-    var key = p.pid || p.fsn;
-    if (data[key] && data[key].sellers) {
-      // Check if data is fresh (< 1 hour)
-      var age = Date.now() - new Date(data[key].timestamp).getTime();
-      if (age < 3600000) return data[key].sellers;
+    // Try multiple keys
+    var keys = [p.pid, p.fsn, p.pid || p.fsn];
+    for (var i = 0; i < keys.length; i++) {
+      var key = keys[i];
+      if (key && data[key] && data[key].sellers && data[key].sellers.length > 0) {
+        // Check if data is fresh (< 24 hours)
+        var age = Date.now() - new Date(data[key].timestamp).getTime();
+        if (age < 86400000) return data[key].sellers;
+      }
     }
-  } catch(e) {}
+  } catch(e) {
+    log('error', 'getSellersFromCache error:', e.message);
+  }
   return null;
 }
 
