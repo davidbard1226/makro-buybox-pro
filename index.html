@@ -1661,8 +1661,9 @@ window.addEventListener('message', function(ev) {
     saveProducts();
     reEvaluateStatuses();
     saveProducts();
-    updateProductCount();
-    renderDashboard();
+  updateProductCount();
+  renderDashboard();
+  renderOrders();
     const anyChecked = document.querySelectorAll('.row-check:checked').length > 0;
     if (!anyChecked) renderProducts();
     return;
@@ -1732,7 +1733,7 @@ function setExtStatus(online) {
 // TABS
 // ============================================================
 function switchTab(name) {
-  const names = ['dashboard','products','scraper','pricer','analytics','log','intelligence'];
+  const names = ['dashboard','products','scraper','pricer','analytics','log','intelligence','orders'];
   document.querySelectorAll('.tab-btn').forEach((b,i) => {
     b.classList.toggle('active', names[i] === name);
   });
@@ -1745,6 +1746,7 @@ function switchTab(name) {
   if (name === 'pricer')    initPricer();
   if (name === 'log')       renderPriceLog();
   if (name === 'intelligence') renderIntelligence();
+  if (name === 'orders')   renderOrders();
 }
 
 function syncSellerConfig() {
