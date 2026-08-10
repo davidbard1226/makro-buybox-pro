@@ -2684,12 +2684,15 @@ function renderProducts() {
             '</div>';
         })()}
       </td>
-      <td>
+       <td>
         <div class="sellers-cell" id="sellers-cell-${realIdx}">
           <div style="font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escHtml(p.seller||'')}">
             ${escHtml((p.seller||'Unknown').slice(0,18))}
           </div>
-          ${p.fsn ? '<button class="action-btn" style="font-size:9px;padding:1px 4px;margin-top:2px" onclick="toggleSellers(' + realIdx + ')" id="sellers-btn-' + realIdx + '">👥 View</button>' : ''}
+          <div style="display:flex;gap:4px;margin-top:2px">
+            ${p.fsn ? '<button class="action-btn" style="font-size:9px;padding:1px 4px" onclick="toggleSellers(' + realIdx + ')" id="sellers-btn-' + realIdx + '">👥 View</button>' : ''}
+            ${p.pid ? '<a class="action-btn" style="font-size:9px;padding:1px 4px;color:var(--accent);text-decoration:none" href="https://www.makro.co.za/sellers?pid=' + p.pid + '" target="_blank" title="Open sellers page on Makro">🔗 Makro</a>' : ''}
+          </div>
           <div id="sellers-list-${realIdx}" style="display:none;margin-top:6px;max-height:200px;overflow-y:auto"></div>
         </div>
        </td>
@@ -4949,37 +4952,27 @@ function toggleSellers(idx) {
     if (btnEl) btnEl.textContent = '✕ Hide';
     if (listEl.dataset.loaded === '1') return;
 
-    listEl.innerHTML = '<div style="color:var(--muted);padding:8px;text-align:center;font-size:11px">⏳ Loading sellers...</div>';
+    listEl.innerHTML = '<div style="color:var(--muted);padding:8px;text-align:center;font-size:11px">⏳ Loading...</div>';
 
-    if (!p.fsn && !p.pid) {
-      listEl.innerHTML = '<div style="color:#ff9500;padding:8px;text-align:center;font-size:11px">No FSN/PID set.<br>Add FSN to fetch sellers.</div>';
+    // Check for cached data from content script
+    var cached = getSellersFromCache(p);
+    if (cached && cached.length > 0) {
       listEl.dataset.loaded = '1';
+      renderSellersList(listEl, cached, p);
       return;
     }
 
-    // First check if we have cached seller data from the content script
-    var cachedSellers = getSellersFromCache(p);
-    if (cachedSellers && cachedSellers.length > 0) {
-      listEl.dataset.loaded = '1';
-      renderSellersList(listEl, cachedSellers, p);
-      return;
-    }
-
-    // Try fetching from API
-    fetchSellers(p.fsn || p.pid)
-    .then(function(data) {
-      var sellers = parseSellersFromResponse(data);
-      listEl.dataset.loaded = '1';
-      if (sellers.length === 0) {
-        listEl.innerHTML = '<div style="color:var(--muted);padding:8px;text-align:center;font-size:11px">No sellers found.<br><a href="https://www.makro.co.za/sellers?pid=' + (p.pid||p.fsn) + '" target="_blank" style="color:var(--accent);font-size:10px">Open on Makro →</a></div>';
-        return;
-      }
-      renderSellersList(listEl, sellers, p);
-    })
-    .catch(function(err) {
-      listEl.innerHTML = '<div style="color:#ff9500;padding:8px;text-align:center;font-size:11px">⚠ Cannot fetch.<br><a href="https://www.makro.co.za/sellers?pid=' + (p.pid||p.fsn) + '" target="_blank" style="color:var(--accent);font-size:10px">View on Makro →</a></div>';
-      console.error('[Sellers] Error:', err.message);
-    });
+    // No cached data - show current seller + link to Makro
+    listEl.dataset.loaded = '1';
+    listEl.innerHTML = '<div style="padding:8px;font-size:11px">' +
+      '<div style="background:rgba(0,229,160,.05);border:1px solid rgba(0,229,160,.2);border-radius:4px;padding:6px;margin-bottom:8px">' +
+      '<div style="font-weight:600;color:var(--text)">' + escHtml(p.seller || 'Unknown Seller') + '</div>' +
+      '<div style="font-family:monospace;color:var(--accent)">R ' + (p.buybox_price || 0).toFixed(2) + '</div>' +
+      '<div style="font-size:9px;color:var(--muted);margin-top:2px">Current BuyBox winner</div>' +
+      '</div>' +
+      '<a href="https://www.makro.co.za/sellers?pid=' + (p.pid||p.fsn) + '" target="_blank" style="display:block;width:100%;text-align:center;padding:8px;background:var(--accent);color:#000;border-radius:4px;text-decoration:none;font-weight:600;margin-bottom:6px">🔗 See All Sellers on Makro</a>' +
+      '<div style="color:var(--muted);font-size:9px;text-align:center">Install Chrome extension to auto-scrape all sellers</div>' +
+      '</div>';
   } else {
     listEl.style.display = 'none';
     if (btnEl) btnEl.textContent = '👥 View';
