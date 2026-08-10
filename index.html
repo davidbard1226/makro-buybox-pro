@@ -4713,32 +4713,48 @@ function showHistory(idx) {
 // ============================================================
 function fetchSellers(fsn, pincode) {
   return new Promise(function(resolve, reject) {
+    // Makro sellers API endpoint
     var url = 'https://www.makro.co.za/api/3/page/dynamic/product-sellers';
     var body = JSON.stringify({
       requestContext: { productId: fsn },
       locationContext: { pincode: pincode || '2000' }
     });
 
-    // Try direct fetch first (works if CORS is allowed)
+    // Try direct fetch first (works if on Makro domain)
     fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: body,
       credentials: 'include'
     })
-    .then(function(r) { return r.json(); })
+    .then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
     .then(function(data) { resolve(data); })
     .catch(function(err) {
-      // Fallback: use CORS proxy
-      var proxyUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
-      fetch(proxyUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: body
-      })
-      .then(function(r) { return r.json(); })
-      .then(function(data) { resolve(data); })
-      .catch(function(err2) { reject(err2); });
+      // Try multiple CORS proxies
+      var proxies = [
+        'https://api.allorigins.win/raw?url=',
+        'https://corsproxy.io/?',
+        'https://api.codetabs.com/v1/proxy?quest='
+      ];
+
+      function tryProxy(idx) {
+        if (idx >= proxies.length) { reject(err); return; }
+        fetch(proxies[idx] + encodeURIComponent(url), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: body
+        })
+        .then(function(r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
+        })
+        .then(function(data) { resolve(data); })
+        .catch(function() { tryProxy(idx + 1); });
+      }
+      tryProxy(0);
     });
   });
 }
@@ -4747,27 +4763,51 @@ function parseSellersFromResponse(data) {
   var sellers = [];
   if (!data) return sellers;
 
-  // Makro API response structure may vary
-  var sellerList = data.sellers || data.data || data.productSellers || data.offers || [];
-  if (!Array.isArray(sellerList) && sellerList.sellers) sellerList = sellerList.sellers;
+  // Try multiple response structures
+  var sellerList = [];
+
+  if (Array.isArray(data)) {
+    sellerList = data;
+  } else if (data.sellers && Array.isArray(data.sellers)) {
+    sellerList = data.sellers;
+  } else if (data.data && Array.isArray(data.data)) {
+    sellerList = data.data;
+  } else if (data.productSellers && Array.isArray(data.productSellers)) {
+    sellerList = data.productSellers;
+  } else if (data.offers && Array.isArray(data.offers)) {
+    sellerList = data.offers;
+  } else if (data.data && data.data.sellers && Array.isArray(data.data.sellers)) {
+    sellerList = data.data.sellers;
+  } else if (typeof data === 'object') {
+    // Try to find any array property
+    for (var key in data) {
+      if (Array.isArray(data[key]) && data[key].length > 0) {
+        sellerList = data[key];
+        break;
+      }
+    }
+  }
 
   sellerList.forEach(function(s) {
-    var name = s.sellerName || s.seller || s.name || s.merchantName || 'Unknown';
-    var price = parseFloat(s.price || s.sellingPrice || s.amount || 0);
-    var isBuyBox = s.isBuyBoxWinner || s.buyBoxWinner || s.isDefaultSeller || false;
-    var shipping = parseFloat(s.shippingPrice || s.deliveryFee || 0);
+    var name = s.sellerName || s.seller || s.name || s.merchantName || s.storeName || 'Unknown';
+    var price = parseFloat(s.price || s.sellingPrice || s.amount || s.totalPrice || 0);
+    var isBuyBox = s.isBuyBoxWinner || s.buyBoxWinner || s.isDefaultSeller || s.isBestSeller || false;
+    var shipping = parseFloat(s.shippingPrice || s.deliveryFee || s.shipping || 0);
     var total = price + shipping;
     var rating = s.sellerRating || s.rating || null;
     var totalRatings = s.totalRatings || s.ratingCount || null;
-    sellers.push({
-      name: name,
-      price: price,
-      shipping: shipping,
-      total: total,
-      isBuyBox: isBuyBox,
-      rating: rating,
-      totalRatings: totalRatings
-    });
+
+    if (name && price > 0) {
+      sellers.push({
+        name: name,
+        price: price,
+        shipping: shipping,
+        total: total,
+        isBuyBox: isBuyBox,
+        rating: rating,
+        totalRatings: totalRatings
+      });
+    }
   });
 
   // Sort by total price ascending
@@ -4905,68 +4945,87 @@ function toggleSellers(idx) {
   if (!listEl) return;
 
   if (listEl.style.display === 'none') {
-    // Show
     listEl.style.display = 'block';
     if (btnEl) btnEl.textContent = '✕ Hide';
-
-    if (listEl.dataset.loaded === '1') return; // already loaded
+    if (listEl.dataset.loaded === '1') return;
 
     listEl.innerHTML = '<div style="color:var(--muted);padding:8px;text-align:center;font-size:11px">⏳ Loading sellers...</div>';
 
-    if (!p.fsn) {
-      listEl.innerHTML = '<div style="color:#ff9500;padding:8px;text-align:center;font-size:11px">No FSN set for this product.<br>Add FSN to fetch sellers.</div>';
+    if (!p.fsn && !p.pid) {
+      listEl.innerHTML = '<div style="color:#ff9500;padding:8px;text-align:center;font-size:11px">No FSN/PID set.<br>Add FSN to fetch sellers.</div>';
       listEl.dataset.loaded = '1';
       return;
     }
 
-    fetchSellers(p.fsn)
+    // First check if we have cached seller data from the content script
+    var cachedSellers = getSellersFromCache(p);
+    if (cachedSellers && cachedSellers.length > 0) {
+      listEl.dataset.loaded = '1';
+      renderSellersList(listEl, cachedSellers, p);
+      return;
+    }
+
+    // Try fetching from API
+    fetchSellers(p.fsn || p.pid)
     .then(function(data) {
       var sellers = parseSellersFromResponse(data);
       listEl.dataset.loaded = '1';
-
       if (sellers.length === 0) {
-        listEl.innerHTML = '<div style="color:var(--muted);padding:8px;text-align:center;font-size:11px">No sellers found.<br>Product may be unavailable.</div>';
+        listEl.innerHTML = '<div style="color:var(--muted);padding:8px;text-align:center;font-size:11px">No sellers found.<br><a href="https://www.makro.co.za/sellers?pid=' + (p.pid||p.fsn) + '" target="_blank" style="color:var(--accent);font-size:10px">Open on Makro →</a></div>';
         return;
       }
-
-      var myName = (localStorage.getItem(SELLER_KEY) || '').trim().toLowerCase();
-      var html = '<table style="width:100%;border-collapse:collapse;font-size:11px">' +
-        '<thead><tr style="color:var(--muted);font-size:9px;text-transform:uppercase">' +
-        '<th>Seller</th><th style="text-align:right">Price</th><th style="text-align:right">Total</th>' +
-        '</tr></thead><tbody>';
-
-      sellers.forEach(function(s) {
-        var isMe = myName && s.name.toLowerCase().includes(myName);
-        var isBuyBox = s.isBuyBox;
-        var rowBg = isMe ? 'background:rgba(0,229,160,.15)' : (isBuyBox ? 'background:rgba(0,229,160,.05)' : '');
-        var badges = '';
-        if (isBuyBox) badges += ' <span style="color:var(--accent);font-size:9px">🏆</span>';
-        if (isMe) badges += ' <span style="color:#818cf8;font-size:9px">⭐</span>';
-        var ratingStr = s.rating ? ' ⭐' + s.rating.toFixed(1) : '';
-
-        html += '<tr style="border-bottom:1px solid rgba(30,37,48,.5);' + rowBg + '">' +
-          '<td style="padding:3px 4px;font-weight:' + (isMe||isBuyBox?'600':'400') + '">' + escHtml(s.name) + badges + ratingStr + '</td>' +
-          '<td style="padding:3px 4px;text-align:right;font-family:monospace">R' + s.price.toFixed(2) + '</td>' +
-          '<td style="padding:3px 4px;text-align:right;font-family:monospace;font-weight:700">R' + s.total.toFixed(2) + '</td>' +
-          '</tr>';
-      });
-
-      html += '</tbody></table>';
-      html += '<div style="font-size:9px;color:var(--muted);margin-top:4px;text-align:center">' + sellers.length + ' seller' + (sellers.length>1?'s':'') + ' · FSN: ' + p.fsn + '</div>';
-      listEl.innerHTML = html;
+      renderSellersList(listEl, sellers, p);
     })
     .catch(function(err) {
-      listEl.innerHTML = '<div style="color:#ff9500;padding:8px;text-align:center;font-size:11px">' +
-        '⚠ Cannot fetch sellers.<br>' +
-        '<a href="https://www.makro.co.za/p/' + p.fsn + '" target="_blank" style="color:var(--accent);font-size:10px">View on Makro →</a>' +
-        '</div>';
-      console.error('[Sellers] Fetch error:', err.message);
+      listEl.innerHTML = '<div style="color:#ff9500;padding:8px;text-align:center;font-size:11px">⚠ Cannot fetch.<br><a href="https://www.makro.co.za/sellers?pid=' + (p.pid||p.fsn) + '" target="_blank" style="color:var(--accent);font-size:10px">View on Makro →</a></div>';
+      console.error('[Sellers] Error:', err.message);
     });
   } else {
-    // Hide
     listEl.style.display = 'none';
     if (btnEl) btnEl.textContent = '👥 View';
   }
+}
+
+function getSellersFromCache(p) {
+  // Check localStorage for cached seller data from content script
+  try {
+    var data = JSON.parse(localStorage.getItem('makro_sellers_data') || '{}');
+    var key = p.pid || p.fsn;
+    if (data[key] && data[key].sellers) {
+      // Check if data is fresh (< 1 hour)
+      var age = Date.now() - new Date(data[key].timestamp).getTime();
+      if (age < 3600000) return data[key].sellers;
+    }
+  } catch(e) {}
+  return null;
+}
+
+function renderSellersList(el, sellers, p) {
+  var myName = (localStorage.getItem(SELLER_KEY) || '').trim().toLowerCase();
+  var html = '<table style="width:100%;border-collapse:collapse;font-size:11px">' +
+    '<thead><tr style="color:var(--muted);font-size:9px;text-transform:uppercase">' +
+    '<th>Seller</th><th style="text-align:right">Price</th><th style="text-align:right">Total</th>' +
+    '</tr></thead><tbody>';
+
+  sellers.forEach(function(s) {
+    var isMe = myName && s.name.toLowerCase().includes(myName);
+    var isBuyBox = s.isBuyBox;
+    var rowBg = isMe ? 'background:rgba(0,229,160,.15)' : (isBuyBox ? 'background:rgba(0,229,160,.05)' : '');
+    var badges = '';
+    if (isBuyBox) badges += ' <span style="color:var(--accent);font-size:9px">🏆</span>';
+    if (isMe) badges += ' <span style="color:#818cf8;font-size:9px">⭐</span>';
+    var ratingStr = s.rating ? ' ⭐' + s.rating.toFixed(1) : '';
+
+    html += '<tr style="border-bottom:1px solid rgba(30,37,48,.5);' + rowBg + '">' +
+      '<td style="padding:3px 4px;font-weight:' + (isMe||isBuyBox?'600':'400') + '">' + escHtml(s.name) + badges + ratingStr + '</td>' +
+      '<td style="padding:3px 4px;text-align:right;font-family:monospace">R' + s.price.toFixed(2) + '</td>' +
+      '<td style="padding:3px 4px;text-align:right;font-family:monospace;font-weight:700">R' + s.total.toFixed(2) + '</td>' +
+      '</tr>';
+  });
+
+  html += '</tbody></table>';
+  html += '<div style="font-size:9px;color:var(--muted);margin-top:4px;text-align:center">' + sellers.length + ' seller' + (sellers.length>1?'s':'') + ' found</div>';
+  el.innerHTML = html;
 }
 
 // ============================================================
