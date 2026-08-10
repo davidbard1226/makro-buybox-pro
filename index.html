@@ -2689,8 +2689,8 @@ function renderProducts() {
           <div style="font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escHtml(p.seller||'')}">
             ${escHtml((p.seller||'Unknown').slice(0,18))}
           </div>
+          <div id="sellers-inline-${realIdx}" style="margin-top:4px;font-size:10px;color:var(--muted)"></div>
           <div style="display:flex;gap:4px;margin-top:2px">
-            ${p.fsn ? '<button class="action-btn" style="font-size:9px;padding:1px 4px" onclick="toggleSellers(' + realIdx + ')" id="sellers-btn-' + realIdx + '">👥 View</button>' : ''}
             ${p.pid ? '<a class="action-btn" style="font-size:9px;padding:1px 4px;color:var(--accent);text-decoration:none" href="https://www.makro.co.za/sellers?pid=' + p.pid + '" target="_blank" title="Open sellers page on Makro">🔗 Makro</a>' : ''}
           </div>
           <div id="sellers-list-${realIdx}" style="display:none;margin-top:6px;max-height:200px;overflow-y:auto"></div>
@@ -2712,6 +2712,9 @@ function renderProducts() {
       if (prevChecked.has(parseInt(c.dataset.idx))) c.checked = true;
     });
   }
+
+  // ── POPULATE SELLERS INLINE ───────────────────────────────────────────────
+  loadAllSellersInline();
 
   // ── PAGINATION BAR ────────────────────────────────────────────────────────
   const pagEl = document.getElementById('prodPagination');
@@ -4991,6 +4994,67 @@ function getSellersFromCache(p) {
     }
   } catch(e) {}
   return null;
+}
+
+// Load all sellers inline for each product (no click needed)
+function loadAllSellersInline() {
+  state.products.forEach(function(p, idx) {
+    if (!p.pid && !p.fsn) return;
+    var el = document.getElementById('sellers-inline-' + idx);
+    if (!el) return;
+
+    var sellers = getSellersFromCache(p);
+    if (!sellers || sellers.length === 0) {
+      // No cached data - show clickable prompt
+      el.innerHTML = '<span style="color:var(--muted);cursor:pointer" onclick="fetchAndDisplaySellers(' + idx + ')">⏳ Click to load sellers</span>';
+      return;
+    }
+
+    // Show all sellers inline
+    var myName = (localStorage.getItem(SELLER_KEY) || '').trim().toLowerCase();
+    var html = '<div style="display:flex;flex-direction:column;gap:2px">';
+    sellers.forEach(function(s) {
+      var isMe = myName && s.name.toLowerCase().includes(myName);
+      var isBuyBox = s.isBuyBox;
+      var color = isMe ? '#818cf8' : (isBuyBox ? 'var(--accent)' : 'var(--muted)');
+      var badge = isBuyBox ? ' 🏆' : (isMe ? ' ⭐' : '');
+      html += '<div style="display:flex;justify-content:space-between;gap:4px;font-size:10px">' +
+        '<span style="color:' + color + ';font-weight:' + (isBuyBox||isMe?'600':'400') + '">' + escHtml(s.name.slice(0,15)) + badge + '</span>' +
+        '<span style="font-family:monospace;color:' + color + '">R' + s.price.toFixed(0) + '</span>' +
+        '</div>';
+    });
+    html += '</div>';
+    el.innerHTML = html;
+  });
+}
+
+// Fetch sellers for a product and display inline
+function fetchAndDisplaySellers(idx) {
+  var p = state.products[idx];
+  if (!p) return;
+  var el = document.getElementById('sellers-inline-' + idx);
+  if (!el) return;
+
+  el.innerHTML = '<span style="color:var(--muted)">⏳ Loading...</span>';
+
+  fetchSellers(p.fsn || p.pid)
+  .then(function(data) {
+    var sellers = parseSellersFromResponse(data);
+    if (sellers.length === 0) {
+      el.innerHTML = '<span style="color:#ff9500">⚠ No data</span>';
+      return;
+    }
+    // Cache the data
+    var store = JSON.parse(localStorage.getItem('makro_sellers_data') || '{}');
+    store[p.pid || p.fsn] = { pid: p.pid || p.fsn, sellers: sellers, timestamp: new Date().toISOString() };
+    localStorage.setItem('makro_sellers_data', JSON.stringify(store));
+    // Re-render all inline
+    loadAllSellersInline();
+  })
+  .catch(function(err) {
+    el.innerHTML = '<span style="color:#ff9500">⚠ Error</span>';
+    console.error('[Sellers] Error:', err.message);
+  });
 }
 
 function renderSellersList(el, sellers, p) {
