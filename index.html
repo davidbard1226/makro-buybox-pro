@@ -2593,18 +2593,7 @@ function renderProducts() {
       <td>${myPrice}${priceIndicator}</td>
        <td>${myStock}</td>
       <td>
-        <span class="sellers-trigger" onmouseenter="loadSellersTooltip(${realIdx})">
-          <span class="price-cell ${p.status==='win'?'win':'lose'}" style="display:inline-block;padding:2px 8px;border-radius:4px">R ${(p.buybox_price||0).toFixed(2)}</span>
-          <span class="sellers-tooltip">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-              <span style="font-weight:600;color:var(--text)">All Sellers</span>
-              <span style="font-size:10px;color:var(--muted);font-family:monospace">${escHtml(p.fsn||'')}</span>
-            </div>
-            <div id="tt-sellers-${realIdx}">
-              <div class="loading">Loading sellers...</div>
-            </div>
-          </span>
-        </span>
+        <span class="price-cell ${p.status==='win'?'win':'lose'}">R ${(p.buybox_price||0).toFixed(2)}</span>
        </td>
       <td>
         ${p.cost_price > 0
@@ -2695,7 +2684,15 @@ function renderProducts() {
             '</div>';
         })()}
       </td>
-      <td style="font-size:12px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(p.seller||'')}">${escHtml((p.seller||'Unknown').slice(0,20))}</td>
+      <td>
+        <div class="sellers-cell" id="sellers-cell-${realIdx}">
+          <div style="font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escHtml(p.seller||'')}">
+            ${escHtml((p.seller||'Unknown').slice(0,18))}
+          </div>
+          ${p.fsn ? '<button class="action-btn" style="font-size:9px;padding:1px 4px;margin-top:2px" onclick="toggleSellers(' + realIdx + ')" id="sellers-btn-' + realIdx + '">👥 View</button>' : ''}
+          <div id="sellers-list-${realIdx}" style="display:none;margin-top:6px;max-height:200px;overflow-y:auto"></div>
+        </div>
+       </td>
       <td><span class="status-pill ${statusClass}">${statusLabel}</span></td>
       <td style="font-size:11px;color:var(--muted);white-space:nowrap">${t}</td>
       <td style="display:flex;gap:4px">
@@ -4896,6 +4893,80 @@ function loadSellersTooltip(idx) {
       '</div>';
     console.error('[Sellers] Fetch error for', p.fsn, ':', err.message);
   });
+}
+
+// Toggle sellers list inline in the Seller column
+function toggleSellers(idx) {
+  var p = state.products[idx];
+  if (!p) return;
+
+  var listEl = document.getElementById('sellers-list-' + idx);
+  var btnEl = document.getElementById('sellers-btn-' + idx);
+  if (!listEl) return;
+
+  if (listEl.style.display === 'none') {
+    // Show
+    listEl.style.display = 'block';
+    if (btnEl) btnEl.textContent = '✕ Hide';
+
+    if (listEl.dataset.loaded === '1') return; // already loaded
+
+    listEl.innerHTML = '<div style="color:var(--muted);padding:8px;text-align:center;font-size:11px">⏳ Loading sellers...</div>';
+
+    if (!p.fsn) {
+      listEl.innerHTML = '<div style="color:#ff9500;padding:8px;text-align:center;font-size:11px">No FSN set for this product.<br>Add FSN to fetch sellers.</div>';
+      listEl.dataset.loaded = '1';
+      return;
+    }
+
+    fetchSellers(p.fsn)
+    .then(function(data) {
+      var sellers = parseSellersFromResponse(data);
+      listEl.dataset.loaded = '1';
+
+      if (sellers.length === 0) {
+        listEl.innerHTML = '<div style="color:var(--muted);padding:8px;text-align:center;font-size:11px">No sellers found.<br>Product may be unavailable.</div>';
+        return;
+      }
+
+      var myName = (localStorage.getItem(SELLER_KEY) || '').trim().toLowerCase();
+      var html = '<table style="width:100%;border-collapse:collapse;font-size:11px">' +
+        '<thead><tr style="color:var(--muted);font-size:9px;text-transform:uppercase">' +
+        '<th>Seller</th><th style="text-align:right">Price</th><th style="text-align:right">Total</th>' +
+        '</tr></thead><tbody>';
+
+      sellers.forEach(function(s) {
+        var isMe = myName && s.name.toLowerCase().includes(myName);
+        var isBuyBox = s.isBuyBox;
+        var rowBg = isMe ? 'background:rgba(0,229,160,.15)' : (isBuyBox ? 'background:rgba(0,229,160,.05)' : '');
+        var badges = '';
+        if (isBuyBox) badges += ' <span style="color:var(--accent);font-size:9px">🏆</span>';
+        if (isMe) badges += ' <span style="color:#818cf8;font-size:9px">⭐</span>';
+        var ratingStr = s.rating ? ' ⭐' + s.rating.toFixed(1) : '';
+
+        html += '<tr style="border-bottom:1px solid rgba(30,37,48,.5);' + rowBg + '">' +
+          '<td style="padding:3px 4px;font-weight:' + (isMe||isBuyBox?'600':'400') + '">' + escHtml(s.name) + badges + ratingStr + '</td>' +
+          '<td style="padding:3px 4px;text-align:right;font-family:monospace">R' + s.price.toFixed(2) + '</td>' +
+          '<td style="padding:3px 4px;text-align:right;font-family:monospace;font-weight:700">R' + s.total.toFixed(2) + '</td>' +
+          '</tr>';
+      });
+
+      html += '</tbody></table>';
+      html += '<div style="font-size:9px;color:var(--muted);margin-top:4px;text-align:center">' + sellers.length + ' seller' + (sellers.length>1?'s':'') + ' · FSN: ' + p.fsn + '</div>';
+      listEl.innerHTML = html;
+    })
+    .catch(function(err) {
+      listEl.innerHTML = '<div style="color:#ff9500;padding:8px;text-align:center;font-size:11px">' +
+        '⚠ Cannot fetch sellers.<br>' +
+        '<a href="https://www.makro.co.za/p/' + p.fsn + '" target="_blank" style="color:var(--accent);font-size:10px">View on Makro →</a>' +
+        '</div>';
+      console.error('[Sellers] Fetch error:', err.message);
+    });
+  } else {
+    // Hide
+    listEl.style.display = 'none';
+    if (btnEl) btnEl.textContent = '👥 View';
+  }
 }
 
 // ============================================================
