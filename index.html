@@ -208,9 +208,38 @@
      text-transform: uppercase;
      letter-spacing: 0.5px;
    }
-   .channel-makro { background: rgba(0, 229, 160, 0.2); color: var(--accent); }
-   .channel-takealot { background: rgba(96, 165, 253, 0.2); color: #60a5fd; }
-   .channel-amazon { background: rgba(251, 191, 36, 0.2); color: #fbbf24; }
+    .channel-makro { background: rgba(0, 229, 160, 0.2); color: var(--accent); }
+    .channel-takealot { background: rgba(96, 165, 253, 0.2); color: #60a5fd; }
+    .channel-amazon { background: rgba(251, 191, 36, 0.2); color: #fbbf24; }
+
+    /* SELLERS TOOLTIP */
+    .sellers-trigger {
+      position: relative;
+      cursor: pointer;
+      color: #818cf8;
+      text-decoration: underline;
+      text-decoration-style: dotted;
+    }
+    .sellers-tooltip {
+      display: none;
+      position: absolute;
+      z-index: 1000;
+      top: 100%;
+      left: 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      min-width: 280px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      font-size: 12px;
+    }
+    .sellers-trigger:hover .sellers-tooltip { display: block; }
+    .sellers-tooltip table { width: 100%; border-collapse: collapse; }
+    .sellers-tooltip th { text-align: left; padding: 4px 8px; color: var(--muted); font-size: 10px; text-transform: uppercase; }
+    .sellers-tooltip td { padding: 4px 8px; border-bottom: 1px solid rgba(30,37,48,.5); }
+    .sellers-tooltip tr.me td { background: rgba(0,229,160,.1); }
+    .sellers-tooltip .loading { color: var(--muted); padding: 8px; text-align: center; }
 
    /* CONTENT */
   main { flex:1; overflow-y:auto; padding:24px; }
@@ -2562,8 +2591,21 @@ function renderProducts() {
         })()}
       </td>
       <td>${myPrice}${priceIndicator}</td>
-      <td>${myStock}</td>
-      <td><span class="price-cell ${p.status==='win'?'win':'lose'}">R ${(p.buybox_price||0).toFixed(2)}</span></td>
+       <td>${myStock}</td>
+      <td>
+        <span class="sellers-trigger" onmouseenter="loadSellersTooltip(${realIdx})">
+          <span class="price-cell ${p.status==='win'?'win':'lose'}" style="display:inline-block;padding:2px 8px;border-radius:4px">R ${(p.buybox_price||0).toFixed(2)}</span>
+          <span class="sellers-tooltip">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+              <span style="font-weight:600;color:var(--text)">All Sellers</span>
+              <span style="font-size:10px;color:var(--muted);font-family:monospace">${escHtml(p.fsn||'')}</span>
+            </div>
+            <div id="tt-sellers-${realIdx}">
+              <div class="loading">Loading sellers...</div>
+            </div>
+          </span>
+        </span>
+       </td>
       <td>
         ${p.cost_price > 0
           ? `<div style="display:flex;align-items:center;gap:4px">
@@ -4667,6 +4709,193 @@ function showHistory(idx) {
     '<th style="text-align:left;padding:4px 10px">My Price</th><th style="text-align:left;padding:4px 10px">Diff</th>' +
     '<th style="text-align:left;padding:4px 10px">Status</th><th style="text-align:left;padding:4px 10px">Competitor</th>' +
     '</tr></thead><tbody>' + rows + '</tbody></table>';
+}
+
+// ============================================================
+// SELLERS TOOLTIP — Fetch all sellers from Makro API
+// ============================================================
+function fetchSellers(fsn, pincode) {
+  return new Promise(function(resolve, reject) {
+    var url = 'https://www.makro.co.za/api/3/page/dynamic/product-sellers';
+    var body = JSON.stringify({
+      requestContext: { productId: fsn },
+      locationContext: { pincode: pincode || '2000' }
+    });
+
+    // Try direct fetch first (works if CORS is allowed)
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: body,
+      credentials: 'include'
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) { resolve(data); })
+    .catch(function(err) {
+      // Fallback: use CORS proxy
+      var proxyUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
+      fetch(proxyUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: body
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(data) { resolve(data); })
+      .catch(function(err2) { reject(err2); });
+    });
+  });
+}
+
+function parseSellersFromResponse(data) {
+  var sellers = [];
+  if (!data) return sellers;
+
+  // Makro API response structure may vary
+  var sellerList = data.sellers || data.data || data.productSellers || data.offers || [];
+  if (!Array.isArray(sellerList) && sellerList.sellers) sellerList = sellerList.sellers;
+
+  sellerList.forEach(function(s) {
+    var name = s.sellerName || s.seller || s.name || s.merchantName || 'Unknown';
+    var price = parseFloat(s.price || s.sellingPrice || s.amount || 0);
+    var isBuyBox = s.isBuyBoxWinner || s.buyBoxWinner || s.isDefaultSeller || false;
+    var shipping = parseFloat(s.shippingPrice || s.deliveryFee || 0);
+    var total = price + shipping;
+    var rating = s.sellerRating || s.rating || null;
+    var totalRatings = s.totalRatings || s.ratingCount || null;
+    sellers.push({
+      name: name,
+      price: price,
+      shipping: shipping,
+      total: total,
+      isBuyBox: isBuyBox,
+      rating: rating,
+      totalRatings: totalRatings
+    });
+  });
+
+  // Sort by total price ascending
+  sellers.sort(function(a, b) { return a.total - b.total; });
+  return sellers;
+}
+
+function renderSellersTooltip(fsn, productName) {
+  var myName = (localStorage.getItem(SELLER_KEY) || '').trim();
+
+  var html = '<div style="font-weight:600;margin-bottom:8px;color:var(--text)">' + escHtml((productName || fsn).slice(0, 50)) + '</div>';
+
+  html += '<div class="loading" id="sellers-loading-' + fsn + '">⏳ Fetching sellers...</div>';
+  html += '<table id="sellers-table-' + fsn + '" style="display:none">' +
+    '<thead><tr>' +
+    '<th>Seller</th>' +
+    '<th style="text-align:right">Price</th>' +
+    '<th style="text-align:right">Shipping</th>' +
+    '<th style="text-align:right">Total</th>' +
+    '</tr></thead>' +
+    '<tbody id="sellers-tbody-' + fsn + '">' +
+    '</tbody></table>';
+
+  // Fetch sellers asynchronously
+  setTimeout(function() {
+    fetchSellers(fsn)
+    .then(function(data) {
+      var sellers = parseSellersFromResponse(data);
+      var loadingEl = document.getElementById('sellers-loading-' + fsn);
+      var tableEl = document.getElementById('sellers-table-' + fsn);
+      var tbodyEl = document.getElementById('sellers-tbody-' + fsn);
+
+      if (loadingEl) loadingEl.style.display = 'none';
+
+      if (sellers.length === 0) {
+        if (loadingEl) loadingEl.textContent = '⚠ No sellers found. Product may be unavailable.';
+        if (loadingEl) loadingEl.style.display = 'block';
+        if (tableEl) tableEl.style.display = 'none';
+        return;
+      }
+
+      var rows = '';
+      sellers.forEach(function(s) {
+        var isMe = myName && s.name.toLowerCase().includes(myName.toLowerCase());
+        var rowClass = isMe ? 'me' : '';
+        var badge = s.isBuyBox ? ' <span style="color:var(--accent);font-size:9px">🏆 BOX</span>' : '';
+        var meBadge = isMe ? ' <span style="color:#818cf8;font-size:9px">⭐ YOU</span>' : '';
+        var ratingStr = s.rating ? ' ⭐' + s.rating.toFixed(1) : '';
+        rows += '<tr class="' + rowClass + '">' +
+          '<td>' + escHtml(s.name) + badge + meBadge + ratingStr + '</td>' +
+          '<td style="text-align:right;font-family:monospace">R' + s.price.toFixed(2) + '</td>' +
+          '<td style="text-align:right;font-family:monospace">' + (s.shipping > 0 ? 'R' + s.shipping.toFixed(2) : 'FREE') + '</td>' +
+          '<td style="text-align:right;font-family:monospace;font-weight:700">R' + s.total.toFixed(2) + '</td>' +
+          '</tr>';
+      });
+
+      if (tbodyEl) tbodyEl.innerHTML = rows;
+      if (tableEl) tableEl.style.display = 'table';
+    })
+    .catch(function(err) {
+      var loadingEl = document.getElementById('sellers-loading-' + fsn);
+      if (loadingEl) loadingEl.textContent = '⚠ Could not fetch sellers. CORS blocked.';
+      console.error('[Sellers] Fetch error:', err.message);
+    });
+  }, 100);
+
+  return html;
+}
+
+// Load sellers into tooltip on hover
+function loadSellersTooltip(idx) {
+  var p = state.products[idx];
+  if (!p || !p.fsn) return;
+
+  var el = document.getElementById('tt-sellers-' + idx);
+  if (!el) return;
+  if (el.dataset.loaded === '1') return; // already loaded
+
+  el.innerHTML = '<div class="loading">⏳ Fetching sellers...</div>';
+
+  fetchSellers(p.fsn)
+  .then(function(data) {
+    var sellers = parseSellersFromResponse(data);
+    el.dataset.loaded = '1';
+
+    if (sellers.length === 0) {
+      el.innerHTML = '<div style="color:var(--muted);padding:12px;text-align:center">No sellers found for this product.<br><span style="font-size:10px">Product may be unavailable or FSN is incorrect.</span></div>';
+      return;
+    }
+
+    var myName = (localStorage.getItem(SELLER_KEY) || '').trim().toLowerCase();
+    var rows = '<table style="width:100%;border-collapse:collapse;font-size:11px">' +
+      '<thead><tr style="color:var(--muted);font-size:10px;text-transform:uppercase">' +
+      '<th>Seller</th><th style="text-align:right">Price</th><th style="text-align:right">Ship</th><th style="text-align:right">Total</th>' +
+      '</tr></thead><tbody>';
+
+    sellers.forEach(function(s) {
+      var isMe = myName && s.name.toLowerCase().includes(myName);
+      var isBuyBox = s.isBuyBox;
+      var rowStyle = isMe ? 'background:rgba(0,229,160,.15);font-weight:600' : (isBuyBox ? 'background:rgba(0,229,160,.05)' : '');
+      var badges = '';
+      if (isBuyBox) badges += ' <span style="color:var(--accent);font-size:9px">🏆</span>';
+      if (isMe) badges += ' <span style="color:#818cf8;font-size:9px">⭐ YOU</span>';
+      var ratingStr = s.rating ? ' ⭐' + s.rating.toFixed(1) : '';
+
+      rows += '<tr style="border-bottom:1px solid rgba(30,37,48,.5);' + rowStyle + '">' +
+        '<td style="padding:4px 6px">' + escHtml(s.name) + badges + ratingStr + '</td>' +
+        '<td style="padding:4px 6px;text-align:right;font-family:monospace">R' + s.price.toFixed(2) + '</td>' +
+        '<td style="padding:4px 6px;text-align:right;font-family:monospace">' + (s.shipping > 0 ? 'R' + s.shipping.toFixed(2) : 'FREE') + '</td>' +
+        '<td style="padding:4px 6px;text-align:right;font-family:monospace;font-weight:700">R' + s.total.toFixed(2) + '</td>' +
+        '</tr>';
+    });
+
+    rows += '</tbody></table>';
+    rows += '<div style="font-size:10px;color:var(--muted);margin-top:6px;text-align:center">' + sellers.length + ' seller' + (sellers.length > 1 ? 's' : '') + ' found</div>';
+    el.innerHTML = rows;
+  })
+  .catch(function(err) {
+    el.innerHTML = '<div style="color:#ff9500;padding:12px;text-align:center">' +
+      '⚠ Could not fetch sellers.<br>' +
+      '<span style="font-size:10px">CORS blocked. Try opening Makro in another tab first.</span><br>' +
+      '<a href="https://www.makro.co.za/p/' + p.fsn + '" target="_blank" style="color:var(--accent);font-size:10px">Open on Makro →</a>' +
+      '</div>';
+    console.error('[Sellers] Fetch error for', p.fsn, ':', err.message);
+  });
 }
 
 // ============================================================
