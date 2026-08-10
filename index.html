@@ -1075,6 +1075,7 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
         <!-- RIGHT: Preview table -->
         <div class="card" style="overflow:auto">
           <div class="card-title" style="margin-bottom:14px">👁 PREVIEW — Products to Update</div>
+          <div id="pricerSummary" style="display:none;margin-bottom:12px"></div>
           <div id="pricerPreview" style="font-size:12px;color:var(--muted)">Generate a file to see preview here.</div>
         </div>
       </div>
@@ -1897,14 +1898,14 @@ function handleQueueProgress(d) {
       existing.title        = p.title || existing.title;
       existing.fsn          = p.fsn || existing.fsn || '';
       existing.history      = existing.history || [];
-      existing.history.push({ price, seller, status, ts: new Date().toISOString() });
+      existing.history.push({ price, seller, status, myPrice: (listingsMap[p.fsn]||{}).myPrice || 0, ts: new Date().toISOString() });
       if (existing.history.length > 30) existing.history.shift();
     } else {
       state.products.push({
         url: p.url, fsn: p.fsn || '', sku: p.sku || '',
         title: p.title || p.url, buybox_price: price,
         seller, status, lastChecked: new Date().toISOString(),
-        history: [{ price, seller, status, ts: new Date().toISOString() }]
+        history: [{ price, seller, status, myPrice: (listingsMap[p.fsn]||{}).myPrice || 0, ts: new Date().toISOString() }]
       });
     }
     saveProducts();
@@ -3971,6 +3972,41 @@ function buildPricerPreview() {
   const okRows      = rows.filter(function(r) { return !r.clamped; });
   const clampedRows = rows.filter(function(r) { return  r.clamped; });
 
+  // Build summary card
+  var summaryEl = document.getElementById('pricerSummary');
+  if (summaryEl) {
+    var totalChange = 0;
+    okRows.forEach(function(r) { totalChange += (r.newPrice - r.myPrice); });
+    var avgChange = okRows.length > 0 ? (totalChange / okRows.length) : 0;
+    var winCount = okRows.filter(function(r) { return r.status === 'win'; }).length;
+    var loseCount = okRows.filter(function(r) { return r.status === 'lose'; }).length;
+
+    summaryEl.style.display = 'block';
+    summaryEl.innerHTML =
+      '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:8px">' +
+      '<div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;text-align:center">' +
+        '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Products</div>' +
+        '<div style="font-size:20px;font-weight:700;color:var(--accent)">' + okRows.length + '</div>' +
+        '<div style="font-size:10px;color:var(--muted)">to update</div>' +
+      '</div>' +
+      '<div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;text-align:center">' +
+        '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Avg Change</div>' +
+        '<div style="font-size:20px;font-weight:700;color:' + (avgChange < 0 ? '#ff9500' : 'var(--accent)') + '">' + (avgChange >= 0 ? '+' : '') + 'R' + avgChange.toFixed(0) + '</div>' +
+        '<div style="font-size:10px;color:var(--muted)">per product</div>' +
+      '</div>' +
+      '<div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;text-align:center">' +
+        '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Losing</div>' +
+        '<div style="font-size:20px;font-weight:700;color:#ff4d6d">' + loseCount + '</div>' +
+        '<div style="font-size:10px;color:var(--muted)">BuyBox lost</div>' +
+      '</div>' +
+      '<div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;text-align:center">' +
+        '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Clamped</div>' +
+        '<div style="font-size:20px;font-weight:700;color:#ff9500">' + clampedRows.length + '</div>' +
+        '<div style="font-size:10px;color:var(--muted)">price guarded</div>' +
+      '</div>' +
+      '</div>';
+  }
+
   let html = '';
   if (clampedRows.length) {
     html += '<div style="background:rgba(255,149,0,0.1);border:1px solid #ff9500;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:11px">' +
@@ -4550,7 +4586,12 @@ function showHistory(idx) {
     ctx.fillText('Scrape this product a few more times to see a trend.', W/2, H/2);
   } else {
     var prices = history.map(function(h){ return h.price||0; }).filter(Boolean);
+    var myPrices = history.map(function(h){ return h.myPrice||h.my_price||0; }).filter(function(v){return v>0;});
     var minP = Math.min.apply(null, prices), maxP = Math.max.apply(null, prices);
+    if (myPrices.length) {
+      minP = Math.min(minP, Math.min.apply(null, myPrices));
+      maxP = Math.max(maxP, Math.max.apply(null, myPrices));
+    }
     var range = maxP - minP || 1;
     var pL=50,pR=16,pT=20,pB=32, cW=W-pL-pR, cH=H-pT-pB;
     var step = cW / Math.max(history.length-1, 1);
@@ -4562,28 +4603,40 @@ function showHistory(idx) {
       ctx.fillStyle='#6b7280'; ctx.font='9px monospace'; ctx.textAlign='right';
       ctx.fillText('R'+Math.round(maxP-(gi/4)*range), pL-4, gy+3);
     }
-    // Fill
-    ctx.beginPath();
-    history.forEach(function(h,i){
-      var x=pL+i*step, y=pT+(1-(h.price-minP)/range)*cH;
-      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
-    });
-    ctx.lineTo(pL+(history.length-1)*step,H-pB); ctx.lineTo(pL,H-pB); ctx.closePath();
-    ctx.fillStyle='rgba(0,229,160,0.08)'; ctx.fill();
-    // Line
+    // BuyBox price line (green)
     ctx.beginPath();
     history.forEach(function(h,i){
       var x=pL+i*step, y=pT+(1-(h.price-minP)/range)*cH;
       i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
     });
     ctx.strokeStyle='#00e5a0'; ctx.lineWidth=2; ctx.stroke();
-    // Dots
+    // My price line (purple) if available
+    if (myPrices.length > 1) {
+      ctx.beginPath();
+      history.forEach(function(h,i){
+        var mp = h.myPrice||h.my_price||0;
+        if (!mp) return;
+        var x=pL+i*step, y=pT+(1-(mp-minP)/range)*cH;
+        i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+      });
+      ctx.strokeStyle='#a78bfa'; ctx.lineWidth=2; ctx.setLineDash([4,3]); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    // Dots with status colors
     history.forEach(function(h,i){
       var x=pL+i*step, y=pT+(1-(h.price-minP)/range)*cH;
       ctx.beginPath(); ctx.arc(x,y,4,0,Math.PI*2);
       ctx.fillStyle = h.status==='win'?'#00e5a0':h.status==='lose'?'#ff4d6d':'#6b7280';
       ctx.fill();
     });
+    // Legend
+    ctx.font='10px monospace'; ctx.textAlign='left';
+    ctx.fillStyle='#00e5a0'; ctx.fillRect(pL, 4, 10, 3);
+    ctx.fillText('BuyBox', pL+14, 10);
+    if (myPrices.length > 1) {
+      ctx.fillStyle='#a78bfa'; ctx.fillRect(pL+80, 4, 10, 3);
+      ctx.fillText('My Price', pL+94, 10);
+    }
     // X labels
     var lev = Math.ceil(history.length/6);
     history.forEach(function(h,i){
@@ -4596,16 +4649,22 @@ function showHistory(idx) {
 
   var rows = [...history].reverse().map(function(h){
     var d=new Date(h.ts).toLocaleString();
+    var myP = h.myPrice||h.my_price||0;
     var sc=h.status==='win'?'var(--accent)':h.status==='lose'?'#ff4d6d':'var(--muted)';
-    return '<tr><td style="padding:4px 10px;color:var(--muted)">' + d + '</td>' +
+    var diff = myP > 0 ? (myP - h.price) : 0;
+    var diffStr = myP > 0 ? (diff >= 0 ? '+R'+diff.toFixed(0) : '-R'+Math.abs(diff).toFixed(0)) : '';
+    return '<tr style="border-bottom:1px solid rgba(30,37,48,.5)"><td style="padding:4px 10px;color:var(--muted)">' + d + '</td>' +
       '<td style="padding:4px 10px;font-family:monospace">R' + (h.price||0).toFixed(2) + '</td>' +
+      '<td style="padding:4px 10px;font-family:monospace;color:#a78bfa">' + (myP > 0 ? 'R'+myP.toFixed(2) : '—') + '</td>' +
+      '<td style="padding:4px 10px;font-size:10px;color:' + (diff > 0 ? '#ff4d6d' : diff < 0 ? 'var(--accent)' : 'var(--muted)') + '">' + diffStr + '</td>' +
       '<td style="padding:4px 10px;color:' + sc + '">' + (h.status||'?').toUpperCase() + '</td>' +
       '<td style="padding:4px 10px;color:var(--muted)">' + escHtml((h.seller||'').slice(0,30)) + '</td></tr>';
   }).join('');
   document.getElementById('historyTable').innerHTML =
     '<table style="width:100%;border-collapse:collapse;font-size:11px">' +
     '<thead><tr style="color:var(--muted);font-family:monospace;font-size:10px;text-transform:uppercase">' +
-    '<th style="padding:4px 10px;text-align:left">Time</th><th style="text-align:left;padding:4px 10px">Price</th>' +
+    '<th style="padding:4px 10px;text-align:left">Time</th><th style="text-align:left;padding:4px 10px">BuyBox</th>' +
+    '<th style="text-align:left;padding:4px 10px">My Price</th><th style="text-align:left;padding:4px 10px">Diff</th>' +
     '<th style="text-align:left;padding:4px 10px">Status</th><th style="text-align:left;padding:4px 10px">Competitor</th>' +
     '</tr></thead><tbody>' + rows + '</tbody></table>';
 }
