@@ -2932,7 +2932,84 @@ function parseCSV(text) {
 async function syncCostsFromSheet() {
 
 // ============================================================
-// IMPORT FROM PUPPETEER SCRAPER
+// AUTO-FETCH FROM LOCAL SERVER (no manual work)
+// ============================================================
+async function autoFetchScraperData() {
+  try {
+    // Try local server first
+    const resp = await fetch('http://localhost:4321/api/sellers', { cache: 'no-store' });
+    if (resp.ok) {
+      const data = await resp.json();
+      if (Array.isArray(data) && data.length > 0) {
+        importSellerData(data);
+        console.log('[Auto] Imported ' + data.length + ' products from server');
+      }
+    }
+  } catch(e) {
+    // Server not running, that's ok
+  }
+}
+
+// Import seller data into products
+function importSellerData(data) {
+  var imported = 0;
+
+  data.forEach(function(item) {
+    if (!item.productId && !item.productName) return;
+
+    var pid = item.productId || '';
+    var name = item.productName || pid;
+    var sellers = item.sellers || [];
+    var winner = item.buyboxWinner || null;
+
+    // Find our offer (the one marked as "selected")
+    var ourOffer = null;
+    for (var i = 0; i < sellers.length; i++) {
+      if (sellers[i].selected) {
+        ourOffer = sellers[i];
+        break;
+      }
+    }
+
+    // Check if product already exists
+    var existing = state.products.find(function(p) {
+      return (p.fsn && p.fsn === pid) || (p.pid && p.pid === pid);
+    });
+
+    if (existing) {
+      existing.buybox_price = winner ? winner.price : 0;
+      existing.seller = winner ? winner.sellerName : '';
+      existing.pid = pid;
+      existing.sellers = sellers;
+      existing.lastChecked = item.scrapedAt || new Date().toISOString();
+      existing.status = ourOffer && winner && ourOffer.sellerId === winner.sellerId ? 'win' : 'lose';
+    } else {
+      state.products.push({
+        url: item.productUrl || '',
+        fsn: pid,
+        title: name,
+        channel: 'makro',
+        buybox_price: winner ? winner.price : 0,
+        seller: winner ? winner.sellerName : '',
+        pid: pid,
+        sellers: sellers,
+        status: ourOffer && winner && ourOffer.sellerId === winner.sellerId ? 'win' : 'lose',
+        lastChecked: item.scrapedAt || new Date().toISOString(),
+        history: []
+      });
+    }
+    imported++;
+  });
+
+  if (imported > 0) {
+    saveProducts();
+    renderProducts();
+    updateProductCount();
+  }
+}
+
+// ============================================================
+// IMPORT FROM PUPPETEER SCRAPER (manual file import)
 // ============================================================
 function importScraperData() {
   var input = document.createElement('input');
@@ -3961,6 +4038,9 @@ document.getElementById('sellerNameConfig').addEventListener('change', function(
 // ============================================================
 (function init() {
   loadProducts();
+
+  // Auto-fetch scraper data from local server
+  autoFetchScraperData();
 
   // Escape key closes any open modal
   document.addEventListener('keydown', function(e) {
