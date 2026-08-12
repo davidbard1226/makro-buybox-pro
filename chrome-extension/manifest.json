@@ -14,7 +14,9 @@
     "https://www.makro.co.za/*",
     "https://davidbard1226.github.io/*",
     "https://seller.makro.co.za/*",
-    "https://*.makromarketplace.co.za/*"
+    "https://*.makromarketplace.co.za/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
   ],
   "content_scripts": [
     {
@@ -37,7 +39,9 @@
     },
     {
       "matches": [
-        "https://davidbard1226.github.io/makro-buybox-pro/*"
+        "https://davidbard1226.github.io/makro-buybox-pro/*",
+        "http://localhost:4321/*",
+        "http://127.0.0.1:4321/*"
       ],
       "js": [
         "bridge.js"

@@ -459,8 +459,18 @@ function shutdownAll() {
 
 // ── NOTIFY DASHBOARD TABS ─────────────────────────────────────────────────
 function notifyDashboard(msg) {
-  chrome.tabs.query({ url: 'https://davidbard1226.github.io/makro-buybox-pro/*' }, function(tabs) {
+  // Match BOTH the live GitHub Pages dashboard AND the local server.js
+  // dashboard (http://localhost:4321) — testing locally was silently
+  // getting zero progress updates before this fix, since only the
+  // github.io pattern was matched.
+  chrome.tabs.query({}, function(tabs) {
     tabs.forEach(function(t) {
+      if (!t.url) return;
+      var isDashboard =
+        t.url.indexOf('https://davidbard1226.github.io/makro-buybox-pro') === 0 ||
+        t.url.indexOf('http://localhost:4321') === 0 ||
+        t.url.indexOf('http://127.0.0.1:4321') === 0;
+      if (!isDashboard) return;
       chrome.tabs.sendMessage(t.id, msg, function() {
         if (chrome.runtime.lastError) {}
       });
