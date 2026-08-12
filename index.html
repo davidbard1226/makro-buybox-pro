@@ -802,6 +802,7 @@
         <span id="filteredCount" style="font-size:12px;color:var(--muted);white-space:nowrap"></span>
         <button id="addProductBtn" class="btn-primary" style="display:none;width:auto;padding:8px 16px;font-size:13px" onclick="addProductFromSearch()">＋ Add Product</button>
         <div class="toolbar-right">
+          <button class="btn-secondary" style="width:auto;padding:8px 16px;color:#00e5a0;border-color:rgba(0,229,160,0.3)" onclick="importScraperData()" title="Import data from Puppeteer scraper (data/latest.json)">📊 Import Scraper Data</button>
           <label class="btn-secondary" style="width:auto;padding:8px 16px;cursor:pointer" title="Import your Makro S_listing XLS file">
             📂 Import Listings
             <input type="file" id="listingsFileInput" accept=".xls,.xlsx,.csv" style="display:none" onchange="importListings(this)">
@@ -2691,16 +2692,25 @@ function renderProducts() {
             '</div>';
         })()}
       </td>
-       <td>
+        <td>
         <div class="sellers-cell" id="sellers-cell-${realIdx}">
           <div style="font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escHtml(p.seller||'')}">
             ${escHtml((p.seller||'Unknown').slice(0,18))}
           </div>
-          <div id="sellers-inline-${realIdx}" style="margin-top:4px;font-size:10px;color:var(--muted)"></div>
+          ${p.sellers && p.sellers.length > 0 ?
+            '<div style="margin-top:4px;font-size:10px;color:var(--muted)">' +
+              '<span style="color:var(--accent);font-weight:600">' + p.sellers.length + ' sellers</span> · ' +
+              (p.status === 'win' ? '<span style="color:var(--accent)">✅ Winning</span>' : '<span style="color:#ff4d6d)">❌ Losing</span>') +
+            '</div>' +
+            '<div style="margin-top:2px;font-size:9px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + p.sellers.map(function(s) { return s.sellerName + ' R' + s.price; }).join(' | ') + '">' +
+              p.sellers.map(function(s) { return s.sellerName + ' <span style="font-family:monospace">R' + s.price + '</span>'; }).join(' · ') +
+            '</div>'
+            :
+            '<div id="sellers-inline-${realIdx}" style="margin-top:4px;font-size:10px;color:var(--muted)"></div>'
+          }
           <div style="display:flex;gap:4px;margin-top:2px">
             ${p.pid ? '<a class="action-btn" style="font-size:9px;padding:1px 4px;color:var(--accent);text-decoration:none" href="https://www.makro.co.za/sellers?pid=' + p.pid + '" target="_blank" title="Open sellers page on Makro">🔗 Makro</a>' : ''}
           </div>
-          <div id="sellers-list-${realIdx}" style="display:none;margin-top:6px;max-height:200px;overflow-y:auto"></div>
         </div>
        </td>
       <td><span class="status-pill ${statusClass}">${statusLabel}</span></td>
@@ -2920,6 +2930,212 @@ function parseCSV(text) {
 }
 
 async function syncCostsFromSheet() {
+
+// ============================================================
+// AUTO-FETCH FROM LOCAL SERVER (no manual work)
+// ============================================================
+async function autoFetchScraperData() {
+  try {
+    // Try local server first
+    const resp = await fetch('http://localhost:4321/api/sellers', { cache: 'no-store' });
+    if (resp.ok) {
+      const data = await resp.json();
+      if (Array.isArray(data) && data.length > 0) {
+        importSellerData(data);
+        console.log('[Auto] Imported ' + data.length + ' products from server');
+      }
+    }
+  } catch(e) {
+    // Server not running, that's ok
+  }
+}
+
+// Import seller data into products
+function importSellerData(data) {
+  var imported = 0;
+
+  data.forEach(function(item) {
+    if (!item.productId && !item.productName) return;
+
+    var pid = item.productId || '';
+    var name = item.productName || pid;
+    var sellers = item.sellers || [];
+    var winner = item.buyboxWinner || null;
+
+    // Find our offer (the one marked as "selected")
+    var ourOffer = null;
+    for (var i = 0; i < sellers.length; i++) {
+      if (sellers[i].selected) {
+        ourOffer = sellers[i];
+        break;
+      }
+    }
+
+    // Check if product already exists
+    var existing = state.products.find(function(p) {
+      return (p.fsn && p.fsn === pid) || (p.pid && p.pid === pid);
+    });
+
+    if (existing) {
+      existing.buybox_price = winner ? winner.price : 0;
+      existing.seller = winner ? winner.sellerName : '';
+      existing.pid = pid;
+      existing.sellers = sellers;
+      existing.lastChecked = item.scrapedAt || new Date().toISOString();
+      existing.status = ourOffer && winner && ourOffer.sellerId === winner.sellerId ? 'win' : 'lose';
+    } else {
+      state.products.push({
+        url: item.productUrl || '',
+        fsn: pid,
+        title: name,
+        channel: 'makro',
+        buybox_price: winner ? winner.price : 0,
+        seller: winner ? winner.sellerName : '',
+        pid: pid,
+        sellers: sellers,
+        status: ourOffer && winner && ourOffer.sellerId === winner.sellerId ? 'win' : 'lose',
+        lastChecked: item.scrapedAt || new Date().toISOString(),
+        history: []
+      });
+    }
+    imported++;
+  });
+
+  if (imported > 0) {
+    saveProducts();
+    renderProducts();
+    updateProductCount();
+  }
+}
+
+// ============================================================
+// IMPORT FROM PUPPETEER SCRAPER (manual file import)
+// ============================================================
+function importScraperData() {
+  var input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
+  input.onchange = function(e) {
+    var file = e.target.files[0];
+    if (!file) return;
+
+    var reader = new FileReader();
+    reader.onload = function(evt) {
+      try {
+        var data = JSON.parse(evt.target.result);
+        var imported = 0;
+
+        if (Array.isArray(data)) {
+          data.forEach(function(item) {
+            if (!item.productId && !item.productName) return;
+
+            var pid = item.productId || '';
+            var name = item.productName || pid;
+            var sellers = item.sellers || [];
+            var winner = item.buyboxWinner || null;
+
+            // Find our offer
+            var ourOffer = null;
+            for (var i = 0; i < sellers.length; i++) {
+              if (sellers[i].selected) {
+                ourOffer = sellers[i];
+                break;
+              }
+            }
+
+            // Check if product already exists
+            var existing = state.products.find(function(p) {
+              return p.fsn && p.fsn === pid;
+            });
+
+            if (existing) {
+              // Update existing product
+              existing.buybox_price = winner ? winner.price : 0;
+              existing.seller = winner ? winner.sellerName : '';
+              existing.pid = pid;
+              existing.sellers = sellers;
+              existing.lastChecked = item.scrapedAt || new Date().toISOString();
+              existing.status = ourOffer && winner && ourOffer.sellerId === winner.sellerId ? 'win' : 'lose';
+            } else {
+              // Add new product
+              state.products.push({
+                url: item.productUrl || '',
+                fsn: pid,
+                title: name,
+                channel: 'makro',
+                buybox_price: winner ? winner.price : 0,
+                seller: winner ? winner.sellerName : '',
+                pid: pid,
+                sellers: sellers,
+                status: ourOffer && winner && ourOffer.sellerId === winner.sellerId ? 'win' : 'lose',
+                lastChecked: item.scrapedAt || new Date().toISOString(),
+                history: []
+              });
+            }
+            imported++;
+          });
+        } else if (data.productId) {
+          // Single product format
+          var pid = data.productId || '';
+          var name = data.productName || pid;
+          var sellers = data.sellers || [];
+          var winner = data.buyboxWinner || null;
+
+          var ourOffer = null;
+          for (var i = 0; i < sellers.length; i++) {
+            if (sellers[i].selected) {
+              ourOffer = sellers[i];
+              break;
+            }
+          }
+
+          var existing = state.products.find(function(p) {
+            return p.fsn && p.fsn === pid;
+          });
+
+          if (existing) {
+            existing.buybox_price = winner ? winner.price : 0;
+            existing.seller = winner ? winner.sellerName : '';
+            existing.pid = pid;
+            existing.sellers = sellers;
+            existing.lastChecked = data.scrapedAt || new Date().toISOString();
+            existing.status = ourOffer && winner && ourOffer.sellerId === winner.sellerId ? 'win' : 'lose';
+          } else {
+            state.products.push({
+              url: data.productUrl || '',
+              fsn: pid,
+              title: name,
+              channel: 'makro',
+              buybox_price: winner ? winner.price : 0,
+              seller: winner ? winner.sellerName : '',
+              pid: pid,
+              sellers: sellers,
+              status: ourOffer && winner && ourOffer.sellerId === winner.sellerId ? 'win' : 'lose',
+              lastChecked: data.scrapedAt || new Date().toISOString(),
+              history: []
+            });
+          }
+          imported++;
+        }
+
+        saveProducts();
+        renderProducts();
+        updateProductCount();
+
+        if (imported > 0) {
+          alert('✅ Imported ' + imported + ' product(s) from scraper data!');
+        } else {
+          alert('⚠️ No products found in the file. Make sure it\'s the correct JSON format.');
+        }
+      } catch(err) {
+        alert('❌ Error parsing file: ' + err.message);
+        console.error('Import error:', err);
+      }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
   var btn = document.getElementById('syncCostsBtn');
   btn.disabled = true;
   btn.textContent = '⏳ Syncing...';
@@ -3822,6 +4038,9 @@ document.getElementById('sellerNameConfig').addEventListener('change', function(
 // ============================================================
 (function init() {
   loadProducts();
+
+  // Auto-fetch scraper data from local server
+  autoFetchScraperData();
 
   // Escape key closes any open modal
   document.addEventListener('keydown', function(e) {
