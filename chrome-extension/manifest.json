@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Makro BuyBox Pro Bridge",
-  "version": "4.3",
-  "description": "Scrapes Makro buy box data, syncs to dashboard, automates portal price uploads",
+  "version": "5.0",
+  "description": "Scrapes Makro buy box data via internal API (not DOM scraping), syncs to dashboard, automates portal price uploads",
   "permissions": [
     "activeTab",
     "scripting",

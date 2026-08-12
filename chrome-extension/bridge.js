@@ -85,13 +85,17 @@
 
             const entry = {
               url, fsn, sku,
-              title:        p.title || url,
-              buybox_price: price,
-              seller:       seller,
-              status:       'unknown',
-              lastChecked:  p.timestamp || new Date().toISOString(),
-              history:      [],
-              sellersUrl:   p.sellersUrl || ''
+              title:          p.title || url,
+              buybox_price:   price,
+              seller:         seller,
+              status:         'unknown',
+              lastChecked:    p.timestamp || new Date().toISOString(),
+              history:        [],
+              sellersUrl:     p.sellersUrl || '',
+              sellers:        p.sellers || undefined,
+              sellersCount:   p.sellersCount || undefined,
+              sellersChecked: p.sellersChecked || undefined,
+              dataSource:     p.dataSource || undefined
             };
 
             if (idx >= 0) {
@@ -103,6 +107,13 @@
                 if (entry.history.length > 30) entry.history.shift();
               }
               if (!entry.fsn && prev.fsn) entry.fsn = prev.fsn;
+              // Don't let a scrape with no fresh sellers data blank out sellers we already have
+              if (entry.sellers === undefined) {
+                entry.sellers = prev.sellers;
+                entry.sellersCount = prev.sellersCount;
+                entry.sellersChecked = prev.sellersChecked;
+                entry.dataSource = entry.dataSource || prev.dataSource;
+              }
               existing[idx] = Object.assign({}, prev, entry);
             } else {
               if (price > 0) entry.history = [{ price, seller, status: 'unknown', ts: entry.lastChecked }];

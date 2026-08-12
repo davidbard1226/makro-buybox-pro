@@ -102,8 +102,80 @@
     return null;
   }
 
+  // ── API-BASED SELLER/PRICE EXTRACTION (v5) ───────────────────────────────
+  // Replaces fragile CSS-class DOM scraping with Makro's own internal API.
+  // Same endpoint the sellers page itself uses — one call gets BOTH the
+  // buybox winner AND the full seller list, no need to visit /sellers?pid=.
+  function fetchSellersApi(pid) {
+    return fetch('/fccng/api/3/page/dynamic/product-sellers', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-agent': navigator.userAgent + ' FKUA/website/42/website/Desktop'
+      },
+      credentials: 'include',
+      body: JSON.stringify({ requestContext: { productId: pid }, locationContext: {} })
+    })
+      .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function(json) { return parseSellersJson(json); })
+      .catch(function(e) { console.warn('[BuyBox v5] Sellers API failed:', e.message); return null; });
+  }
+
+  function parseSellersJson(data) {
+    var results = [];
+    (function walk(node) {
+      if (Array.isArray(node)) { node.forEach(walk); return; }
+      if (node && typeof node === 'object') {
+        if (
+          node.sellerInfo && node.sellerInfo.value && node.sellerInfo.value.name &&
+          node.pricing && node.pricing.value && node.pricing.value.finalPrice &&
+          typeof node.pricing.value.finalPrice.value === 'number'
+        ) {
+          results.push({
+            seller: node.sellerInfo.value.name.trim(),
+            sellerId: node.sellerInfo.value.id,
+            price: node.pricing.value.finalPrice.value,
+            mrp: node.pricing.value.mrp ? node.pricing.value.mrp.value : null,
+            selected: !!node.selected
+          });
+        }
+        for (var k in node) walk(node[k]);
+      }
+    })(data);
+    var seen = {};
+    var unique = results.filter(function(r) {
+      if (seen[r.sellerId]) return false;
+      seen[r.sellerId] = true;
+      return true;
+    });
+    unique.sort(function(a, b) { return a.price - b.price; });
+    return unique;
+  }
+
   // ── MAIN SCRAPE ────────────────────────────────────────────────────────────
   function scrapeProduct() {
+    return scrapeProductDom().then(function(data) {
+      if (!data.fsn) return data;
+      return fetchSellersApi(data.fsn).then(function(sellers) {
+        if (sellers && sellers.length) {
+          var winner = sellers.filter(function(s) { return s.selected; })[0] || sellers[0];
+          data.buyBoxPrice = winner.price;
+          data.buyBoxSeller = winner.seller;
+          data.hasBuyBox = true;
+          data.sellers = sellers;
+          data.sellersCount = sellers.length;
+          data.sellersChecked = new Date().toISOString();
+          data.dataSource = 'api';
+        } else {
+          data.dataSource = 'dom-fallback';
+        }
+        return data;
+      });
+    });
+  }
+
+  function scrapeProductDom() {
+    return new Promise(function(resolve) {
     try {
       const data = {
         url: window.location.href,
@@ -222,11 +294,12 @@
         url: data.url
       });
 
-      return data;
+      resolve(data);
     } catch(e) {
       console.error('[BuyBox v4] Error:', e);
-      return { url: window.location.href, timestamp: new Date().toISOString(), error: e.message };
+      resolve({ url: window.location.href, timestamp: new Date().toISOString(), error: e.message });
     }
+    });
   }
 
   // ── SAVE TO STORAGE ────────────────────────────────────────────────────────
@@ -314,12 +387,13 @@
   // ── AUTO SCRAPE ────────────────────────────────────────────────────────────
   if (/\/p\/[A-Za-z0-9_]+/.test(window.location.pathname)) {
     const run = function() {
-      const d = scrapeProduct();
-      saveProduct(d);
-      // Notify background so queue can advance to next URL
-      try {
-        chrome.runtime.sendMessage({ action: 'page_scraped', data: d });
-      } catch(e) {}
+      scrapeProduct().then(function(d) {
+        saveProduct(d);
+        // Notify background so queue can advance to next URL
+        try {
+          chrome.runtime.sendMessage({ action: 'page_scraped', data: d });
+        } catch(e) {}
+      });
     };
     if (document.readyState === 'complete') setTimeout(run, 1500);
     else window.addEventListener('load', function() { setTimeout(run, 2000); });
@@ -348,10 +422,11 @@
   chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
     if (msg.action === 'ping') { sendResponse({ pong: true }); return true; }
     if (msg.action === 'scrape_now' || msg.action === 'SCRAPE_URL') {
-      const d = scrapeProduct();
-      saveProduct(d);
-      sendResponse({ success: true, data: d });
-      return true;
+      scrapeProduct().then(function(d) {
+        saveProduct(d);
+        sendResponse({ success: true, data: d });
+      });
+      return true; // keep sendResponse channel open for async response
     }
   });
 

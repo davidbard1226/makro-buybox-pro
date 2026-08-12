@@ -4726,8 +4726,8 @@ function showHistory(idx) {
 // ============================================================
 function fetchSellers(fsn, pincode) {
   return new Promise(function(resolve, reject) {
-    // Makro sellers API endpoint
-    var url = 'https://www.makro.co.za/api/3/page/dynamic/product-sellers';
+    // Makro sellers API endpoint (note: must include /fccng/ prefix)
+    var url = 'https://www.makro.co.za/fccng/api/3/page/dynamic/product-sellers';
     var body = JSON.stringify({
       requestContext: { productId: fsn },
       locationContext: { pincode: pincode || '2000' }
@@ -4776,51 +4776,42 @@ function parseSellersFromResponse(data) {
   var sellers = [];
   if (!data) return sellers;
 
-  // Try multiple response structures
-  var sellerList = [];
-
-  if (Array.isArray(data)) {
-    sellerList = data;
-  } else if (data.sellers && Array.isArray(data.sellers)) {
-    sellerList = data.sellers;
-  } else if (data.data && Array.isArray(data.data)) {
-    sellerList = data.data;
-  } else if (data.productSellers && Array.isArray(data.productSellers)) {
-    sellerList = data.productSellers;
-  } else if (data.offers && Array.isArray(data.offers)) {
-    sellerList = data.offers;
-  } else if (data.data && data.data.sellers && Array.isArray(data.data.sellers)) {
-    sellerList = data.data.sellers;
-  } else if (typeof data === 'object') {
-    // Try to find any array property
-    for (var key in data) {
-      if (Array.isArray(data[key]) && data[key].length > 0) {
-        sellerList = data[key];
-        break;
+  // Makro's actual response is deeply nested (Flipkart-style storefront data).
+  // Walk the whole tree looking for the seller+price pair shape rather than
+  // guessing at a top-level array key, since that shape doesn't exist here.
+  var found = [];
+  (function walk(node) {
+    if (Array.isArray(node)) { node.forEach(walk); return; }
+    if (node && typeof node === 'object') {
+      if (
+        node.sellerInfo && node.sellerInfo.value && node.sellerInfo.value.name &&
+        node.pricing && node.pricing.value && node.pricing.value.finalPrice &&
+        typeof node.pricing.value.finalPrice.value === 'number'
+      ) {
+        found.push({
+          name: node.sellerInfo.value.name.trim(),
+          sellerId: node.sellerInfo.value.id,
+          price: node.pricing.value.finalPrice.value,
+          isBuyBox: !!node.selected
+        });
       }
+      for (var k in node) walk(node[k]);
     }
-  }
+  })(data);
 
-  sellerList.forEach(function(s) {
-    var name = s.sellerName || s.seller || s.name || s.merchantName || s.storeName || 'Unknown';
-    var price = parseFloat(s.price || s.sellingPrice || s.amount || s.totalPrice || 0);
-    var isBuyBox = s.isBuyBoxWinner || s.buyBoxWinner || s.isDefaultSeller || s.isBestSeller || false;
-    var shipping = parseFloat(s.shippingPrice || s.deliveryFee || s.shipping || 0);
-    var total = price + shipping;
-    var rating = s.sellerRating || s.rating || null;
-    var totalRatings = s.totalRatings || s.ratingCount || null;
-
-    if (name && price > 0) {
-      sellers.push({
-        name: name,
-        price: price,
-        shipping: shipping,
-        total: total,
-        isBuyBox: isBuyBox,
-        rating: rating,
-        totalRatings: totalRatings
-      });
-    }
+  var seen = {};
+  found.forEach(function(s) {
+    if (seen[s.sellerId]) return;
+    seen[s.sellerId] = true;
+    sellers.push({
+      name: s.name,
+      price: s.price,
+      shipping: 0,
+      total: s.price,
+      isBuyBox: s.isBuyBox,
+      rating: null,
+      totalRatings: null
+    });
   });
 
   // Sort by total price ascending
@@ -4990,7 +4981,23 @@ function toggleSellers(idx) {
 }
 
 function getSellersFromCache(p) {
-  // Check localStorage for cached seller data from content script
+  // Preferred source: sellers synced from the extension's own API-based scrape
+  // (content.js -> chrome.storage -> bridge.js -> this product's .sellers field).
+  // This is populated on every normal scrape, no extra network call needed.
+  if (p.sellers && p.sellers.length > 0) {
+    return p.sellers.map(function(s) {
+      return {
+        name: s.name || s.seller || 'Unknown',
+        price: s.price,
+        shipping: 0,
+        total: s.price,
+        isBuyBox: !!(s.isBuyBox || s.selected),
+        rating: s.rating || null,
+        totalRatings: s.totalRatings || null
+      };
+    });
+  }
+  // Fallback: legacy per-product cache (kept for backwards compatibility)
   try {
     var data = JSON.parse(localStorage.getItem('makro_sellers_data') || '{}');
     // Try multiple keys
