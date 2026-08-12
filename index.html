@@ -2950,6 +2950,76 @@ async function autoFetchScraperData() {
   }
 }
 
+// Cross-check tracker data against what we already have (from the extension)
+// rather than blindly overwriting it. The extension is the primary source
+// (real browser, human-like pacing, less likely to get bot-blocked); the
+// standalone Puppeteer tracker is a periodic second opinion. We only alert
+// on disagreement — we don't silently replace good data with a possibly
+// stale/blocked scrape.
+function crossCheckAgainstTracker(existing, pid, name, winner, ourOffer) {
+  if (!winner) return; // tracker got nothing this round — nothing to compare
+
+  var extPrice  = parseFloat(existing.buybox_price) || 0;
+  var extSeller = (existing.seller || '').trim();
+  var trkPrice  = winner.price;
+  var trkSeller = (winner.sellerName || '').trim();
+
+  // No existing extension data yet — tracker data is better than nothing,
+  // fill it in directly (not a disagreement, just a first observation).
+  if (!extPrice || !extSeller) {
+    existing.buybox_price = trkPrice;
+    existing.seller = trkSeller;
+    existing.status = ourOffer && ourOffer.sellerId === winner.sellerId ? 'win' : 'lose';
+    existing.lastChecked = existing.lastChecked || new Date().toISOString();
+    if (!existing.sellers || !existing.sellers.length) existing.sellers = winner.__allSellers || [];
+    return;
+  }
+
+  var priceGap = Math.abs(extPrice - trkPrice);
+  var sellerMismatch = extSeller.toLowerCase() !== trkSeller.toLowerCase();
+  var priceMismatch = priceGap > 1; // more than R1 apart — floating point/rounding tolerant
+
+  existing.trackerCheck = {
+    price: trkPrice,
+    seller: trkSeller,
+    checkedAt: new Date().toISOString(),
+    agrees: !sellerMismatch && !priceMismatch
+  };
+
+  if (sellerMismatch || priceMismatch) {
+    log('warn', '⚠️ Cross-check mismatch: ' + (name || pid) + ' — extension says ' +
+      extSeller + ' R' + extPrice.toFixed(2) + ', tracker says ' + trkSeller + ' R' + trkPrice.toFixed(2));
+    sendCrossCheckAlert(existing, extSeller, extPrice, trkSeller, trkPrice);
+  }
+}
+
+function sendCrossCheckAlert(prod, extSeller, extPrice, trkSeller, trkPrice) {
+  var token  = localStorage.getItem('tg_token')   || '';
+  var chatId = localStorage.getItem('tg_chat_id') || '';
+  var enabled = localStorage.getItem('tg_enabled') === '1';
+  if (!enabled || !token || !chatId) return;
+
+  // Separate throttle key from the normal loss alerts — 30 min cooldown per product
+  var key = 'tg_sent_xcheck_' + (prod.fsn || prod.pid || prod.url || '');
+  var lastSent = parseInt(localStorage.getItem(key) || '0');
+  var now = Date.now();
+  if (now - lastSent < 30 * 60 * 1000) return;
+  localStorage.setItem(key, String(now));
+
+  var msg = '🔍 *Cross-check mismatch*\n' +
+    (prod.title || '').slice(0, 55) + '\n\n' +
+    '🧩 Extension says: ' + extSeller + ' — R' + extPrice.toFixed(2) + '\n' +
+    '🤖 Tracker says: ' + trkSeller + ' — R' + trkPrice.toFixed(2) + '\n\n' +
+    'One of these may be stale or blocked — worth a manual check.\n' +
+    '🕐 ' + new Date().toLocaleTimeString('en-ZA');
+
+  fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, text: msg, parse_mode: 'Markdown' })
+  }).catch(function(e) { log('err', '❌ Cross-check Telegram alert failed: ' + e.message); });
+}
+
 // Import seller data into products
 function importSellerData(data) {
   var imported = 0;
@@ -2977,12 +3047,8 @@ function importSellerData(data) {
     });
 
     if (existing) {
-      existing.buybox_price = winner ? winner.price : 0;
-      existing.seller = winner ? winner.sellerName : '';
+      crossCheckAgainstTracker(existing, pid, name, winner, ourOffer);
       existing.pid = pid;
-      existing.sellers = sellers;
-      existing.lastChecked = item.scrapedAt || new Date().toISOString();
-      existing.status = ourOffer && winner && ourOffer.sellerId === winner.sellerId ? 'win' : 'lose';
     } else {
       state.products.push({
         url: item.productUrl || '',
