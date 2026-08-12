@@ -35,7 +35,10 @@ let challengeTabId  = null;
 
 function isChallengeUrl(url) {
   if (!url) return false;
-  return /challenges\.cloudflare\.com|cdn-cgi|interstitial|are-you-human|verify.*human|robot.*check|captcha/i.test(url);
+  // Includes Makro's own bot-block redirect (/blocked?url=...&uuid=...) —
+  // this was missing before, so a full block was silently swallowed by the
+  // 15s per-tab safety timeout instead of pausing the queue and warning.
+  return /challenges\.cloudflare\.com|cdn-cgi|interstitial|are-you-human|verify.*human|robot.*check|captcha|makro\.co\.za\/blocked(\?|$)/i.test(url);
 }
 
 // ── MESSAGE HANDLER ───────────────────────────────────────────────────────
