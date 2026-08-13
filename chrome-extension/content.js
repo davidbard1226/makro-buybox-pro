@@ -395,8 +395,8 @@
         } catch(e) {}
       });
     };
-    if (document.readyState === 'complete') setTimeout(run, 1500);
-    else window.addEventListener('load', function() { setTimeout(run, 2000); });
+    if (document.readyState === 'complete') setTimeout(run, 300);
+    else window.addEventListener('load', function() { setTimeout(run, 500); });
   }
 
   // ── SELLERS PAGE AUTO-SCRAPE ───────────────────────────────────────────────
@@ -414,8 +414,8 @@
         } catch(e) { console.log('[BuyBox v4] Error sending sellers_scraped:', e); }
       });
     };
-    if (document.readyState === 'complete') setTimeout(sellersRun, 3000);
-    else window.addEventListener('load', function() { setTimeout(sellersRun, 3500); });
+    if (document.readyState === 'complete') setTimeout(sellersRun, 500);
+    else window.addEventListener('load', function() { setTimeout(sellersRun, 800); });
   }
 
   // ── MESSAGES ───────────────────────────────────────────────────────────────

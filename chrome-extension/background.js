@@ -466,6 +466,7 @@ function notifyDashboard(msg) {
   // dashboard (http://localhost:4321) — testing locally was silently
   // getting zero progress updates before this fix, since only the
   // github.io pattern was matched.
+  var sent = false;
   chrome.tabs.query({}, function(tabs) {
     tabs.forEach(function(t) {
       if (!t.url) return;
@@ -475,9 +476,28 @@ function notifyDashboard(msg) {
         t.url.indexOf('http://127.0.0.1:4321') === 0;
       if (!isDashboard) return;
       chrome.tabs.sendMessage(t.id, msg, function() {
-        if (chrome.runtime.lastError) {}
+        if (chrome.runtime.lastError) {
+          console.warn('[BuyBox] notifyDashboard delivery failed for tab ' + t.id + ': ' + chrome.runtime.lastError.message);
+        } else {
+          sent = true;
+        }
       });
     });
+    // Fallback: if direct message failed or no dashboard tab found,
+    // ensure data is in chrome.storage.local so bridge.js syncs it
+    if (!sent && msg.data && msg.action === 'scrape_done') {
+      console.log('[BuyBox] No dashboard tab reachable — saving scrape data to storage for bridge pickup');
+      chrome.storage.local.get(['buybox_products'], function(r) {
+        var products = r.buybox_products || [];
+        var d = msg.data;
+        if (d && d.url) {
+          var idx = products.findIndex(function(p) { return p.url === d.url; });
+          if (idx >= 0) products[idx] = Object.assign({}, products[idx], d);
+          else products.push(d);
+          chrome.storage.local.set({ buybox_products: products });
+        }
+      });
+    }
   });
 }
 

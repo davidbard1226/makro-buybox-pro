@@ -1978,6 +1978,12 @@ function handleQueueProgress(d) {
       (isWin ? '✓ WIN ' : '✗ LOSE') + ' | R' + price.toFixed(2) + ' | ' + seller.slice(0,30) +
       ' | ' + (p.title||'').slice(0,35) +
       (isWin && p.min_price > 0 && price < p.min_price ? ' ⚠ SELLING AT LOSS (min R' + p.min_price + ')' : ''));
+
+    updateProductCount();
+    renderProducts();
+    renderDashboard();
+  } else {
+    log('warn', '⚠ Scrape returned no data for URL: ' + (d && d.url || 'unknown'));
   }
 
   if (scrapeIdx >= scrapeQueue.length) finishScraping();
