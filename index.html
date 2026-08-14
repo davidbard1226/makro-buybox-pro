@@ -4,8 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Makro BuyBox Pro</title>
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link rel="preload" href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap"></noscript>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" async onerror="var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';s.async=true;document.head.appendChild(s)"></script>
 <style>
   :root {
     --bg: #0a0c10;
@@ -2871,7 +2872,21 @@ function deleteSelected() {
   document.getElementById('selectAll').checked = false;
 }
 
+// XLSX is loaded async (non-blocking) — wait for it before using, with a timeout
+function ensureXLSX(cb) {
+  if (window.XLSX) { cb(); return; }
+  var tries = 0;
+  var t = setInterval(function() {
+    if (window.XLSX) { clearInterval(t); cb(); }
+    else if (++tries > 150) {
+      clearInterval(t);
+      alert('⚠ Excel library (XLSX) failed to load — check your internet connection and refresh the page.');
+    }
+  }, 100);
+}
+
 function importListings(input) {
+  if (!window.XLSX) { ensureXLSX(function(){ importListings(input); }); return; }
   const file = input.files[0];
   if (!file) return;
 
@@ -3807,6 +3822,7 @@ function closePushModal() {
 }
 
 function pushProductToPortal() {
+  if (!window.XLSX) { ensureXLSX(function(){ pushProductToPortal(); }); return; }
   var idx = _pushIdx;
   var p = state.products[idx];
   if (!p) return;
@@ -4928,6 +4944,7 @@ function generatePriceUpdate() {
 
     // Helper: apply floor + ceiling to any candidate price
     function applyGuards(price) {
+      if (!window.XLSX) { ensureXLSX(function(){ applyGuards(price); }); return; }
       if (price < hardFloor) price = hardFloor;
       if (effectiveCeiling && price > effectiveCeiling) price = effectiveCeiling;
       return price;
@@ -5887,6 +5904,7 @@ function bulkSkuFileSelected(input) {
 }
 
 function processBulkSkuFile(file) {
+  if (!window.XLSX) { ensureXLSX(function(){ processBulkSkuFile(file); }); return; }
   var name = file.name.toLowerCase();
   document.getElementById('bulkSkuResult').textContent = '⏳ Reading file...';
 
