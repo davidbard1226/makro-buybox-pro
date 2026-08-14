@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  width: 300px;
+  padding: 14px;
+  font-family: 'Segoe UI', sans-serif;
+  background: #0a0c10;
+  color: #e8eaf0;
+}
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: #333;
+  flex-shrink: 0;
+  transition: background 0.3s;
+}
+.dot.green { background: #00e5a0; box-shadow: 0 0 6px #00e5a0; }
+.dot.orange { background: #ffd60a; box-shadow: 0 0 6px #ffd60a; }
+.dot.red { background: #ff4d6d; }
+h2 { font-size: 14px; color: #00e5a0; font-weight: 700; }
+.status-box {
+  background: #111418;
+  border: 1px solid #1e2530;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  margin-bottom: 10px;
+  min-height: 38px;
+}
+.stats {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.stat-card {
+  flex: 1;
+  background: #111418;
+  border: 1px solid #1e2530;
+  border-radius: 8px;
+  padding: 8px;
+  text-align: center;
+}
+.stat-card .num { font-size: 20px; font-weight: 700; color: #00e5a0; }
+.stat-card .lbl { font-size: 10px; color: #6b7280; margin-top: 2px; }
+button {
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 6px;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+button:hover { opacity: 0.85; }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+#btn-scrape { background: #00e5a0; color: #0a0c10; }
+#btn-dashboard { background: #1e2530; color: #e8eaf0; }
+#btn-clear { background: transparent; color: #ff4d6d; border: 1px solid #ff4d6d44; }
+.footer {
+  text-align: center;
+  font-size: 11px;
+  color: #374151;
+  margin-top: 4px;
+}
+.footer a { color: #00e5a0; text-decoration: none; }
+</style>
+</head>
+<body>
+<div class="header">
+  <span class="dot" id="dot"></span>
+  <h2>Makro BuyBox Pro</h2>
+</div>
+<div class="status-box" id="status">Checking page...</div>
+<div class="stats">
+  <div class="stat-card">
+    <div class="num" id="count">0</div>
+    <div class="lbl">Products tracked</div>
+  </div>
+  <div class="stat-card">
+    <div class="num" id="last-time">—</div>
+    <div class="lbl">Last scraped</div>
+  </div>
+</div>
+<button id="btn-scrape" disabled>📡 Scrape This Page</button>
+<button id="btn-dashboard">📊 Open Dashboard</button>
+<button id="btn-clear">🗑 Clear All Data</button>
+<div class="footer">
+  <a href="https://davidbard1226.github.io/makro-buybox-pro/" target="_blank">Open dashboard ↗</a>
+</div>
+<script src="popup.js"></script>
+</body>
+</html>
