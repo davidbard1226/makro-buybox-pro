@@ -1538,6 +1538,32 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
   </div>
 </div>
 
+<!-- PUSH PRICE TO PORTAL MODAL -->
+<div class="modal-backdrop" id="pushModal">
+  <div class="modal" style="width:520px">
+    <h3>🚀 Push Price to Seller Portal</h3>
+    <p id="pushModalTitle" style="color:var(--accent);margin-bottom:6px;font-size:13px;font-weight:600"></p>
+    <div id="pushModalSub" style="font-size:11px;color:var(--muted);margin-bottom:14px;line-height:1.6"></div>
+
+    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Choose new price</div>
+    <div id="pushOptions" style="display:grid;gap:6px;margin-bottom:14px"></div>
+
+    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Or set custom price (R)</div>
+    <input id="pushCustomInput" type="number" step="1" min="0" placeholder="e.g. 9154"
+      style="width:100%;background:var(--surface2);border:1px solid #a78bfa;color:#a78bfa;font-family:'Space Mono',monospace;font-size:13px;padding:8px 10px;border-radius:6px;outline:none"
+      oninput="updatePushPreview()">
+
+    <div id="pushGuards" style="margin-top:12px;padding:10px;background:var(--surface2);border-radius:6px;font-size:11px;color:var(--muted);line-height:1.7"></div>
+    <div id="pushPreview" style="margin-top:10px;padding:10px;background:var(--surface2);border-radius:6px;font-size:12px;line-height:1.7"></div>
+    <div id="pushResult" style="margin-top:10px;font-size:12px;line-height:1.6"></div>
+
+    <div class="modal-actions" style="margin-top:20px">
+      <button class="btn-secondary" style="width:auto" onclick="closePushModal()">Cancel</button>
+      <button class="btn-primary" style="width:auto;min-width:140px" onclick="pushProductToPortal()">🚀 Push to Portal</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ============================================================
 // STATE
@@ -2781,6 +2807,7 @@ function renderProducts() {
       <td><span class="status-pill ${statusClass}">${statusLabel}</span></td>
       <td style="font-size:11px;color:var(--muted);white-space:nowrap">${t}</td>
       <td style="display:flex;gap:4px">
+        <button class="action-btn" onclick="openPushModal(${realIdx})" title="Push new price to seller portal">🚀</button>
         <button class="action-btn" onclick="showHistory(${realIdx})" title="Price history">📈</button>
         <button class="action-btn" onclick="rescrapeOne(${realIdx})" title="Re-scrape">↻</button>
         <button class="action-btn danger" onclick="deleteProduct(${realIdx})" title="Delete">✕</button>
@@ -3588,6 +3615,220 @@ function setProductPrice(idx, field, val) {
 // Legacy — no longer used (modal replaces it) but kept to avoid JS errors
 function showCostInput(idx) { openEditModal(idx); }
 function saveCostInput(idx) { saveEditModal(); }
+
+// ── PUSH PRICE TO SELLER PORTAL (single product) ─────────────────────────
+var _pushIdx = null;
+var _pushTarget = null;   // { label, price } — currently selected option
+
+function openPushModal(idx) {
+  var p = state.products[idx];
+  if (!p) return;
+  _pushIdx = idx;
+  _pushTarget = null;
+
+  document.getElementById('pushModalTitle').textContent = (p.title || p.url || '').slice(0, 60);
+  var sub = [];
+  if (p.sku) sub.push('SKU: <b style="color:#818cf8">' + escHtml(p.sku) + '</b>');
+  if (p.fsn) sub.push('FSN: <b style="color:var(--muted)">' + escHtml(p.fsn) + '</b>');
+  if (p.buybox_price > 0) sub.push('BuyBox: <b style="color:var(--accent)">R' + p.buybox_price + '</b>');
+  var listing = getListings().find(function(l) { return l.fsn === p.fsn; });
+  if (listing && listing.myPrice > 0) sub.push('My current: <b style="color:var(--accent3)">R' + Math.round(listing.myPrice) + '</b>');
+  document.getElementById('pushModalSub').innerHTML = sub.join(' &nbsp;·&nbsp; ');
+
+  // Build options: beat buybox, beat each seller by R1, custom
+  var opts = [];
+  var sellers = p.sellers || [];
+  var bbPrice = p.buybox_price > 0 ? p.buybox_price : (sellers.length ? sellers[0].price : 0);
+
+  if (bbPrice > 0) {
+    opts.push({ id: 'bb', label: '⚡ Beat BuyBox by R1', price: bbPrice - 1, desc: 'BuyBox R' + bbPrice + ' → R' + (bbPrice - 1) });
+  }
+  sellers.forEach(function(s, si) {
+    if (!s.price || s.price <= 0) return;
+    var nm = (s.seller || s.sellerName || 'Seller ' + (si + 1)).slice(0, 24);
+    opts.push({ id: 's' + si, label: '🥈 Beat ' + nm + ' by R1', price: s.price - 1, desc: nm + ' R' + s.price + ' → R' + (s.price - 1) });
+  });
+
+  var optHtml = opts.map(function(o, i) {
+    return '<label style="display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;cursor:pointer;background:var(--surface2);font-size:12px" ' +
+      'onclick="selectPushOption(\'' + o.id + '\')">' +
+      '<input type="radio" name="pushOpt" value="' + o.id + '" ' + (i === 0 ? 'checked' : '') + ' style="width:14px;height:14px;accent-color:var(--accent)">' +
+      '<span style="flex:1">' + o.label + '</span>' +
+      '<span style="font-family:\'Space Mono\',monospace;color:var(--accent);font-weight:700">R' + o.price + '</span>' +
+      '</label>';
+  }).join('');
+  document.getElementById('pushOptions').innerHTML = optHtml;
+
+  document.getElementById('pushCustomInput').value = '';
+  document.getElementById('pushResult').innerHTML = '';
+  _pushTarget = opts.length ? opts[0] : null;
+
+  updatePushPreview();
+  document.getElementById('pushModal').classList.add('show');
+}
+
+function selectPushOption(id) {
+  var p = state.products[_pushIdx];
+  if (!p) return;
+  var sellers = p.sellers || [];
+  var bbPrice = p.buybox_price > 0 ? p.buybox_price : (sellers.length ? sellers[0].price : 0);
+  var opts = [];
+  if (bbPrice > 0) opts.push({ id: 'bb', label: '⚡ Beat BuyBox by R1', price: bbPrice - 1 });
+  sellers.forEach(function(s, si) {
+    if (!s.price || s.price <= 0) return;
+    opts.push({ id: 's' + si, label: '🥈 Beat ' + (s.seller || s.sellerName || 'Seller ' + (si + 1)).slice(0, 24) + ' by R1', price: s.price - 1 });
+  });
+  var found = opts.find(function(o) { return o.id === id; });
+  if (found) _pushTarget = found;
+  document.getElementById('pushCustomInput').value = '';
+  updatePushPreview();
+}
+
+function updatePushPreview() {
+  var p = state.products[_pushIdx];
+  if (!p) return;
+  var custom = parseFloat(document.getElementById('pushCustomInput').value);
+  var newPrice = (!isNaN(custom) && custom > 0) ? Math.round(custom) : (_pushTarget ? _pushTarget.price : null);
+
+  var guards = document.getElementById('pushGuards');
+  var preview = document.getElementById('pushPreview');
+
+  // Guards: min_price floor, max_price ceiling, basePrice ceiling
+  var listing = getListings().find(function(l) { return l.fsn === p.fsn; });
+  var hardFloor = p.min_price > 0 ? p.min_price : 0;
+  var basePrice = listing && listing.basePrice > 0 ? listing.basePrice : 0;
+  var ceiling = basePrice > 0 ? (p.max_price > 0 ? Math.min(basePrice, p.max_price) : basePrice) : (p.max_price > 0 ? p.max_price : 0);
+
+  var guardLines = [];
+  guardLines.push('🛡 Min floor: <b style="color:var(--accent3)">' + (hardFloor > 0 ? 'R' + hardFloor : '— none set') + '</b>');
+  guardLines.push('🛡 Max ceiling: <b style="color:#a78bfa">' + (ceiling > 0 ? 'R' + ceiling : '— none set') + '</b>');
+  if (basePrice > 0) guardLines.push('🛡 Base Price (RRP): <b style="color:#a78bfa">R' + basePrice + '</b>');
+  guards.innerHTML = guardLines.join(' &nbsp;·&nbsp; ');
+
+  if (newPrice === null) {
+    preview.innerHTML = '<span style="color:var(--muted)">Select an option or enter a custom price.</span>';
+    return;
+  }
+
+  var clamped = [];
+  if (hardFloor > 0 && newPrice < hardFloor) { newPrice = hardFloor; clamped.push('raised to floor'); }
+  if (ceiling > 0 && newPrice > ceiling)     { newPrice = ceiling; clamped.push('lowered to ceiling'); }
+
+  var oldPrice = listing && listing.myPrice > 0 ? Math.round(listing.myPrice) : null;
+  var diff = oldPrice !== null ? newPrice - oldPrice : null;
+  preview.innerHTML =
+    '<div style="font-size:13px">New price: <b style="color:var(--accent);font-size:16px">R' + newPrice + '</b>' +
+    (diff !== null ? ' <span style="color:' + (diff < 0 ? '#ff9500' : 'var(--accent)') + '">(' + (diff > 0 ? '+' : '') + 'R' + diff + ' vs current)</span>' : '') +
+    '</div>' +
+    (clamped.length ? '<div style="color:#ff9500;font-size:11px;margin-top:4px">⚠ ' + clamped.join(', ') + ' by price guards</div>' : '');
+}
+
+function closePushModal() {
+  document.getElementById('pushModal').classList.remove('show');
+  _pushIdx = null;
+  _pushTarget = null;
+}
+
+function pushProductToPortal() {
+  var idx = _pushIdx;
+  var p = state.products[idx];
+  if (!p) return;
+
+  var custom = parseFloat(document.getElementById('pushCustomInput').value);
+  var newPrice = (!isNaN(custom) && custom > 0) ? Math.round(custom) : (_pushTarget ? _pushTarget.price : null);
+  if (newPrice === null || newPrice <= 0) {
+    document.getElementById('pushResult').innerHTML = '<span style="color:#ff4444">❌ Choose a price option or enter a custom price first.</span>';
+    return;
+  }
+
+  // Apply guards (same as bulk updater)
+  var listing = getListings().find(function(l) { return l.fsn === p.fsn; });
+  var hardFloor = p.min_price > 0 ? p.min_price : 0;
+  var basePrice = listing && listing.basePrice > 0 ? listing.basePrice : 0;
+  var ceiling = basePrice > 0 ? (p.max_price > 0 ? Math.min(basePrice, p.max_price) : basePrice) : (p.max_price > 0 ? p.max_price : 0);
+  if (hardFloor > 0 && newPrice < hardFloor) newPrice = hardFloor;
+  if (ceiling > 0 && newPrice > ceiling) newPrice = ceiling;
+
+  // Need the raw listing template to build the XLS
+  var rawBase64 = localStorage.getItem('makro_listings_raw');
+  if (!rawBase64) {
+    document.getElementById('pushResult').innerHTML =
+      '<span style="color:#ff4444">❌ Original listing file not found.<br>Please re-import your S_listing XLS from the Products tab (needed as template).</span>';
+    return;
+  }
+  if (!listing) {
+    document.getElementById('pushResult').innerHTML =
+      '<span style="color:#ff4444">❌ FSN <b>' + escHtml(p.fsn || '') + '</b> not found in your imported listings.<br>Import the S_listing file that contains this product first.</span>';
+    return;
+  }
+
+  try {
+    var byteStr = atob(rawBase64);
+    var bytes = new Uint8Array(byteStr.length);
+    for (var i = 0; i < byteStr.length; i++) bytes[i] = byteStr.charCodeAt(i);
+    var wb = XLSX.read(bytes, { type: 'array' });
+    var sh = wb.Sheets[wb.SheetNames[0]];
+    var rows = XLSX.utils.sheet_to_json(sh, { header: 1, defval: '' });
+
+    // Find the row for this FSN (col 4) and write Selling Price (col 9)
+    var changed = false;
+    for (var r = 2; r < rows.length; r++) {
+      var fsn = String(rows[r][4] || '').trim();
+      if (fsn !== p.fsn) continue;
+      var cellAddr = XLSX.utils.encode_cell({ r: r, c: 9 });
+      if (!sh[cellAddr]) sh[cellAddr] = {};
+      sh[cellAddr].t = 'n';
+      sh[cellAddr].v = newPrice;
+      sh[cellAddr].w = String(newPrice);
+      changed = true;
+      break;
+    }
+    if (!changed) {
+      document.getElementById('pushResult').innerHTML =
+        '<span style="color:#ff4444">❌ FSN <b>' + escHtml(p.fsn || '') + '</b> not found in the listing file rows.<br>Re-import the S_listing file that contains this product.</span>';
+      return;
+    }
+
+    var rawFilename = localStorage.getItem('makro_listings_filename') || 'S_listing_price_update.xls';
+    var dateStr = new Date().toISOString().slice(0,10).replace(/-/g,'');
+    var timeStr = new Date().toTimeString().slice(0,5).replace(':','');
+    var filename = rawFilename.replace(/(_\d{4}-\d{6}_default)/, '_' + dateStr.slice(4) + '-' + timeStr + '00_default');
+
+    var wbout = XLSX.write(wb, { bookType: 'xls', type: 'array' });
+    var wbBytes = new Uint8Array(wbout);
+    var base64 = '';
+    var CHUNK = 8192;
+    for (var j = 0; j < wbBytes.length; j += CHUNK) {
+      base64 += String.fromCharCode.apply(null, wbBytes.subarray(j, j + CHUNK));
+    }
+    base64 = btoa(base64);
+
+    // Save for portal auto-upload + send via bridge to chrome.storage.local
+    localStorage.setItem('portal_upload_file', base64);
+    localStorage.setItem('portal_upload_filename', filename);
+    window.postMessage({ type: 'SAVE_PORTAL_FILE', base64: base64, filename: filename }, '*');
+
+    // Record the push in product history
+    p.history = p.history || [];
+    p.history.push({ price: newPrice, seller: p.seller, status: p.status, myPrice: newPrice, ts: new Date().toISOString(), note: 'manual push' });
+    if (p.history.length > 30) p.history.shift();
+    saveProducts();
+
+    document.getElementById('pushResult').innerHTML =
+      '<span style="color:var(--accent)">✅ <b>R' + newPrice + '</b> queued for <b>' + escHtml(filename) + '</b> — sent to portal extension.</span><br>' +
+      '<span style="color:var(--muted)">Open <b style="color:#00e5a0">seller.makro.co.za</b> → click <b style="color:#00e5a0">🚀 Auto Upload Now</b> in the green overlay to push it live.</span>';
+
+    // Offer to open the portal
+    setTimeout(function() {
+      if (confirm('Open seller.makro.co.za to auto-upload now?')) {
+        window.open('https://seller.makro.co.za', '_blank');
+      }
+    }, 400);
+  } catch(err) {
+    document.getElementById('pushResult').innerHTML =
+      '<span style="color:#ff4444">❌ Error building file: ' + escHtml(err.message) + '</span>';
+  }
+}
 
 
 
