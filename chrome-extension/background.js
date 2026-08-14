@@ -244,6 +244,11 @@ function openScrapeWindow() {
     const tabId = win.tabs[0].id;
     registerTab(tabId, firstUrl);
 
+    // Force the scrape window to the front so the user can SEE what's being scraped
+    setTimeout(function() {
+      if (scrapeWinId) chrome.windows.update(scrapeWinId, { focused: true }, function() {});
+    }, 300);
+
     // Open remaining parallel slots with staggered delays
     for (let i = 1; i < concurrency; i++) {
       if (queue.length === 0) break;
@@ -429,7 +434,7 @@ function finishCatSearch() {
       if (scrapeWinId) chrome.windows.remove(scrapeWinId, function() {});
       scrapeWinId = null;
       activeTabs.clear();
-    }, 2000);
+    }, 6000);
   }, 500);
 }
 
@@ -442,7 +447,7 @@ function finishQueue() {
       if (scrapeWinId) chrome.windows.remove(scrapeWinId, function() {});
       scrapeWinId = null;
       activeTabs.clear();
-    }, 2000);
+    }, 6000);
   }, 500);
 }
 

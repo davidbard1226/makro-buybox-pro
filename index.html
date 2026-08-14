@@ -99,6 +99,42 @@
     background: rgba(255,214,10,.05);
   }
 
+  /* SELLERS HOVER TOOLTIP */
+  .sellers-cell { position:relative; }
+  .sellers-tip {
+    display:none;
+    position:absolute;
+    left:0; top:calc(100% + 6px);
+    z-index:100;
+    min-width:230px;
+    max-width:320px;
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:10px;
+    box-shadow:0 8px 30px rgba(0,0,0,.5);
+    padding:10px 12px;
+    font-size:11px;
+  }
+  .sellers-cell:hover .sellers-tip { display:block; }
+  .sellers-tip-title {
+    font-size:10px; text-transform:uppercase; letter-spacing:1px;
+    color:var(--muted); margin-bottom:6px; font-weight:600;
+  }
+  .sellers-tip-row {
+    display:flex; align-items:center; gap:8px;
+    padding:4px 0; border-bottom:1px solid rgba(30,37,48,.5);
+  }
+  .sellers-tip-row:last-child { border-bottom:none; }
+  .sellers-tip-rank {
+    width:18px; height:18px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:9px; font-weight:700; flex-shrink:0;
+  }
+  .sellers-tip-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sellers-tip-price { font-family:'Space Mono',monospace; font-weight:700; white-space:nowrap; }
+  .sellers-tip-me { color:var(--accent3); font-size:9px; font-weight:700; }
+  .sellers-tip-buybox { color:var(--accent); font-size:9px; font-weight:700; }
+
   /* NAV TABS */
   nav {
     background: var(--surface);
@@ -2555,6 +2591,7 @@ function renderProducts() {
     const statusLabel = p.status === 'win' ? '✓ WIN' : p.status === 'lose' ? '✗ LOSE' : '? UNKNOWN';
     const t = p.lastChecked ? new Date(p.lastChecked).toLocaleString() : '—';
     const realIdx = findRealIdx(p);
+    const myName = getMySellerName().toLowerCase().trim();
     const listing = listingsMap[p.fsn] || null;
     const myPrice = listing ? `<span style="color:var(--accent3);font-family:'Space Mono',monospace;font-size:12px">R ${listing.myPrice.toFixed(2)}</span>` : '<span style="color:var(--muted);font-size:11px">—</span>';
     const myStock = listing ? `<span style="color:${listing.myStock > 0 ? 'var(--accent)' : '#ff9500'};font-size:12px">${listing.myStock}</span>` : '<span style="color:var(--muted);font-size:11px">—</span>';
@@ -2718,8 +2755,23 @@ function renderProducts() {
               '<span style="color:var(--accent);font-weight:600">' + p.sellers.length + ' sellers</span> · ' +
               (p.status === 'win' ? '<span style="color:var(--accent)">✅ Winning</span>' : '<span style="color:#ff4d6d)">❌ Losing</span>') +
             '</div>' +
-            '<div style="margin-top:2px;font-size:9px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + p.sellers.map(function(s) { return (s.seller || s.sellerName || 'Unknown') + ' R' + s.price; }).join(' | ') + '">' +
+            '<div style="margin-top:2px;font-size:9px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
               p.sellers.map(function(s) { return (s.seller || s.sellerName || 'Unknown') + ' <span style="font-family:monospace">R' + s.price + '</span>'; }).join(' · ') +
+            '</div>' +
+            '<div class="sellers-tip">' +
+              '<div class="sellers-tip-title">All sellers · ' + p.sellers.length + '</div>' +
+              p.sellers.map(function(s, si) {
+                var nm = s.seller || s.sellerName || 'Unknown';
+                var nmL = nm.toLowerCase();
+                var isMe = myName.length > 0 && (nmL.includes(myName) || myName.includes(nmL.substring(0,6)));
+                var isBB = !!(s.selected || s.isBuyBox) || (si === 0 && p.sellers.length > 1 && s.price === Math.min.apply(null, p.sellers.map(function(x){ return x.price; })));
+                var rankColor = isBB ? 'var(--accent)' : (isMe ? 'var(--accent3)' : 'var(--muted)');
+                return '<div class="sellers-tip-row">' +
+                  '<div class="sellers-tip-rank" style="background:' + rankColor + ';color:#000">' + (si + 1) + '</div>' +
+                  '<div class="sellers-tip-name">' + escHtml(nm) + (isMe ? ' <span class="sellers-tip-me">YOU</span>' : '') + (isBB ? ' <span class="sellers-tip-buybox">BUYBOX</span>' : '') + '</div>' +
+                  '<div class="sellers-tip-price" style="color:' + (isBB ? 'var(--accent)' : 'var(--text)') + '">R' + s.price + '</div>' +
+                '</div>';
+              }).join('') +
             '</div>'
             :
             '<div id="sellers-inline-${realIdx}" style="margin-top:4px;font-size:10px;color:var(--muted)"></div>'
