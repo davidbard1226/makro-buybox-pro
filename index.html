@@ -99,15 +99,17 @@
     background: rgba(255,214,10,.05);
   }
 
-  /* SELLERS HOVER TOOLTIP */
-  .sellers-cell { position:relative; }
-  .sellers-tip {
+  /* SELLERS HOVER TOOLTIP (global, fixed-position — not clipped by table scroll) */
+  .sellers-cell { position:relative; cursor:help; }
+  #sellersTip {
     display:none;
-    position:absolute;
-    left:0; top:calc(100% + 6px);
-    z-index:100;
+    position:fixed;
+    z-index:1000;
     min-width:230px;
     max-width:320px;
+    max-height:60vh;
+    overflow-y:auto;
+    overscroll-behavior:contain;
     background:var(--surface);
     border:1px solid var(--border);
     border-radius:10px;
@@ -115,25 +117,25 @@
     padding:10px 12px;
     font-size:11px;
   }
-  .sellers-cell:hover .sellers-tip { display:block; }
-  .sellers-tip-title {
+  #sellersTip.show { display:block; }
+  #sellersTip .sellers-tip-title {
     font-size:10px; text-transform:uppercase; letter-spacing:1px;
     color:var(--muted); margin-bottom:6px; font-weight:600;
   }
-  .sellers-tip-row {
+  #sellersTip .sellers-tip-row {
     display:flex; align-items:center; gap:8px;
     padding:4px 0; border-bottom:1px solid rgba(30,37,48,.5);
   }
-  .sellers-tip-row:last-child { border-bottom:none; }
-  .sellers-tip-rank {
+  #sellersTip .sellers-tip-row:last-child { border-bottom:none; }
+  #sellersTip .sellers-tip-rank {
     width:18px; height:18px; border-radius:50%;
     display:flex; align-items:center; justify-content:center;
     font-size:9px; font-weight:700; flex-shrink:0;
   }
-  .sellers-tip-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .sellers-tip-price { font-family:'Space Mono',monospace; font-weight:700; white-space:nowrap; }
-  .sellers-tip-me { color:var(--accent3); font-size:9px; font-weight:700; }
-  .sellers-tip-buybox { color:var(--accent); font-size:9px; font-weight:700; }
+  #sellersTip .sellers-tip-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #sellersTip .sellers-tip-price { font-family:'Space Mono',monospace; font-weight:700; white-space:nowrap; }
+  #sellersTip .sellers-tip-me { color:var(--accent3); font-size:9px; font-weight:700; }
+  #sellersTip .sellers-tip-buybox { color:var(--accent); font-size:9px; font-weight:700; }
 
   /* NAV TABS */
   nav {
@@ -2772,7 +2774,7 @@ function renderProducts() {
         })()}
       </td>
         <td>
-        <div class="sellers-cell" id="sellers-cell-${realIdx}">
+        <div class="sellers-cell" id="sellers-cell-${realIdx}" data-idx="${realIdx}">
           <div style="font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escHtml(p.seller||'')}">
             ${escHtml((p.seller||'Unknown').slice(0,18))}
           </div>
@@ -2780,21 +2782,6 @@ function renderProducts() {
             '<div style="margin-top:4px;font-size:10px;color:var(--muted)">' +
               '<span style="color:var(--accent);font-weight:600">' + p.sellers.length + ' sellers</span> · ' +
               (p.status === 'win' ? '<span style="color:var(--accent)">✅ Winning</span>' : '<span style="color:#ff4d6d)">❌ Losing</span>') +
-            '</div>' +
-            '<div class="sellers-tip">' +
-              '<div class="sellers-tip-title">All sellers · ' + p.sellers.length + '</div>' +
-              p.sellers.map(function(s, si) {
-                var nm = s.seller || s.sellerName || 'Unknown';
-                var nmL = nm.toLowerCase();
-                var isMe = myName.length > 0 && (nmL.includes(myName) || myName.includes(nmL.substring(0,6)));
-                var isBB = !!(s.selected || s.isBuyBox) || (si === 0 && p.sellers.length > 1 && s.price === Math.min.apply(null, p.sellers.map(function(x){ return x.price; })));
-                var rankColor = isBB ? 'var(--accent)' : (isMe ? 'var(--accent3)' : 'var(--muted)');
-                return '<div class="sellers-tip-row">' +
-                  '<div class="sellers-tip-rank" style="background:' + rankColor + ';color:#000">' + (si + 1) + '</div>' +
-                  '<div class="sellers-tip-name">' + escHtml(nm) + (isMe ? ' <span class="sellers-tip-me">YOU</span>' : '') + (isBB ? ' <span class="sellers-tip-buybox">BUYBOX</span>' : '') + '</div>' +
-                  '<div class="sellers-tip-price" style="color:' + (isBB ? 'var(--accent)' : 'var(--text)') + '">R' + s.price + '</div>' +
-                '</div>';
-              }).join('') +
             '</div>'
             :
             '<div id="sellers-inline-${realIdx}" style="margin-top:4px;font-size:10px;color:var(--muted)"></div>'
@@ -4494,6 +4481,91 @@ document.getElementById('sellerNameConfig').addEventListener('change', function(
   document.getElementById('sellerNameInput').value = this.value;
   document.getElementById('sellerNameInput').dispatchEvent(new Event('change'));
 });
+
+// ============================================================
+// SELLERS HOVER TOOLTIP (global fixed-position card)
+// ============================================================
+var _sellersTipEl = null;
+function getSellersTipEl() {
+  if (!_sellersTipEl) {
+    _sellersTipEl = document.getElementById('sellersTip');
+    if (!_sellersTipEl) {
+      _sellersTipEl = document.createElement('div');
+      _sellersTipEl.id = 'sellersTip';
+      document.body.appendChild(_sellersTipEl);
+    }
+  }
+  return _sellersTipEl;
+}
+
+function positionSellersTip(cell) {
+  var tip = getSellersTipEl();
+  var cr = cell.getBoundingClientRect();
+  var tipW = tip.offsetWidth || 300;
+  var tipH = tip.offsetHeight || 200;
+  var vw = window.innerWidth, vh = window.innerHeight;
+  // Horizontal: keep inside viewport, prefer aligning with the cell's left edge
+  var x = Math.min(cr.left, vw - tipW - 8);
+  if (x < 8) x = 8;
+  // Vertical: prefer below the cell; flip above if it would overflow the bottom
+  var below = cr.bottom + 6;
+  var above = cr.top - tipH - 6;
+  var y = (below + tipH <= vh - 8) ? below : (above >= 8 ? above : Math.max(8, vh - tipH - 8));
+  tip.style.left = x + 'px';
+  tip.style.top = y + 'px';
+}
+
+function showSellersTip(cell, p) {
+  var tip = getSellersTipEl();
+  var myName = (getMySellerName() || '').toLowerCase();
+  var rows = p.sellers.map(function(s, si) {
+    var nm = s.seller || s.sellerName || 'Unknown';
+    var nmL = nm.toLowerCase();
+    var isMe = myName.length > 0 && (nmL.includes(myName) || myName.includes(nmL.substring(0,6)));
+    var isBB = !!(s.selected || s.isBuyBox) || (si === 0 && p.sellers.length > 1 && s.price === Math.min.apply(null, p.sellers.map(function(x){ return x.price; })));
+    var rankColor = isBB ? 'var(--accent)' : (isMe ? 'var(--accent3)' : 'var(--muted)');
+    return '<div class="sellers-tip-row">' +
+      '<div class="sellers-tip-rank" style="background:' + rankColor + ';color:#000">' + (si + 1) + '</div>' +
+      '<div class="sellers-tip-name">' + escHtml(nm) + (isMe ? ' <span class="sellers-tip-me">YOU</span>' : '') + (isBB ? ' <span class="sellers-tip-buybox">BUYBOX</span>' : '') + '</div>' +
+      '<div class="sellers-tip-price" style="color:' + (isBB ? 'var(--accent)' : 'var(--text)') + '">R' + s.price + '</div>' +
+    '</div>';
+  }).join('');
+  tip.innerHTML = '<div class="sellers-tip-title">All sellers · ' + p.sellers.length + '</div>' + rows;
+  tip.classList.add('show');
+  positionSellersTip(cell);
+}
+
+function hideSellersTip() {
+  var tip = getSellersTipEl();
+  tip.classList.remove('show');
+}
+
+// Delegated hover (capture phase: mouseenter/mouseleave don't bubble)
+document.addEventListener('mouseenter', function(e) {
+  var cell = e.target && e.target.closest ? e.target.closest('.sellers-cell') : null;
+  if (!cell) return;
+  var idx = cell.getAttribute('data-idx');
+  if (idx == null) return;
+  var p = state.products[parseInt(idx)];
+  if (!p || !p.sellers || !p.sellers.length) return;
+  showSellersTip(cell, p);
+}, true);
+
+document.addEventListener('mouseleave', function(e) {
+  var tip = getSellersTipEl();
+  if (!tip.classList.contains('show')) return;
+  var to = e.relatedTarget;
+  var inTip = to && to.closest && to.closest('#sellersTip');
+  if (inTip) return; // moving into the tooltip — keep it open so it can be scrolled
+  var cell = e.target && e.target.closest ? e.target.closest('.sellers-cell') : null;
+  if (cell) { hideSellersTip(); return; }
+  if (e.target === tip) { hideSellersTip(); }
+}, true);
+
+// Hide if the page scrolls while the tooltip is open
+document.addEventListener('scroll', function() {
+  hideSellersTip();
+}, true);
 
 // ============================================================
 // INIT
