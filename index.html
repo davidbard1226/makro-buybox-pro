@@ -1917,6 +1917,10 @@ function handleQueueProgress(d) {
 
   if (d && d.data) {
     const p  = d.data;
+    // Build listings lookup for myPrice (was missing → ReferenceError crashed
+    // every scrape result and silently dropped the product)
+    const listingsMap = {};
+    try { getListings().forEach(function(l) { listingsMap[l.fsn] = l; }); } catch(e) {}
     const seller = p.buyBoxSeller || 'Unknown Seller';
     const price  = parseFloat(p.buyBoxPrice) || 0;
     const myName = getMySellerName().toLowerCase().trim();
@@ -2274,7 +2278,10 @@ function renderDashboard() {
     .sort((a,b) => new Date(b.lastChecked) - new Date(a.lastChecked))
     .slice(0, 8);
 
+  // recentList element was removed from the dashboard HTML during a rebuild —
+  // guard against null so renderDashboard never crashes mid-scrape
   const recentEl = document.getElementById('recentList');
+  if (recentEl) {
   if (recents.length === 0) {
     recentEl.innerHTML = '<div class="empty-state" style="padding:20px"><div class="empty-text">No activity yet.</div></div>';
   } else {
@@ -2291,6 +2298,7 @@ function renderDashboard() {
         <div style="font-family:'Space Mono',monospace;font-size:13px;font-weight:700;color:${color}">R${(p.buybox_price||0).toFixed(2)}</div>
       </div>`;
     }).join('');
+  }
   }
 
   // ── EASY WINS: losses where gap to buybox ≤ R50 ─────────────────────────
