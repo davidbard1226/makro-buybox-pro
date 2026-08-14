@@ -2755,6 +2755,9 @@ function renderProducts() {
               '<span style="color:var(--accent);font-weight:600">' + p.sellers.length + ' sellers</span> · ' +
               (p.status === 'win' ? '<span style="color:var(--accent)">✅ Winning</span>' : '<span style="color:#ff4d6d)">❌ Losing</span>') +
             '</div>' +
+            '<div style="margin-top:2px;font-size:9px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
+              p.sellers.map(function(s) { return (s.seller || s.sellerName || 'Unknown') + ' <span style="font-family:monospace">R' + s.price + '</span>'; }).join(' · ') +
+            '</div>' +
             '<div class="sellers-tip">' +
               '<div class="sellers-tip-title">All sellers · ' + p.sellers.length + '</div>' +
               p.sellers.map(function(s, si) {
