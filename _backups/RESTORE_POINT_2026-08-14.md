@@ -9,6 +9,14 @@ This is the restore point for the fully-working Makro BuyBox Pro dashboard + ext
 > ONLINE SERVICES R5525"). The cell now shows only **"N sellers · ✅ Winning / ❌ Losing"** and
 > the full seller list appears on **hover** (the `.sellers-tip` card). Everything in this
 > restore point still applies; the backup folder below contains the pre-cleanup working state.
+>
+> **New feature (commit `89cd3d6`):** single-product **🚀 Push to Portal** — each product row
+> has a 🚀 button that opens a modal with three pricing modes: **Beat BuyBox by R1**, **Beat
+> any specific seller by R1** (each seller in the hover list is an option), or **custom price**.
+> It builds a 1-row XLS from the imported S_listing template (col 9 = Selling Price), applies
+> the same min/max/base-price guards as the bulk updater, saves the file, and sends it to the
+> portal extension (`SAVE_PORTAL_FILE` → chrome.storage) for auto-upload. Requires the raw
+> listing template (`makro_listings_raw`) to be imported first.
 
 ## How to restore
 - **Files backup:** copy everything from `_backups/restore-point-2026-08-14/` back into the repo root.
