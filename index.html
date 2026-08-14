@@ -2896,8 +2896,26 @@ function importListings(input) {
     // urlEvt.target.result is "data:...;base64,XXXX" — extract the base64 part
     const dataUrl = urlEvt.target.result;
     const base64  = dataUrl.split(',')[1];
-    localStorage.setItem('makro_listings_raw',      base64);
-    localStorage.setItem('makro_listings_filename', file.name);
+    try {
+      localStorage.setItem('makro_listings_raw',      base64);
+      localStorage.setItem('makro_listings_filename', file.name);
+    } catch(qErr) {
+      // Quota exceeded — the raw template is too big for localStorage.
+      // The parsed listings still import fine; only the raw template (needed
+      // for Push-to-Portal / bulk XLS rebuild) is skipped.
+      console.warn('Could not store raw listing template (localStorage quota):', qErr);
+      try { localStorage.removeItem('makro_listings_raw'); } catch(e) {}
+      var qBanner = document.getElementById('importBanner');
+      if (!qBanner) {
+        qBanner = document.createElement('div');
+        qBanner.id = 'importBanner';
+        qBanner.style.cssText = 'position:fixed;bottom:24px;right:24px;background:#111418;border:1px solid #ff9500;color:#ff9500;font-family:Space Mono,monospace;font-size:12px;padding:12px 20px;border-radius:8px;z-index:999;box-shadow:0 4px 20px rgba(255,149,0,.2)';
+        document.body.appendChild(qBanner);
+      }
+      qBanner.textContent = '⚠ File imported, but the raw template was too big for browser storage — Push to Portal / bulk XLS rebuild may not work until you re-import a smaller file.';
+      qBanner.style.display = 'block';
+      setTimeout(function(){ qBanner.style.display = 'none'; }, 6000);
+    }
   };
   urlReader.readAsDataURL(file);
 
