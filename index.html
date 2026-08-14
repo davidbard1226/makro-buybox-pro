@@ -1938,6 +1938,7 @@ function handleQueueProgress(d) {
       existing.lastChecked  = new Date().toISOString();
       existing.title        = p.title || existing.title;
       existing.fsn          = p.fsn || existing.fsn || '';
+      if (p.sellers && p.sellers.length) existing.sellers = p.sellers;
       existing.history      = existing.history || [];
       existing.history.push({ price, seller, status, myPrice: (listingsMap[p.fsn]||{}).myPrice || 0, ts: new Date().toISOString() });
       if (existing.history.length > 30) existing.history.shift();
@@ -1946,6 +1947,7 @@ function handleQueueProgress(d) {
         url: p.url, fsn: p.fsn || '', sku: p.sku || '',
         title: p.title || p.url, buybox_price: price,
         seller, status, lastChecked: new Date().toISOString(),
+        sellers: p.sellers || [],
         history: [{ price, seller, status, myPrice: (listingsMap[p.fsn]||{}).myPrice || 0, ts: new Date().toISOString() }]
       });
     }
@@ -2716,8 +2718,8 @@ function renderProducts() {
               '<span style="color:var(--accent);font-weight:600">' + p.sellers.length + ' sellers</span> · ' +
               (p.status === 'win' ? '<span style="color:var(--accent)">✅ Winning</span>' : '<span style="color:#ff4d6d)">❌ Losing</span>') +
             '</div>' +
-            '<div style="margin-top:2px;font-size:9px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + p.sellers.map(function(s) { return s.sellerName + ' R' + s.price; }).join(' | ') + '">' +
-              p.sellers.map(function(s) { return s.sellerName + ' <span style="font-family:monospace">R' + s.price + '</span>'; }).join(' · ') +
+            '<div style="margin-top:2px;font-size:9px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + p.sellers.map(function(s) { return (s.seller || s.sellerName || 'Unknown') + ' R' + s.price; }).join(' | ') + '">' +
+              p.sellers.map(function(s) { return (s.seller || s.sellerName || 'Unknown') + ' <span style="font-family:monospace">R' + s.price + '</span>'; }).join(' · ') +
             '</div>'
             :
             '<div id="sellers-inline-${realIdx}" style="margin-top:4px;font-size:10px;color:var(--muted)"></div>'
