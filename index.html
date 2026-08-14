@@ -2808,6 +2808,7 @@ function renderProducts() {
       <td style="font-size:11px;color:var(--muted);white-space:nowrap">${t}</td>
       <td style="display:flex;gap:4px">
         <button class="action-btn" onclick="openPushModal(${realIdx})" title="Push new price to seller portal">🚀</button>
+        <button class="action-btn" onclick="syncCostForProduct(${realIdx})" title="Sync cost price from supplier sheets (by SKU)">💲</button>
         <button class="action-btn" onclick="showHistory(${realIdx})" title="Price history">📈</button>
         <button class="action-btn" onclick="rescrapeOne(${realIdx})" title="Re-scrape">↻</button>
         <button class="action-btn danger" onclick="deleteProduct(${realIdx})" title="Delete">✕</button>
@@ -2951,6 +2952,22 @@ function importListings(input) {
       });
       if (skuCount > 0) saveProducts();
 
+      // ── Also match by SKU: products without FSN but with a SKU get linked ──
+      // (reverse direction — if the listing has the same SKU, stamp the FSN)
+      const skuToFsn = {};
+      listings.forEach(function(l) { if (l.sku && l.fsn) skuToFsn[String(l.sku).toLowerCase()] = l.fsn; });
+      let fsnCount = 0;
+      state.products.forEach(function(p) {
+        if (!p.fsn && p.sku && skuToFsn[String(p.sku).toLowerCase()]) {
+          p.fsn = skuToFsn[String(p.sku).toLowerCase()];
+          fsnCount++;
+        }
+      });
+      if (fsnCount > 0) saveProducts();
+
+      // ── Auto-match cost prices from supplier sheets (by SKU) ──────────────
+      autoMatchCostsAfterImport();
+
       // Auto-refresh everything immediately — no blocking alert
       renderProducts();
       renderDashboard();
@@ -3021,7 +3038,142 @@ function parseCSV(text) {
   return rows;
 }
 
-async function syncCostsFromSheet() {
+// ── SHARED COST LOOKUP (used by bulk sync, per-product sync, and auto-match on import) ──
+var _costLookupCache = null;
+async function buildCostLookup(force) {
+  if (_costLookupCache && !force) return _costLookupCache;
+
+  var lookup = {};
+  for (var t = 0; t < GSHEET_TABS.length; t++) {
+    var tab = GSHEET_TABS[t];
+    var url = 'https://docs.google.com/spreadsheets/d/' + GSHEET_ID + '/gviz/tq?tqx=out:csv&sheet=' + encodeURIComponent(tab.sheet);
+    try {
+      var resp = await fetch(url);
+      if (!resp.ok) continue;
+      var csv = await resp.text();
+      if (!csv || csv.includes('<!DOCTYPE')) continue;
+      var rows = parseCSV(csv);
+      var tabMatches = 0;
+      for (var r = 1; r < rows.length; r++) {
+        var row = rows[r];
+        var skuRaw = row[tab.skuCol] != null ? row[tab.skuCol].toString().trim() : '';
+        if (!skuRaw) continue;
+        var sku = skuRaw.toLowerCase();
+        var cost = parseFloat((row[tab.costCol] || '').toString().replace(/[R,\s]/g,''));
+        if (isNaN(cost) || cost <= 0) continue;
+        var minV = (tab.minCol != null && row[tab.minCol]) ? parseFloat(row[tab.minCol].toString().replace(/[R,\s]/g,'')) : NaN;
+        var maxV = (tab.maxCol != null && row[tab.maxCol]) ? parseFloat(row[tab.maxCol].toString().replace(/[R,\s]/g,'')) : NaN;
+        // Keep lowest cost if same SKU appears in multiple suppliers
+        if (!lookup[sku] || cost < lookup[sku].cost) {
+          lookup[sku] = { cost: cost, supplier: tab.supplierName,
+            minPrice: isNaN(minV) ? null : minV, maxPrice: isNaN(maxV) ? null : maxV };
+          tabMatches++;
+        }
+      }
+      console.log('[SyncCosts] ' + tab.supplierName + ': ' + tabMatches + ' SKUs loaded');
+    } catch(e) { console.warn('Tab fetch error', e); }
+  }
+
+  // Build fuzzy index: base SKU without brand prefixes or variant suffixes
+  var brandPfx = /^(hp|canon|epson|samsung|lexmark|brother|xerox|dell|lenovo|acer|asus|lg|sony|verbatim|logitech|intel|amd|wd|seagate|kingston|sandisk|corsair|hikvision|dahua|bosch)/i;
+  var fuzzy = {};
+  Object.keys(lookup).forEach(function(raw) {
+    var b = raw.toLowerCase().replace(/\s+/g,'').replace(/-[a-z0-9]{1,4}$/,'').replace(brandPfx,'');
+    if (!fuzzy[b]) fuzzy[b] = lookup[raw];
+  });
+
+  function findCost(sku) {
+    var k = sku.trim().toLowerCase().replace(/\s+/g,'');
+    if (lookup[k]) return lookup[k];                                   // exact
+    var ns = k.replace(/-[a-z0-9]{1,4}$/, '');
+    if (lookup[ns]) return lookup[ns];                                 // strip suffix
+    if (fuzzy[ns])  return fuzzy[ns];
+    var np = k.replace(brandPfx, '');
+    if (lookup[np]) return lookup[np];                                 // strip prefix
+    if (fuzzy[np])  return fuzzy[np];
+    var nsp = np.replace(/-[a-z0-9]{1,4}$/, '');
+    if (lookup[nsp]) return lookup[nsp];                               // strip both
+    if (fuzzy[nsp])  return fuzzy[nsp];
+    return null;
+  }
+
+  _costLookupCache = { lookup: lookup, fuzzy: fuzzy, findCost: findCost, count: Object.keys(lookup).length };
+  return _costLookupCache;
+}
+
+// Apply a matched cost to a product (shared by bulk + per-product sync)
+function applyCostToProduct(p, match) {
+  p.cost_price    = match.cost;
+  p.cost_supplier = match.supplier;
+  // Always recalculate min price from current profit % setting + cost
+  p.min_price = calcMinViablePrice(match.cost);
+  // Only use supplier max if they provide one, otherwise auto-calc 20% above min
+  if (match.maxPrice != null) {
+    p.max_price = match.maxPrice;
+  } else {
+    p.max_price = calcAutoMaxPrice(p.min_price);
+  }
+}
+
+// ── PER-PRODUCT COST SYNC (💲 button on each row) ─────────────────────────
+async function syncCostForProduct(idx) {
+  var p = state.products[idx];
+  if (!p) return;
+  if (!p.sku) {
+    alert('This product has no SKU yet.\nAdd a SKU first (✎ edit modal or 🔗 Bulk SKU Import), then sync cost.');
+    return;
+  }
+  try {
+    var lib = await buildCostLookup();
+    var match = lib.findCost(p.sku);
+    if (!match) {
+      alert('❌ No cost found for SKU "' + p.sku + '" in any supplier sheet.\nCheck the SKU or add it to your Google Sheet.');
+      return;
+    }
+    applyCostToProduct(p, match);
+    saveProducts();
+    renderProducts();
+    alert('✅ Cost synced for ' + (p.title || '').slice(0, 40) + '\n\n' +
+      'SKU: ' + p.sku + '\n' +
+      'Cost: R' + match.cost + ' (' + match.supplier + ')\n' +
+      'Min price: R' + p.min_price + '\n' +
+      'Max price: R' + p.max_price);
+  } catch(e) {
+    alert('❌ Cost sync error: ' + e.message);
+  }
+}
+
+// ── AUTO-MATCH COSTS AFTER LISTING IMPORT ─────────────────────────────────
+async function autoMatchCostsAfterImport() {
+  try {
+    var lib = await buildCostLookup();
+    var updated = 0;
+    state.products.forEach(function(p) {
+      if (!p.sku) return;
+      var match = lib.findCost(p.sku);
+      if (match) {
+        applyCostToProduct(p, match);
+        updated++;
+      }
+    });
+    if (updated > 0) {
+      saveProducts();
+      renderProducts();
+      var banner = document.getElementById('importBanner');
+      if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'importBanner';
+        banner.style.cssText = 'position:fixed;bottom:24px;right:24px;background:#111418;border:1px solid #60a5fa;color:#60a5fa;font-family:Space Mono,monospace;font-size:12px;padding:12px 20px;border-radius:8px;z-index:999;box-shadow:0 4px 20px rgba(96,165,250,.2)';
+        document.body.appendChild(banner);
+      }
+      banner.textContent = '💲 Auto-matched cost for ' + updated + ' product(s) from supplier sheets.';
+      banner.style.display = 'block';
+      setTimeout(function(){ banner.style.display = 'none'; }, 4000);
+    }
+  } catch(e) {
+    console.warn('Auto cost match failed (sheets may be unreachable):', e);
+  }
+}
 
 // ============================================================
 // AUTO-FETCH FROM LOCAL SERVER (no manual work)
@@ -3294,83 +3446,21 @@ function importScraperData() {
   };
   input.click();
 }
+
+async function syncCostsFromSheet() {
   var btn = document.getElementById('syncCostsBtn');
   btn.disabled = true;
   btn.textContent = '⏳ Syncing...';
 
   try {
-    var lookup = {};
-
-    for (var t = 0; t < GSHEET_TABS.length; t++) {
-      var tab = GSHEET_TABS[t];
-      var url = 'https://docs.google.com/spreadsheets/d/' + GSHEET_ID + '/gviz/tq?tqx=out:csv&sheet=' + encodeURIComponent(tab.sheet);
-      try {
-        var resp = await fetch(url);
-        if (!resp.ok) continue;
-        var csv = await resp.text();
-        if (!csv || csv.includes('<!DOCTYPE')) continue;
-        var rows = parseCSV(csv);
-        var tabMatches = 0;
-
-        for (var r = 1; r < rows.length; r++) {
-          var row = rows[r];
-          var skuRaw = row[tab.skuCol] != null ? row[tab.skuCol].toString().trim() : '';
-          if (!skuRaw) continue;
-          var sku = skuRaw.toLowerCase();
-          var cost = parseFloat((row[tab.costCol] || '').toString().replace(/[R,\s]/g,''));
-          if (isNaN(cost) || cost <= 0) continue;
-          var minV = (tab.minCol != null && row[tab.minCol]) ? parseFloat(row[tab.minCol].toString().replace(/[R,\s]/g,'')) : NaN;
-          var maxV = (tab.maxCol != null && row[tab.maxCol]) ? parseFloat(row[tab.maxCol].toString().replace(/[R,\s]/g,'')) : NaN;
-          // Keep lowest cost if same SKU appears in multiple suppliers
-          if (!lookup[sku] || cost < lookup[sku].cost) {
-            lookup[sku] = { cost: cost, supplier: tab.supplierName,
-              minPrice: isNaN(minV) ? null : minV, maxPrice: isNaN(maxV) ? null : maxV };
-            tabMatches++;
-          }
-        }
-        console.log('[SyncCosts] ' + tab.supplierName + ': ' + tabMatches + ' SKUs loaded');
-      } catch(e) { console.warn('Tab fetch error', e); }
-    }
-
-    // Build fuzzy index: base SKU without brand prefixes or variant suffixes
-    var brandPfx = /^(hp|canon|epson|samsung|lexmark|brother|xerox|dell|lenovo|acer|asus|lg|sony|verbatim|logitech|intel|amd|wd|seagate|kingston|sandisk|corsair|hikvision|dahua|bosch)/i;
-    var fuzzy = {};
-    Object.keys(lookup).forEach(function(raw) {
-      var b = raw.toLowerCase().replace(/\s+/g,'').replace(/-[a-z0-9]{1,4}$/,'').replace(brandPfx,'');
-      if (!fuzzy[b]) fuzzy[b] = lookup[raw];
-    });
-
-    function findCost(sku) {
-      var k = sku.trim().toLowerCase().replace(/\s+/g,'');
-      if (lookup[k]) return lookup[k];                                   // exact
-      var ns = k.replace(/-[a-z0-9]{1,4}$/, '');
-      if (lookup[ns]) return lookup[ns];                                 // strip suffix
-      if (fuzzy[ns])  return fuzzy[ns];
-      var np = k.replace(brandPfx, '');
-      if (lookup[np]) return lookup[np];                                 // strip prefix
-      if (fuzzy[np])  return fuzzy[np];
-      var nsp = np.replace(/-[a-z0-9]{1,4}$/, '');
-      if (lookup[nsp]) return lookup[nsp];                               // strip both
-      if (fuzzy[nsp])  return fuzzy[nsp];
-      return null;
-    }
+    var lib = await buildCostLookup(true);
 
     var updated = 0, noSku = 0, noMatch = [];
     state.products.forEach(function(p) {
       if (!p.sku) { noSku++; return; }
-      var match = findCost(p.sku);
+      var match = lib.findCost(p.sku);
       if (match) {
-        p.cost_price    = match.cost;
-        p.cost_supplier = match.supplier;
-        // Always recalculate min price from current profit % setting + cost
-        p.min_price = calcMinViablePrice(match.cost);
-        // Only use supplier max if they provide one, otherwise auto-calc 20% above min
-        if (match.maxPrice != null) {
-          p.max_price = match.maxPrice;
-        } else {
-          // Always refresh max when re-syncing costs
-          p.max_price = calcAutoMaxPrice(p.min_price);
-        }
+        applyCostToProduct(p, match);
         updated++;
       } else {
         noMatch.push(p.sku);
@@ -3383,7 +3473,7 @@ function importScraperData() {
     var msg = '✅ ' + updated + ' product(s) updated with cost data.';
     if (noSku > 0)   msg += '\n⚠ ' + noSku + ' product(s) have no SKU — use 🔗 Bulk SKU Import or ⬇ Export Unmatched to fix.';
     if (noMatch.length > 0) msg += '\n📋 ' + noMatch.length + ' SKU(s) not found in any supplier sheet:\n' + noMatch.slice(0,10).join(', ') + (noMatch.length > 10 ? '...' : '');
-    msg += '\n\n💡 Total supplier SKUs loaded: ' + Object.keys(lookup).length;
+    msg += '\n\n💡 Total supplier SKUs loaded: ' + lib.count;
     alert(msg);
 
   } catch(e) {
