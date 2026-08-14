@@ -4,6 +4,12 @@
 
 This is the restore point for the fully-working Makro BuyBox Pro dashboard + extension.
 
+> **Note (later same day):** a small cleanup landed on top as commit `3ab1424` — removed the
+> inline seller-name list from the product cell (e.g. "The Cartridge Depo Pty Ltd R5524 · ML
+> ONLINE SERVICES R5525"). The cell now shows only **"N sellers · ✅ Winning / ❌ Losing"** and
+> the full seller list appears on **hover** (the `.sellers-tip` card). Everything in this
+> restore point still applies; the backup folder below contains the pre-cleanup working state.
+
 ## How to restore
 - **Files backup:** copy everything from `_backups/restore-point-2026-08-14/` back into the repo root.
   - `index.html` → repo root
