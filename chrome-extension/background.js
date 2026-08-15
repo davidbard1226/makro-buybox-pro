@@ -226,7 +226,7 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
   }
 
   // ── PORTAL API RELAY (dashboard → seller tab) ────────────────────────────
-  if (msg.action === 'portal_get_orders' || msg.action === 'portal_get_listings') {
+  if (msg.action === 'portal_get_orders' || msg.action === 'portal_get_listings' || msg.action === 'portal_list_product') {
     chrome.tabs.query({}, function(tabs) {
       var portalTab = null;
       for (var i = 0; i < tabs.length; i++) {

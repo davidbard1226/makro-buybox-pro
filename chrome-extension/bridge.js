@@ -267,6 +267,27 @@
         });
       });
     }
+
+    // ── PORTAL LIST PRODUCT (latch-on WRITE — dashboard → seller tab) ──────
+    if (ev.data.type === 'PORTAL_LIST_PRODUCT') {
+      safe(function() {
+        chrome.runtime.sendMessage({ action: 'portal_list_product', req: ev.data.req }, function(resp) {
+          if (chrome.runtime.lastError) {
+            window.postMessage({ type: 'PORTAL_LIST_PRODUCT_RESULT', ok: false, error: 'Extension error' }, '*');
+            return;
+          }
+          window.postMessage({
+            type: 'PORTAL_LIST_PRODUCT_RESULT',
+            ok: !!(resp && resp.ok),
+            dryRun: resp && resp.dryRun,
+            payload: resp && resp.payload,
+            result: resp && resp.result,
+            sellerId: resp && resp.sellerId,
+            error: resp && resp.error
+          }, '*');
+        });
+      });
+    }
   });
 
   // Forward scrape_done, queue_finished, queue_aborted from background → dashboard

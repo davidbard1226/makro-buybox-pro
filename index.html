@@ -870,6 +870,7 @@
             <input type="file" id="listingsFileInput" accept=".xls,.xlsx,.csv" style="display:none" onchange="importListings(this)">
           </label>
           <button class="btn-secondary" id="pullListingsBtn" style="width:auto;padding:8px 16px;color:#00e5a0;border-color:rgba(0,229,160,0.3)" onclick="pullPortalListings()" title="Pull your live listings (price, stock, status) straight from the Makro Seller Portal — no S_listing export needed. Requires extension + logged-in portal tab.">🔄 Pull Live Listings</button>
+          <button class="btn-secondary" style="width:auto;padding:8px 16px;color:#ff9500;border-color:rgba(255,149,0,0.4)" onclick="openListOnMakroModal()" title="Create a NEW listing on the Makro catalog for a product you don't yet sell (latch-on). WRITES to the live portal — test on one product first.">🚀 List on Makro</button>
           <label class="btn-secondary" style="width:auto;padding:8px 16px;cursor:pointer;color:#60a5fd;border-color:rgba(96,165,250,0.4)" title="Import products from Wherehouse multi-channel CSV export">
             📦 Import Multi-Channel Products
             <input type="file" id="productsFileInput" accept=".csv,.xls,.xlsx" style="display:none" onchange="importMultiChannelProducts(this)">
@@ -1671,6 +1672,80 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
   </div>
 </div>
 
+<!-- LIST ON MAKRO MODAL (latch-on: create a listing for a catalog product you don't yet sell) -->
+<div class="modal-backdrop" id="listOnMakroModal">
+  <div class="modal" style="width:560px">
+    <h3>🚀 List on Makro</h3>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:14px">Creates a <b>new listing</b> on the Makro catalog for a product you don't yet sell (latch-on flow). The product must already exist on Makro — you only supply your selling info. <span style="color:#ff9500">This WRITES to the live portal.</span> Test on one product first.</p>
+
+    <div style="display:grid;gap:12px">
+      <div>
+        <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:5px">FSN (Makro Product ID)</label>
+        <input id="listFsnInput" type="text" placeholder="e.g. INTHKZAZDGJFVHMW"
+          style="width:100%;background:var(--surface2);border:1px solid #f59e0b;color:#f59e0b;font-family:'Space Mono',monospace;font-size:13px;padding:8px 10px;border-radius:6px;outline:none">
+        <div style="font-size:10px;color:var(--muted);margin-top:4px">⚠ Only products already on the Makro catalog can be listed this way. If you already sell it, the portal blocks it ("ALREADY SELLING").</div>
+      </div>
+      <div>
+        <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:5px">SKU (Seller Product Code — your own)</label>
+        <input id="listSkuInput" type="text" placeholder="e.g. ABC-1234"
+          style="width:100%;background:var(--surface2);border:1px solid #818cf8;color:#818cf8;font-family:'Space Mono',monospace;font-size:13px;padding:8px 10px;border-radius:6px;outline:none">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:5px">Base Price / MRP (R)</label>
+          <input id="listMrpInput" type="number" step="1" min="0" placeholder="e.g. 1199"
+            style="width:100%;background:var(--surface2);border:1px solid #a78bfa;color:#a78bfa;font-family:'Space Mono',monospace;font-size:13px;padding:8px 10px;border-radius:6px;outline:none">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:5px">Your Selling Price (R)</label>
+          <input id="listSellInput" type="number" step="1" min="0" placeholder="e.g. 967"
+            style="width:100%;background:var(--surface2);border:1px solid var(--accent);color:var(--accent);font-family:'Space Mono',monospace;font-size:13px;padding:8px 10px;border-radius:6px;outline:none">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:5px">Listing Status</label>
+          <select id="listStateInput" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;padding:8px;border-radius:6px;outline:none">
+            <option value="ACTIVE" selected>Active</option>
+            <option value="INACTIVE">Inactive</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:5px">Fulfilment</label>
+          <select id="listFulfilmentInput" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;padding:8px;border-radius:6px;outline:none">
+            <option value="NON_FBF" selected>FBM — Seller Fulfilled</option>
+            <option value="FBS">FBS — Makro Fulfilled</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:5px">Package Dimensions (cm) — L × B × H × Weight (kg)</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px">
+          <input id="listDimL" type="number" step="0.1" min="0" placeholder="L"
+            style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:'Space Mono',monospace;font-size:12px;padding:7px 8px;border-radius:6px;outline:none">
+          <input id="listDimB" type="number" step="0.1" min="0" placeholder="B"
+            style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:'Space Mono',monospace;font-size:12px;padding:7px 8px;border-radius:6px;outline:none">
+          <input id="listDimH" type="number" step="0.1" min="0" placeholder="H"
+            style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:'Space Mono',monospace;font-size:12px;padding:7px 8px;border-radius:6px;outline:none">
+          <input id="listDimW" type="number" step="0.1" min="0" placeholder="kg"
+            style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:'Space Mono',monospace;font-size:12px;padding:7px 8px;border-radius:6px;outline:none">
+        </div>
+        <div style="font-size:10px;color:var(--muted);margin-top:4px">Required by the portal. If unknown, check the product page or supplier box.</div>
+      </div>
+
+      <div id="listPayloadPreview" style="font-size:11px;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px;font-family:'Space Mono',monospace;white-space:pre-wrap;max-height:180px;overflow:auto;display:none"></div>
+    </div>
+
+    <div id="listResult" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
+
+    <div class="modal-actions" style="margin-top:14px">
+      <button class="btn-secondary" style="width:auto" onclick="document.getElementById('listOnMakroModal').classList.remove('show')">Cancel</button>
+      <button class="btn-secondary" style="width:auto;color:#ffd60a;border-color:rgba(255,214,10,0.4)" onclick="previewListPayload()" title="Build the exact payload the portal will receive — no call is made">👁 Preview Payload</button>
+      <button class="btn-primary" style="width:auto;min-width:150px;background:#ff9500;border-color:#ff9500" onclick="submitListProduct()" title="Submit this listing to the live portal">🚀 Submit Listing</button>
+    </div>
+  </div>
+</div>
+
 <!-- EDIT PRODUCT MODAL -->
 <div class="modal-backdrop" id="editModal">
   <div class="modal" style="width:500px">
@@ -2045,6 +2120,11 @@ window.addEventListener('message', function(ev) {
     handlePortalListings(d);
     return;
   }
+
+  if (d.type === 'PORTAL_LIST_PRODUCT_RESULT') {
+    handleListProductResult(d);
+    return;
+  }
 });
 
 // ============================================================
@@ -2262,6 +2342,158 @@ function handlePortalListings(d) {
     };
   }).filter(function(l) { return l.fsn; });
   applyListingsData(listings, d.counts);
+}
+
+// ============================================================
+// LIST ON MAKRO (latch-on: create a NEW listing on the catalog)
+// Flow: dashboard → postMessage PORTAL_LIST_PRODUCT → bridge.js →
+//       background.js → portal_api.js (logged-in portal tab) →
+//       create-update-listings (sourceid: ui.latch-on) → back out.
+// WRITE path — only fires after the user confirms the payload.
+// ============================================================
+
+function openListOnMakroModal() {
+  if (!state.extReady) {
+    alert('Extension not connected.\nLoad the dashboard with the Makro BuyBox Pro extension active, then try again.');
+    return;
+  }
+  // Reset form
+  ['listFsnInput','listSkuInput','listMrpInput','listSellInput','listDimL','listDimB','listDimH','listDimW'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  var stateEl = document.getElementById('listStateInput');
+  if (stateEl) stateEl.value = 'ACTIVE';
+  var fulEl = document.getElementById('listFulfilmentInput');
+  if (fulEl) fulEl.value = 'NON_FBF';
+  var prev = document.getElementById('listPayloadPreview');
+  if (prev) { prev.style.display = 'none'; prev.textContent = ''; }
+  var res = document.getElementById('listResult');
+  if (res) { res.textContent = ''; res.style.color = 'var(--muted)'; }
+  document.getElementById('listOnMakroModal').classList.add('show');
+}
+
+function buildListProductReq() {
+  var fsn = (document.getElementById('listFsnInput').value || '').trim().toUpperCase();
+  var sku = (document.getElementById('listSkuInput').value || '').trim();
+  var mrp = parseFloat(document.getElementById('listMrpInput').value) || 0;
+  var sell = parseFloat(document.getElementById('listSellInput').value) || 0;
+  var state = document.getElementById('listStateInput').value;
+  var fulfilment = document.getElementById('listFulfilmentInput').value;
+  var dims = {
+    length:  parseFloat(document.getElementById('listDimL').value) || 0,
+    breadth: parseFloat(document.getElementById('listDimB').value) || 0,
+    height:  parseFloat(document.getElementById('listDimH').value) || 0,
+    weight:  parseFloat(document.getElementById('listDimW').value) || 0
+  };
+  return {
+    fsn: fsn,
+    skuId: sku,
+    mrp: mrp,
+    sellingPrice: sell,
+    listingState: state,
+    serviceProfile: fulfilment,
+    dimensions: dims
+  };
+}
+
+function previewListPayload() {
+  var req = buildListProductReq();
+  var err = validateListReq(req);
+  var res = document.getElementById('listResult');
+  if (err) {
+    if (res) { res.textContent = '❌ ' + err; res.style.color = '#ff4444'; }
+    return;
+  }
+  var prev = document.getElementById('listPayloadPreview');
+  if (prev) {
+    prev.style.display = 'block';
+    prev.textContent = JSON.stringify({ bulkRequests: [{
+      attributeValues: {
+        sku_id: req.skuId,
+        mrp: req.mrp,
+        flipkart_selling_price: req.sellingPrice,
+        listing_status: req.listingState,
+        service_profile: req.serviceProfile,
+        pick_pack_sla: 2
+      },
+      context: { ignore_warnings: false },
+      productId: req.fsn,
+      skuId: req.skuId,
+      packages: [{
+        package_length: req.dimensions.length,
+        package_breadth: req.dimensions.breadth,
+        package_height: req.dimensions.height,
+        package_weight: req.dimensions.weight
+      }]
+    }] }, null, 2);
+  }
+  if (res) { res.textContent = '👁 Payload preview only — nothing sent yet. Review, then click 🚀 Submit Listing.'; res.style.color = '#ffd60a'; }
+}
+
+function validateListReq(req) {
+  if (!req.fsn) return 'FSN is required.';
+  if (!req.skuId) return 'SKU is required.';
+  if (!(req.mrp > 0)) return 'Base Price / MRP must be greater than 0.';
+  if (!(req.sellingPrice > 0)) return 'Selling price must be greater than 0.';
+  if (req.sellingPrice > req.mrp) return 'Selling price is above Base Price (MRP) — check your numbers.';
+  if (!(req.dimensions.length > 0) || !(req.dimensions.breadth > 0) || !(req.dimensions.height > 0)) {
+    return 'Package dimensions L × B × H are required (cm).';
+  }
+  return null;
+}
+
+function submitListProduct() {
+  var req = buildListProductReq();
+  var err = validateListReq(req);
+  var res = document.getElementById('listResult');
+  if (err) {
+    if (res) { res.textContent = '❌ ' + err; res.style.color = '#ff4444'; }
+    return;
+  }
+  if (!state.extReady) {
+    if (res) { res.textContent = '❌ Extension not connected.'; res.style.color = '#ff4444'; }
+    return;
+  }
+  // Final confirmation — this is the WRITE moment.
+  if (!confirm('🚀 Submit this listing to the LIVE Makro portal?\n\nFSN: ' + req.fsn + '\nSKU: ' + req.skuId + '\nMRP: R' + req.mrp + '\nSelling: R' + req.sellingPrice + '\n\nThis creates a real listing. Only proceed if you are sure.')) return;
+  if (res) { res.textContent = '⏳ Submitting to portal...'; res.style.color = '#ffd60a'; }
+  window.postMessage({ type: 'PORTAL_LIST_PRODUCT', req: req }, '*');
+}
+
+function handleListProductResult(d) {
+  var res = document.getElementById('listResult');
+  if (!res) return;
+  if (!d.ok) {
+    var msg = d.error === 'no_portal_tab'
+      ? '❌ No logged-in portal tab found. Open seller.makro.co.za and log in first.'
+      : d.error === 'portal_not_ready'
+        ? '❌ Portal tab not ready — reload the portal page and try again.'
+        : '❌ Submit failed: ' + (d.error || 'unknown error');
+    res.textContent = msg;
+    res.style.color = '#ff4444';
+    showImportBanner(msg, '#ff4444');
+    return;
+  }
+  if (d.dryRun) {
+    res.textContent = '👁 Dry-run payload built (not sent).';
+    res.style.color = '#ffd60a';
+    return;
+  }
+  var r = d.result || {};
+  var status = (r.result && r.result.status) || '';
+  var bulk = (r.result && r.result.bulkResponse) || [];
+  var skuOut = bulk.length ? (bulk[0].skuID || bulk[0].skuId || '') : '';
+  if (status === 'success' || (r.result && r.result.bulkResponse)) {
+    res.textContent = '✅ Listing submitted! Status: ' + status + (skuOut ? ' · SKU: ' + skuOut : '');
+    res.style.color = '#00e5a0';
+    showImportBanner('✅ Listed on Makro: ' + skuOut || 'success', '#00e5a0');
+    // Refresh listings so the new product shows up
+    setTimeout(function() { pullPortalListings(); }, 1500);
+  } else {
+    res.textContent = '⚠️ Portal response: ' + JSON.stringify(r).slice(0, 300);
+    res.style.color = '#ff9500';
+  }
 }
 
 // Shared post-import pipeline: store makro_listings, stamp SKUs/FSNs,

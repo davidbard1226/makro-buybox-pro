@@ -1,10 +1,12 @@
-// portal_api.js v1 — Makro Seller Portal API bridge (read-only pulls)
+// portal_api.js v2 — Makro Seller Portal API bridge (read-only pulls + latch-on listing)
 // Runs on seller.makro.co.za. Captures session auth (FK-CSRF-TOKEN from the
 // app's own requests, X-LOCATION-ID + sellerId from localStorage.__appData)
-// and exposes two read-only pulls to the dashboard via chrome.runtime:
-//   portal_get_orders   → napi/my-orders/state-counts + napi/my-orders/fetch
-//   portal_get_listings → napi/listing/listingsDataForStates + listingsStockCount
-// No mutations — this file never writes to the portal.
+// and exposes pulls + the latch-on listing write to the dashboard via chrome.runtime:
+//   portal_get_orders    → napi/my-orders/state-counts + napi/my-orders/fetch
+//   portal_get_listings  → napi/listing/listingsDataForStates + listingsStockCount
+//   portal_list_product  → napi/listing/create-update-listings (latch-on, WRITE)
+// The write path is inert until the dashboard explicitly sends a listing request
+// with a confirmed payload (dryRun mode returns the payload without calling).
 
 (function() {
   'use strict';
@@ -179,6 +181,72 @@
     return { listings: all, counts: counts, stockMap: stockMap };
   }
 
+  // ── LATCH-ON LISTING (WRITE) ──────────────────────────────────────────────
+  // Lists a product that already exists on the Makro catalog (you have the FSN)
+  // but that you don't yet sell. Mirrors the portal's own "START SELLING" flow:
+  //   POST napi/listing/create-update-listings  with sourceid: "ui.latch-on"
+  // Payload shape verified live (2026-08-15) in docs/seller-portal-api-feasibility.md:
+  //   { bulkRequests: [{ attributeValues: {sku_id, mrp, flipkart_selling_price, ...},
+  //                      context: {ignore_warnings: false},
+  //                      productId: <FSN>, skuId: <SKU>, packages: [...] }] }
+  // dryRun=true returns the exact payload without calling the portal.
+  async function listProduct(req) {
+    const auth = readAppData();
+    const sellerId = auth.sellerId;
+
+    // Required selling info (mirrors the START SELLING form fields).
+    const skuId        = String(req.skuId || '').trim();
+    const mrp          = Number(req.mrp);
+    const sellingPrice = Number(req.sellingPrice);
+    const fsn          = String(req.fsn || '').trim().toUpperCase();
+    const listingState = req.listingState === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE';
+    const serviceProfile = req.serviceProfile === 'FBS' ? 'FBS' : 'NON_FBF';
+    const pickPackSla  = Number(req.pickPackSla) || 2;
+    const dims         = req.dimensions || {};
+
+    if (!fsn) throw new Error('FSN is required');
+    if (!skuId) throw new Error('SKU ID is required');
+    if (!(mrp > 0)) throw new Error('Base price (MRP) must be > 0');
+    if (!(sellingPrice > 0)) throw new Error('Selling price must be > 0');
+
+    const packages = [{
+      package_length: Number(dims.length) || 0,
+      package_breadth: Number(dims.breadth) || 0,
+      package_height: Number(dims.height) || 0,
+      package_weight: Number(dims.weight) || 0
+    }];
+
+    const attributeValues = {
+      sku_id: skuId,
+      mrp: mrp,
+      flipkart_selling_price: sellingPrice,
+      listing_status: listingState,
+      service_profile: serviceProfile,
+      pick_pack_sla: pickPackSla
+    };
+
+    const bulkRequests = [{
+      attributeValues: attributeValues,
+      context: { ignore_warnings: false },
+      productId: fsn,
+      skuId: skuId,
+      packages: packages
+    }];
+
+    const payload = { bulkRequests: bulkRequests };
+
+    if (req.dryRun) {
+      return { dryRun: true, payload: payload, sellerId: sellerId };
+    }
+
+    const j = await napi('/napi/listing/create-update-listings', {
+      method: 'POST',
+      headers: { sourceid: 'ui.latch-on' },
+      body: payload
+    });
+    return { dryRun: false, result: j };
+  }
+
   // ── MESSAGE HANDLER ───────────────────────────────────────────────────────
   chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
     if (msg.action === 'portal_get_orders') {
@@ -210,7 +278,19 @@
       });
       return true; // async
     }
-  });
-
-  console.log('[BBP Portal API] Ready on ' + window.location.hostname);
+  if (msg.action === 'portal_list_product') {
+    ensureAuth().then(function(ok) {
+      if (!ok) {
+        sendResponse({ ok: false, error: 'Could not capture session token — reload the portal page and try again.' });
+        return;
+      }
+      listProduct(msg.req || {}).then(function(res) {
+        sendResponse({ ok: true, dryRun: res.dryRun, payload: res.payload, result: res.result, sellerId: res.sellerId });
+      }).catch(function(e) {
+        sendResponse({ ok: false, error: e.message });
+      });
+    });
+    return true; // async
+  }
+});
 })();
