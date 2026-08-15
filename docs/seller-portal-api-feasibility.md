@@ -18,9 +18,9 @@
 The portal is a Flipkart seller platform. Every `/napi/...` call needs:
 
 1. **Session cookie** — set automatically after login (browser session).
-2. **`FK-CSRF-TOKEN` header** — per-session CSRF token (e.g. `34JhM9cB-Us17lN9frHoxMESRDsmudQjR0c0`). Rotates per session; must be read from the page (it's sent on every app request, so it can be captured by the extension).
-3. **`X-LOCATION-ID` header** — warehouse location id (e.g. `LOC19bc721f48b64671b01861b14799dbf3`). Comes from the "Warehouse Location" selector on the Orders page.
-4. **`x-seller-id` header** — `c81decf9734a482a` (some endpoints).
+2. **`FK-CSRF-TOKEN` header** — per-session CSRF token (e.g. `34JhM9cB-Us17lN9frHoxMESRDsmudQjR0c0`). Rotates per session. **Verified: directly readable from `localStorage.__appData.sellerConfig.csrfToken`** — no network capture or fetch-patching needed.
+3. **`X-LOCATION-ID` header** — warehouse location id (e.g. `LOC19bc721f48b64671b01861b14799dbf3`). Also in `localStorage.__appData['X-LOCATION-ID']`.
+4. **`x-seller-id` header** — `c81decf9734a482a` (some endpoints). In `localStorage.__appData.sellerConfig.sellerId`.
 5. **`X-Requested-With: XMLHttpRequest`** — some endpoints.
 
 **Implication:** These APIs are only callable from inside an authenticated browser session (the extension's content script on `seller.makro.co.za`). They are NOT usable from the dashboard's origin (github.io) directly — CORS + CSRF + session cookies block that. The extension (`portal.js`/`content.js`) is the right integration point, exactly like the existing price-upload automation.
@@ -45,6 +45,14 @@ Base: `https://seller.makro.co.za/napi/...`
   ```
   Response: `{has_more, items: [{id, service_profile, payment_type, dispatch_after_date, dispatch_by_date, dispatch_service_tier, order_items: [{order_item_id, order_id, listing_id, fsn, sku, order_date, status, quantity, pricing: {total_price, list_price, ...}, product_details: {title, vertical, product_image, ...}}], buyer: {shipping_address: {...}}, shipment_history: {created, approved, packed, rtd, picked, delivered}, sub_shipments: [...]}]}`
   - **FSN + SKU + order_id + quantity + price + buyer address + shipment status** all present. Perfect for dashboard order tracking.
+  - **Note:** the top-level `id` is an internal UUID; the real order ID is `order_items[0].order_id` (e.g. `OD438358462535473100`; older orders use `MAK...`).
+  - **Per-status `params` (verified against the portal's own fetch builders in `orders.814ec4c734db2cd7e876.js`):**
+    | status | params |
+    |---|---|
+    | `shipments_to_pack` / `shipments_processing_orders` | `{dispatch_after_date: {to: <now>}}` |
+    | `shipments_in_transit` | `{status: {picked_up: "true", dispatched: "true", shipped: "true"}}` — **without this it returns 0 items** |
+    | `shipments_delivered` | no default date |
+    | `shipments_upcoming` | `{on_hold: true, upcoming: true, dispatch_after_date: {from: <now>}}` — uses `from`, NOT `to` (a `to` date 400s) |
 - **`GET /napi/my-orders/state-counts?state=seller_easyship&serviceProfile=seller-fulfilled&sellerId=<id>`** — counts per state (Order Processing, Pending Labels, Dispatched, In Transit, Completed, Upcoming).
 - **`POST /napi/my-orders/search`** — search orders.
 - **`GET /napi/my-orders/getSortedShipments`** — sorted shipments.
@@ -72,7 +80,8 @@ Base: `https://seller.makro.co.za/napi/...`
   ```
   Response: `{count: 480, listing_data_response: [{sku_id, listing_id, vertical, product_id, service_profile, ssp (selling price), mrp, brand, title, imageUrl, url, packages, hsn, ...}]}`
   - **This is the same data as the S_listing export** — the dashboard could pull it directly instead of requiring the XLS upload.
-- **`POST /napi/listing/listingsStockCount`** — stock counts for a batch of listing_ids.
+  - **Only `ACTIVE` is pulled** (seller works with active products only). `INACTIVE` works (1955) but is unused; `BLOCKED` 400s on this endpoint (`"Please specify a valid payload"` — not a valid `internal_state` value).
+- **`POST /napi/listing/listingsStockCount`** — stock counts for a batch of listing_ids. **Body is a JSON ARRAY** of `{listing_id, service_profile}` (e.g. `[{listing_id: "LST...", service_profile: "NON_FBF"}]`); response is `{listing_id: {NON_FBF: [{quantity, reserved, locationId}]}}`. No stock field exists on the listing items themselves.
 - **`GET /napi/listing/listingsStateViewTemplate?search_filter=&context=ACTIVE`** — column template.
 - **`POST /napi/listing/listingsFilterValues`** — filter options (vertical, brand, ssp, service_profile).
 - **`GET /napi/listing/stockFileDownloadNUploadHistory`** — upload/download history.
@@ -135,14 +144,14 @@ Full "list to catalog" flow: dashboard picks vertical → brand → FSN (search 
 
 ## Constraints / risks
 - **Session-bound:** all calls need a live logged-in session in the extension's browser context. If the session expires, the extension must detect it and prompt re-login.
-- **CSRF token rotation:** token must be captured fresh per session (it's in every app request, so the extension can read it from the page's network or from a known DOM location).
+- **CSRF token rotation:** token must be captured fresh per session — read `localStorage.__appData.sellerConfig.csrfToken` (verified present on every logged-in session).
 - **No public API:** there is no documented public API; this is reverse-engineered from the web app. Endpoints may change without notice.
 - **Rate limits:** unknown; keep pagination modest (page_size 10–30) and add delays.
 - **Read-only first:** Option A/B are read-only and safe. Options C/D mutate the live portal — only build after user confirms.
 
 ## Verified live data (2026-08-15)
-- 480 Active Listings, 16 Blocked, 1955 Inactive, 0 Ready for Activation.
-- Orders: 2 Order Processing, 7 Dispatched, 88 Completed (last 90 days), 1 Upcoming.
+- 480 Active Listings (only ACTIVE is pulled; INACTIVE 1955 / BLOCKED 16 exist but are unused).
+- Orders (state-counts): 1 Upcoming, 0 Processing, 2 Pending Labels, 7 In Transit, 84 Completed.
 - Example order: Brother MFC-L3760CDW (FSN `PRNH5UGWZEJAZDCA`, SKU `MFC-L3760CDW-C1`, qty 1, R7,493, buyer in Ladybrand, Free State).
 - Example listing: Canon G41 ink (SKU `GI-41 (BK/C/M/Y/)`, listing `LSTINTH4CZ4JYMVGQPEERDB22`, SSP R967, MRP R1,199).
 - Latch-on flow confirmed: FSN `INTH9MBJ2YZFQJYY` (Inksaver HP 951XL Yellow) → START SELLING form; FSN `PRNH5UGWZEJAZDCA` → ALREADY SELLING block.
