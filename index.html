@@ -7292,7 +7292,7 @@ function renderPortalOrders() {
     var label = portalOrderLabel(o);
     if (statusFilter !== 'all' && label !== statusFilter) return false;
     if (search) {
-      var hay = (o.id + ' ' + label + ' ' + (o.payment_type || '') + ' ' +
+      var hay = (portalOrderId(o) + ' ' + o.id + ' ' + label + ' ' + (o.payment_type || '') + ' ' +
         (o.order_items || []).map(function(oi) {
           return ((oi.product_details && oi.product_details.title) || '') + ' ' + (oi.fsn || '') + ' ' + (oi.sku || '');
         }).join(' ')).toLowerCase();
@@ -7322,7 +7322,7 @@ function renderPortalOrders() {
 
     return '<tr>' +
       '<td style="text-align:center"><span id="pot-' + i + '" style="cursor:pointer;color:var(--accent);font-size:13px" onclick="togglePortalOrderDetail(' + i + ')">▸</span></td>' +
-      '<td style="font-family:monospace;font-size:12px;font-weight:600">' + escHtml(o.id) + '</td>' +
+      '<td style="font-family:monospace;font-size:12px;font-weight:600">' + escHtml(portalOrderId(o)) + '</td>' +
       '<td style="font-size:11px;color:var(--muted);white-space:nowrap">' + escHtml(date) + '</td>' +
       '<td><span class="status-pill ' + pill + '">' + escHtml(label) + '</span></td>' +
       '<td style="font-size:12px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml((first.product_details && first.product_details.title) || '') + '">' + escHtml(((first.product_details && first.product_details.title) || '').slice(0, 40)) + '</td>' +
@@ -7338,6 +7338,13 @@ function renderPortalOrders() {
         '<td colspan="12" style="padding:14px 20px">' + portalOrderDetailHtml(o) + '</td>' +
       '</tr>';
   }).join('');
+}
+
+function portalOrderId(o) {
+  // The portal's top-level `id` is an internal UUID; the real order ID is
+  // order_items[0].order_id (e.g. OD438358462535473100).
+  var first = (o.order_items || [])[0] || {};
+  return first.order_id || o.id || '';
 }
 
 function portalOrderLabel(o) {
