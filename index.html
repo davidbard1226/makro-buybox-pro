@@ -7392,7 +7392,7 @@ function portalOrderDetailHtml(o) {
       '<span style="font-size:11px;font-family:monospace">' + escHtml(String(ts).slice(0, 19).replace('T', ' ')) + '</span></div>';
   }).join('');
 
-  var addrHtml = [addr.name, addr.line1, addr.line2, addr.city, addr.state, addr.pincode, addr.phone]
+  var addrHtml = [addr.address_name || addr.name, addr.line1, addr.line2, addr.city, addr.state, addr.pincode, addr.phone]
     .filter(Boolean).map(function(x) { return escHtml(x); }).join(', ');
 
   return '<div style="display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:20px">' +
