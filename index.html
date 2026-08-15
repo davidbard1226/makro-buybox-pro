@@ -2200,7 +2200,7 @@ function handlePortalListings(d) {
 // Shared post-import pipeline: store makro_listings, stamp SKUs/FSNs,
 // auto-match costs, re-render. Used by the live portal pull (and mirrors
 // the S_listing XLS import behaviour).
-function applyListingsData(listings, counts) {
+async function applyListingsData(listings, counts) {
   safeSet('makro_listings', JSON.stringify(listings));
 
   // ── Repair truncated product FSNs ──
@@ -2257,17 +2257,44 @@ function applyListingsData(listings, counts) {
   if (fsnCount > 0) saveProducts();
 
   // ── Auto-match cost prices from supplier sheets (by SKU) ──
-  autoMatchCostsAfterImport();
+  var costMatched = await autoMatchCostsAfterImport();
+
+  // ── Match summary: how many listings matched a tracked product ──
+  var prodFsnSet = {}, prodSkuSet = {};
+  state.products.forEach(function(p) {
+    if (p.fsn) prodFsnSet[String(p.fsn).toUpperCase()] = true;
+    if (p.sku) prodSkuSet[String(p.sku).toLowerCase()] = true;
+  });
+  var matchedCount = 0, withCost = 0;
+  listings.forEach(function(l) {
+    var byFsn = l.fsn && prodFsnSet[String(l.fsn).toUpperCase()];
+    var bySku = l.sku && prodSkuSet[String(l.sku).toLowerCase()];
+    if (byFsn || bySku) {
+      matchedCount++;
+      var p = state.products.find(function(x) {
+        return (x.fsn && l.fsn && String(x.fsn).toUpperCase() === String(l.fsn).toUpperCase()) ||
+               (x.sku && l.sku && String(x.sku).toLowerCase() === String(l.sku).toLowerCase());
+      });
+      if (p && p.cost_supplier) withCost++;
+    }
+  });
+  var missingCost = matchedCount - withCost;
 
   renderProducts();
   renderDashboard();
   updateProductCount();
   if (document.getElementById('pricerListingsStatus')) initPricer();
 
-  var msg = '✅ Pulled ' + listings.length + ' live listings from portal' +
+  var msg = '✅ Pulled ' + listings.length + ' live listings' +
     (counts && counts.ACTIVE ? ' (' + counts.ACTIVE + ' active)' : '') +
-    (skuCount > 0 ? ', matched ' + skuCount + ' SKU(s)' : '') +
-    (basePriceFixed > 0 ? ', auto-raised ' + basePriceFixed + ' Base Price(s) to Max Price' : '') + '.';
+    ' — ' + matchedCount + ' matched to products' +
+    (withCost > 0 ? ', ' + withCost + ' with cost' : '') +
+    (missingCost > 0 ? ', ' + missingCost + ' missing cost' : '') +
+    (skuCount > 0 ? ' · ' + skuCount + ' SKU(s) stamped' : '') +
+    (fsnRepaired > 0 ? ' · ' + fsnRepaired + ' FSN(s) repaired' : '') +
+    (costMatched > 0 ? ' · cost matched for ' + costMatched : '') +
+    (basePriceFixed > 0 ? ' · ' + basePriceFixed + ' base price(s) raised' : '') +
+    '.';
   showImportBanner(msg, '#00e5a0');
 }
 
@@ -3645,8 +3672,10 @@ async function autoMatchCostsAfterImport() {
       banner.style.display = 'block';
       setTimeout(function(){ banner.style.display = 'none'; }, 4000);
     }
+    return updated;
   } catch(e) {
     console.warn('Auto cost match failed (sheets may be unreachable):', e);
+    return 0;
   }
 }
 
