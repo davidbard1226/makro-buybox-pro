@@ -2080,12 +2080,23 @@ function applyListingsData(listings, counts) {
   localStorage.setItem('makro_listings', JSON.stringify(listings));
 
   // ── Stamp real SKU onto matched products via FSN ──
+  // Length-agnostic: exact FSN match first, then 15-char prefix match in
+  // either direction (portal truncates product_id to 15 chars, but listings
+  // may carry the full 22-char FSN and products may hold either form).
   const fsnToSku = {};
-  listings.forEach(function(l) { if (l.fsn && l.sku) fsnToSku[l.fsn] = l.sku; });
+  const prefixToSku = {};
+  listings.forEach(function(l) {
+    if (!l.fsn || !l.sku) return;
+    fsnToSku[l.fsn] = l.sku;
+    const short = l.fsn.slice(0, 15);
+    if (!prefixToSku[short]) prefixToSku[short] = l.sku;
+  });
   let skuCount = 0;
   state.products.forEach(function(p) {
     if (p.sku && p.sku.startsWith('itm')) p.sku = '';
-    if (p.fsn && fsnToSku[p.fsn]) { p.sku = fsnToSku[p.fsn]; skuCount++; }
+    if (!p.fsn) return;
+    const sku = fsnToSku[p.fsn] || prefixToSku[p.fsn.slice(0, 15)];
+    if (sku) { p.sku = sku; skuCount++; }
   });
   if (skuCount > 0) saveProducts();
 
