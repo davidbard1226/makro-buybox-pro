@@ -12,6 +12,10 @@
   if (!window.location.hostname.includes('seller.makro.co.za') &&
       !window.location.hostname.includes('makromarketplace')) return;
 
+  // Guard against double injection (content script + on-demand executeScript).
+  if (window.__bbpPortalApiLoaded) return;
+  window.__bbpPortalApiLoaded = true;
+
   const SELLER_HOST = 'https://seller.makro.co.za';
 
   // ── AUTH CAPTURE ──────────────────────────────────────────────────────────

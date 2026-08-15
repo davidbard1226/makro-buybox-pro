@@ -243,13 +243,34 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
       }
       chrome.tabs.sendMessage(portalTab.id, { action: msg.action }, function(resp) {
         if (chrome.runtime.lastError) {
-          sendResponse({ ok: false, error: 'portal_not_ready' });
+          // Content script not injected (e.g. portal tab was opened before the
+          // extension was reloaded). Inject portal_api.js on demand, retry once.
+          injectPortalApi(portalTab.id, function(ok) {
+            if (!ok) { sendResponse({ ok: false, error: 'portal_not_ready' }); return; }
+            chrome.tabs.sendMessage(portalTab.id, { action: msg.action }, function(resp2) {
+              if (chrome.runtime.lastError) { sendResponse({ ok: false, error: 'portal_not_ready' }); return; }
+              sendResponse(resp2);
+            });
+          });
           return;
         }
         sendResponse(resp);
       });
     });
     return true; // async
+  }
+
+  // Inject portal_api.js into the portal tab if it's missing (tab opened
+  // before the extension reload). portal_api.js guards against double-load.
+  function injectPortalApi(tabId, cb) {
+    if (!chrome.scripting || !chrome.scripting.executeScript) { cb(false); return; }
+    chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      files: ['portal_api.js']
+    }, function() {
+      if (chrome.runtime.lastError) { cb(false); return; }
+      cb(true);
+    });
   }
 });
 
