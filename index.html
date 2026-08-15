@@ -687,7 +687,7 @@
     <button class="tab-btn" onclick="switchTab('analytics')">📈 Analytics</button>
     <button class="tab-btn" onclick="switchTab('log')">📋 Price Log</button>
     <button class="tab-btn" onclick="switchTab('intelligence')">🕵️ Intelligence</button>
-    <button class="tab-btn" onclick="switchTab('orders')" style="background:rgba(0,229,160,.1);color:var(--accent)">📑 Orders</button>
+    <button class="tab-btn" onclick="switchTab('orders')" style="background:rgba(0,229,160,.1);color:var(--accent)">📑 Orders <span class="tab-badge" id="newOrdersNavBadge" style="display:none;background:var(--accent);color:#0b0f19">0</span></button>
     <button class="tab-btn" onclick="switchTab('recon')">🔗 Reconciliation</button>
   </nav>
 
@@ -758,6 +758,26 @@
             <div class="stat-label" style="color:#ff4d6d">🔴 Losing BuyBox</div>
             <div class="stat-value" id="w-losing" style="font-size:28px;color:#ff4d6d">0</div>
             <div class="stat-sub">click to filter losses</div>
+          </div>
+        </div>
+
+        <!-- NEW INCOMING ORDERS ALERT -->
+        <div id="newOrdersCard" class="card" style="display:none;border-color:rgba(0,229,160,.45);margin-bottom:16px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+            <div class="card-title" style="margin:0;color:var(--accent)">🆕 New Incoming Orders</div>
+            <span class="status-pill win" id="newOrdersCount" style="font-size:11px">0</span>
+            <span style="font-size:11px;color:var(--muted)">orders that arrived since your last pull</span>
+            <button class="btn-secondary" onclick="clearNewPortalOrders()" style="width:auto;padding:6px 14px;margin-left:auto;font-size:12px">✓ Mark as seen</button>
+          </div>
+          <div style="overflow-x:auto">
+            <table class="product-table">
+              <thead>
+                <tr>
+                  <th>Order ID</th><th>Date</th><th>Status</th><th>Product</th><th>Qty</th><th>Total</th><th>Waybill</th>
+                </tr>
+              </thead>
+              <tbody id="newOrdersBody"></tbody>
+            </table>
           </div>
         </div>
 
@@ -1315,6 +1335,7 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
          <div class="card-title" style="margin:0">📑 LIVE ORDERS</div>
          <span style="font-size:12px;color:var(--muted)">Orders pulled live from the Makro Seller Portal</span>
          <button class="btn-primary" id="pullOrdersBtn2" onclick="pullPortalOrders()" style="width:auto;padding:10px 24px;margin-left:auto">🔄 Pull Orders from Portal</button>
+         <button class="btn-secondary" onclick="exportPortalOrders()" style="width:auto;padding:10px 18px" title="Export all portal orders to CSV (includes waybill numbers)">⬇ Export</button>
        </div>
 
        <!-- Portal state stats -->
@@ -1359,10 +1380,11 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
                  <th>Total</th>
                  <th>Payment</th>
                  <th>Dispatch By</th>
+                 <th>Waybill</th>
                </tr>
              </thead>
              <tbody id="portalOrdersBody">
-               <tr><td colspan="12">
+               <tr><td colspan="13">
                  <div class="empty-state">
                    <div class="empty-icon">📑</div>
                    <div class="empty-title">No Orders Pulled Yet</div>
@@ -1950,18 +1972,38 @@ function handlePortalOrders(d) {
   var raw = getPortalOrders();
   var seen = {};
   raw.forEach(function(o) { seen[o.id] = true; });
+  var newIncoming = [];
   items.forEach(function(o) {
     if (o.id && seen[o.id]) {
-      // refresh existing entry (statuses change over time)
+      // refresh existing entry (statuses change over time) but keep the
+      // waybill/tracking if the fresh pull lacks it
       var idx = raw.findIndex(function(x) { return x.id === o.id; });
-      raw[idx] = o;
+      raw[idx] = mergePortalOrderEntry(raw[idx], o);
     } else if (o.id) {
       raw.push(o);
       seen[o.id] = true;
+      // Only alert on orders that need attention — completed/delivered orders
+      // are history, not "incoming".
+      var lbl = portalOrderLabel(o);
+      if (lbl.toLowerCase().indexOf('deliver') === -1 && lbl.toLowerCase().indexOf('completed') === -1) {
+        newIncoming.push(o);
+      }
     }
   });
   savePortalOrders(raw);
   if (d.counts) localStorage.setItem('makro_portal_counts', JSON.stringify(d.counts));
+
+  // Track NEW incoming orders (never seen before) so the dashboard can alert.
+  if (newIncoming.length) {
+    var prevNew = getNewPortalOrders();
+    var prevIds = {};
+    prevNew.forEach(function(o) { prevIds[portalOrderId(o)] = true; });
+    newIncoming.forEach(function(o) {
+      var oid = portalOrderId(o);
+      if (oid && !prevIds[oid]) { prevNew.unshift(o); prevIds[oid] = true; }
+    });
+    saveNewPortalOrders(prevNew.slice(0, 25));
+  }
 
   var added = mergePortalOrders(items);
   if (statusEl) {
@@ -1971,6 +2013,7 @@ function handlePortalOrders(d) {
   showImportBanner('✅ Pulled ' + items.length + ' order item(s) from portal (' + added + ' new).', '#00e5a0');
   renderPortalOrders();
   renderOrders();
+  renderNewOrders();
 }
 
 function getPortalOrders() {
@@ -1980,17 +2023,48 @@ function savePortalOrders(o) {
   try { localStorage.setItem('makro_portal_orders', JSON.stringify(o)); } catch(e) {}
 }
 
+function mergePortalOrderEntry(oldEntry, fresh) {
+  // Keep the previously stored waybill/tracking if the fresh pull doesn't
+  // include one (waybill must persist across pulls).
+  var merged = Object.assign({}, oldEntry, fresh);
+  var freshT = fresh.tracking || {};
+  var oldT = oldEntry.tracking || {};
+  if (!(freshT.tracking_id || freshT.pickup_tracking_id) && (oldT.tracking_id || oldT.pickup_tracking_id)) {
+    merged.tracking = oldT;
+  }
+  return merged;
+}
+
+function getNewPortalOrders() {
+  try { return JSON.parse(localStorage.getItem('makro_portal_new_orders') || '[]'); } catch(e) { return []; }
+}
+function saveNewPortalOrders(o) {
+  try { localStorage.setItem('makro_portal_new_orders', JSON.stringify(o)); } catch(e) {}
+}
+
 function mergePortalOrders(items) {
   var orders = getOrders();
   var existingIds = {};
   orders.forEach(function(o) { existingIds[o.orderId] = true; });
   var added = 0;
+  var updated = 0;
   items.forEach(function(it) {
     var oi = (it.order_items || [])[0];
     if (!oi) return;
     var orderId = oi.order_id;
-    if (!orderId || existingIds[orderId]) return;
+    if (!orderId) return;
     var sh = it.shipment_history || {};
+    if (existingIds[orderId]) {
+      // Backfill waybill/courier on already-tracked orders (append-only list,
+      // so this is the only chance to fill them in).
+      var ex = orders.find(function(o) { return o.orderId === orderId; });
+      if (ex && !ex.waybill && portalWaybill(it)) {
+        ex.waybill = portalWaybill(it);
+        ex.courier = portalCourier(it);
+        updated++;
+      }
+      return;
+    }
     orders.push({
       orderId: orderId,
       date: (oi.order_date || '').slice(0, 10),
@@ -2002,13 +2076,15 @@ function mergePortalOrders(items) {
       payout: 0,
       status: deriveOrderStatus(oi, sh, it.__bbpStatusLabel),
       channel: 'makro',
+      waybill: portalWaybill(it),
+      courier: portalCourier(it),
       invoiceRef: '',
       invoiceAmt: 0
     });
     existingIds[orderId] = true;
     added++;
   });
-  if (added > 0) saveOrders(orders);
+  if (added > 0 || updated > 0) saveOrders(orders);
   return added;
 }
 
@@ -4916,6 +4992,7 @@ document.addEventListener('scroll', function() {
 // ============================================================
 (function init() {
   loadProducts();
+  renderNewOrders();
 
   // Auto-fetch scraper data from local server
   autoFetchScraperData();
@@ -7073,12 +7150,27 @@ function clearInvoices() {
 function exportOrders() {
   const orders = getOrders();
   if (!orders.length) { alert('No orders to export.'); return; }
-  var csv = 'Order ID,Date,Channel,Product,SKU,Qty,Total,Commission,Payout,Status,Invoice Ref,Invoice Amt,Reconciled\n';
+  var csv = 'Order ID,Date,Channel,Product,SKU,Qty,Total,Commission,Payout,Status,Waybill,Courier,Invoice Ref,Invoice Amt,Reconciled\n';
   var recon = getReconciled();
   orders.forEach(function(o) {
-    csv += '"' + escHtml(o.orderId) + '","' + escHtml(o.date) + '","' + escHtml(o.channel||'makro') + '","' + escHtml(o.product||'').replace(/"/g,'""').substring(0,100) + '","' + escHtml(o.sku||'') + '",' + o.qty + ',' + o.total.toFixed(2) + ',' + o.commission.toFixed(2) + ',' + o.payout.toFixed(2) + ',"' + escHtml(o.status) + '","' + (o.invoiceRef||'') + '",' + (o.invoiceAmt||0).toFixed(2) + ',' + (recon[o.orderId] ? 'Yes' : 'No') + '\n';
+    csv += '"' + escHtml(o.orderId) + '","' + escHtml(o.date) + '","' + escHtml(o.channel||'makro') + '","' + escHtml(o.product||'').replace(/"/g,'""').substring(0,100) + '","' + escHtml(o.sku||'') + '",' + o.qty + ',' + o.total.toFixed(2) + ',' + o.commission.toFixed(2) + ',' + o.payout.toFixed(2) + ',"' + escHtml(o.status) + '","' + escHtml(o.waybill||'') + '","' + escHtml(o.courier||'') + '","' + (o.invoiceRef||'') + '",' + (o.invoiceAmt||0).toFixed(2) + ',' + (recon[o.orderId] ? 'Yes' : 'No') + '\n';
   });
   downloadFile(csv, 'orders-export-' + new Date().toISOString().slice(0,10) + '.csv');
+}
+
+function exportPortalOrders() {
+  var orders = getPortalOrders();
+  if (!orders.length) { alert('No portal orders to export.'); return; }
+  var csv = 'Order ID,Date,Status,Product,FSN,SKU,Qty,Unit Price,Total,Payment,Waybill,Courier,Dispatch By\n';
+  orders.forEach(function(o) {
+    var items = o.order_items || [];
+    var first = items[0] || {};
+    var qty = items.reduce(function(s, oi) { return s + (oi.quantity || 0); }, 0);
+    var total = items.reduce(function(s, oi) { return s + ((oi.pricing && oi.pricing.total_price) || 0); }, 0);
+    var unit = (first.pricing && first.pricing.list_price) || 0;
+    csv += '"' + escHtml(portalOrderId(o)) + '","' + escHtml((first.order_date || '').slice(0,10)) + '","' + escHtml(portalOrderLabel(o)) + '","' + escHtml((first.product_details && first.product_details.title) || '').replace(/"/g,'""').substring(0,100) + '","' + escHtml(first.fsn || '') + '","' + escHtml(first.sku || '') + '",' + qty + ',' + unit.toFixed(2) + ',' + total.toFixed(2) + ',"' + escHtml(o.payment_type || '') + '","' + escHtml(portalWaybill(o)) + '","' + escHtml(portalCourier(o)) + '","' + escHtml((o.dispatch_by_date || '').slice(0,10)) + '"\n';
+  });
+  downloadFile(csv, 'portal-orders-export-' + new Date().toISOString().slice(0,10) + '.csv');
 }
 
 function exportInvoices() {
@@ -7316,7 +7408,7 @@ function renderPortalOrders() {
 
   var tbody = document.getElementById('portalOrdersBody');
   if (!portalOrdersFiltered.length) {
-    tbody.innerHTML = '<tr><td colspan="12"><div class="empty-state"><div class="empty-icon">📑</div><div class="empty-title">No Orders</div><div class="empty-text">Pull orders from the portal to see them here.</div></div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="13"><div class="empty-state"><div class="empty-icon">📑</div><div class="empty-title">No Orders</div><div class="empty-text">Pull orders from the portal to see them here.</div></div></td></tr>';
     return;
   }
 
@@ -7330,6 +7422,8 @@ function renderPortalOrders() {
     var pill = label.toLowerCase().includes('deliver') ? 'win' : label.toLowerCase().includes('cancel') ? 'lose' : 'unknown';
     var date = (first.order_date || '').slice(0, 10);
     var dispatchBy = (o.dispatch_by_date || '').slice(0, 10);
+    var waybill = portalWaybill(o);
+    var courier = portalCourier(o);
 
     return '<tr>' +
       '<td style="text-align:center"><span id="pot-' + i + '" style="cursor:pointer;color:var(--accent);font-size:13px" onclick="togglePortalOrderDetail(' + i + ')">▸</span></td>' +
@@ -7344,9 +7438,10 @@ function renderPortalOrders() {
       '<td style="font-family:monospace;font-size:13px;font-weight:700;color:var(--accent)">R ' + total.toFixed(2) + '</td>' +
       '<td style="font-size:11px">' + escHtml(o.payment_type || '—') + '</td>' +
       '<td style="font-size:11px;color:var(--muted);white-space:nowrap">' + escHtml(dispatchBy || '—') + '</td>' +
+      '<td style="font-family:monospace;font-size:11px;white-space:nowrap" title="' + escHtml(courier) + '">' + (waybill ? escHtml(waybill) + (courier ? ' <span style="color:var(--muted);font-size:10px">(' + escHtml(courier) + ')</span>' : '') : '—') + '</td>' +
       '</tr>' +
       '<tr id="pod-' + i + '" style="display:none;background:rgba(0,229,160,.03)">' +
-        '<td colspan="12" style="padding:14px 20px">' + portalOrderDetailHtml(o) + '</td>' +
+        '<td colspan="13" style="padding:14px 20px">' + portalOrderDetailHtml(o) + '</td>' +
       '</tr>';
   }).join('');
 }
@@ -7356,6 +7451,17 @@ function portalOrderId(o) {
   // order_items[0].order_id (e.g. OD438358462535473100).
   var first = (o.order_items || [])[0] || {};
   return first.order_id || o.id || '';
+}
+
+function portalWaybill(o) {
+  // Waybill / tracking number lives in order.tracking.tracking_id (e.g. MMDF-6230544)
+  var t = o.tracking || {};
+  return t.tracking_id || t.pickup_tracking_id || '';
+}
+
+function portalCourier(o) {
+  var t = o.tracking || {};
+  return t.delivery_vendor_display_name || t.pickup_vendor_display_name || '';
 }
 
 function portalOrderLabel(o) {
@@ -7415,6 +7521,8 @@ function portalOrderDetailHtml(o) {
     '</div>' +
     '<div>' +
       '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">SHIPMENT HISTORY</div>' + (timeline || '<span style="font-size:11px;color:var(--muted)">No history recorded</span>') +
+      (portalWaybill(o) ? '<div style="font-size:11px;color:var(--muted);margin-top:10px">WAYBILL</div>' +
+        '<div style="font-size:12px;font-family:monospace;margin-top:4px">' + escHtml(portalWaybill(o)) + (portalCourier(o) ? ' <span style="color:var(--muted);font-size:10px">(' + escHtml(portalCourier(o)) + ')</span>' : '') + '</div>' : '') +
       '<div style="font-size:11px;color:var(--muted);margin-top:10px">DISPATCH</div>' +
       '<div style="font-size:11px;margin-top:4px">After: ' + escHtml((o.dispatch_after_date || '—').slice(0, 10)) + '<br>By: ' + escHtml((o.dispatch_by_date || '—').slice(0, 10)) + '<br>Tier: ' + escHtml(o.dispatch_service_tier || '—') + '</div>' +
     '</div>' +
@@ -7434,6 +7542,52 @@ function togglePortalOrderDetail(idx) {
   var open = row.style.display !== 'none';
   row.style.display = open ? 'none' : '';
   if (btn) btn.textContent = open ? '▸' : '▾';
+}
+
+function renderNewOrders() {
+  var list = getNewPortalOrders();
+  var card = document.getElementById('newOrdersCard');
+  var badge = document.getElementById('newOrdersCount');
+  var body = document.getElementById('newOrdersBody');
+  if (!card || !body) return;
+  if (!list.length) {
+    card.style.display = 'none';
+    if (badge) badge.textContent = '0';
+    return;
+  }
+  card.style.display = '';
+  if (badge) badge.textContent = list.length + ' new';
+  body.innerHTML = list.map(function(o) {
+    var items = o.order_items || [];
+    var first = items[0] || {};
+    var qty = items.reduce(function(s, oi) { return s + (oi.quantity || 0); }, 0);
+    var total = items.reduce(function(s, oi) { return s + ((oi.pricing && oi.pricing.total_price) || 0); }, 0);
+    var label = portalOrderLabel(o);
+    var pill = label.toLowerCase().includes('deliver') ? 'win' : label.toLowerCase().includes('cancel') ? 'lose' : 'unknown';
+    var waybill = portalWaybill(o);
+    return '<tr>' +
+      '<td style="font-family:monospace;font-size:12px;font-weight:600">' + escHtml(portalOrderId(o)) + '</td>' +
+      '<td style="font-size:11px;color:var(--muted);white-space:nowrap">' + escHtml((first.order_date || '').slice(0, 10)) + '</td>' +
+      '<td><span class="status-pill ' + pill + '">' + escHtml(label) + '</span></td>' +
+      '<td style="font-size:12px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml((first.product_details && first.product_details.title) || '') + '">' + escHtml(((first.product_details && first.product_details.title) || '').slice(0, 45)) + '</td>' +
+      '<td style="text-align:center">' + qty + '</td>' +
+      '<td style="font-family:monospace;font-size:12px;font-weight:700;color:var(--accent)">R ' + total.toFixed(2) + '</td>' +
+      '<td style="font-family:monospace;font-size:11px">' + (waybill ? escHtml(waybill) : '—') + '</td>' +
+      '</tr>';
+  }).join('');
+  // nav badge
+  var navBadge = document.getElementById('newOrdersNavBadge');
+  if (navBadge) {
+    navBadge.textContent = list.length;
+    navBadge.style.display = list.length ? 'inline-block' : 'none';
+  }
+}
+
+function clearNewPortalOrders() {
+  saveNewPortalOrders([]);
+  renderNewOrders();
+  var badge = document.getElementById('newOrdersNavBadge');
+  if (badge) badge.style.display = 'none';
 }
 
 // ====================================================================
