@@ -2191,6 +2191,7 @@ function handlePortalListings(d) {
       title: l.title || '',
       myPrice: l.ssp || 0,
       basePrice: l.mrp || 0,
+      listingId: l.listing_id || '',
       myStock: (d.stockMap && d.stockMap[l.listing_id]) || 0,
       status: l.__bbpState || ''
     };
@@ -5280,25 +5281,45 @@ function getListings() {
 
 // Rebuild an S_listing-format workbook from the parsed listings when the raw
 // template file isn't available (e.g. listings were pulled live from the portal
-// instead of imported from an XLS). Columns match the S_listing export layout:
-// 0=Title, 1=SKU, 4=FSN, 6=Status, 8=Base Price, 9=Your Selling Price, 12=Stock.
+// instead of imported from an XLS). Uses the FULL 34-column S_listing export
+// layout — the portal's PRICING_STOCK feed matches rows by FSN (col 4) and
+// Listing ID (col 5), so a minimal file gets silently ignored on upload.
 // Row 0 = headers, row 1 = blank (template convention), row 2+ = data — so the
 // existing push/bulk loops (which start at row 2) work unchanged.
 function buildTemplateFromListings() {
   if (!window.XLSX) return null;
   var listings = getListings();
   if (!listings || !listings.length) return null;
-  var header = ['Title', 'SKU', '', '', 'FSN', '', 'Status', '', 'Base Price', 'Your Selling Price', '', '', 'Stock'];
+  var header = [
+    'Product Title', 'Seller SKU Id', 'Processing errors (if any)', 'Sub-category', 'FSN', 'Listing ID',
+    'Listing Status', 'Inactive Reason', 'Base Price', 'Your Selling Price', 'Benchmark Price (Ignore)',
+    'Fulfillment By', 'System Stock count (Ignore)', 'Your Stock Count (Ignore)', 'Pick Pack SLA',
+    'Procurement Type (Ignore)', 'Package Length - Length of the package in cms',
+    'Package Breadth - Breadth of the package in cms', 'Package Height - Height of the package in cms',
+    'Package Weight - Weight of the package in Kgs',
+    'Local Delivery Charge to Customer (per qty) (Ignore)', 'Zonal Delivery Charge to Customer (per qty) (Ignore)',
+    'National Delivery Charge to Customer (per qty) (Ignore)', 'Harmonized System Nomenclature - HSN (Ignore)',
+    'Tax Code (Ignore)', 'Luxury Cess Tax Rate (Ignore)', 'Country of Origin ISO code',
+    'Manufacturer Details', 'Importer Details', 'Packer Details', 'Date of Manufacture in dd/MM/yyyy',
+    'Shelf Life in Months', 'Ignore warnings', 'Listing Archival (Ignore)'
+  ];
   var rows = [header, []];
   listings.forEach(function(l) {
-    var row = new Array(13).fill('');
+    var row = new Array(34).fill('');
     row[0]  = l.title || '';
     row[1]  = l.sku || '';
     row[4]  = l.fsn || '';
+    row[5]  = l.listingId || '';
     row[6]  = l.status || '';
     row[8]  = l.basePrice || 0;
     row[9]  = l.myPrice || 0;
+    row[11] = 'Seller';
     row[12] = l.myStock || 0;
+    row[13] = l.myStock || 0;
+    row[14] = 1;
+    row[15] = 'instock';
+    row[32] = 'NO';
+    row[33] = 'NONE';
     rows.push(row);
   });
   try {
