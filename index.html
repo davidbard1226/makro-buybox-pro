@@ -7704,7 +7704,8 @@ function portalOrderDetailHtml(o) {
       '<span style="font-size:11px;font-family:monospace">' + escHtml(String(ts).slice(0, 19).replace('T', ' ')) + '</span></div>';
   }).join('');
 
-  var addrHtml = [addr.address_name || addr.name, addr.line1, addr.line2, addr.city, addr.state, addr.pincode, addr.phone]
+  var buyerName = escHtml(addr.address_name || addr.name || '');
+  var addrHtml = [addr.line1, addr.line2, addr.city, addr.state, addr.pincode, addr.phone]
     .filter(Boolean).map(function(x) { return escHtml(x); }).join(', ');
 
   return '<div style="display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:20px">' +
@@ -7723,6 +7724,7 @@ function portalOrderDetailHtml(o) {
     '</div>' +
     '<div>' +
       '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">BUYER</div>' +
+      (buyerName ? '<div style="font-size:13px;font-weight:700;margin-bottom:2px">' + buyerName + '</div>' : '') +
       '<div style="font-size:11px">' + (addrHtml || '—') + '</div>' +
       '<div style="font-size:11px;color:var(--muted);margin-top:10px">PAYMENT</div>' +
       '<div style="font-size:11px;margin-top:4px">' + escHtml(o.payment_type || '—') + '</div>' +
