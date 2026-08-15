@@ -2179,8 +2179,13 @@ function handlePortalListings(d) {
     return;
   }
   var listings = (d.listings || []).map(function(l) {
+    // The portal's product_id is TRUNCATED to 15 chars. The full FSN (22 chars)
+    // is always listing_id minus the 'LST' prefix (verified live: 480/480).
+    var fsn = (l.listing_id && l.listing_id.indexOf('LST') === 0)
+      ? l.listing_id.slice(3)
+      : (l.product_id || '');
     return {
-      fsn: l.product_id || '',
+      fsn: fsn,
       sku: l.sku_id || '',
       title: l.title || '',
       myPrice: l.ssp || 0,
@@ -2197,6 +2202,24 @@ function handlePortalListings(d) {
 // the S_listing XLS import behaviour).
 function applyListingsData(listings, counts) {
   safeSet('makro_listings', JSON.stringify(listings));
+
+  // ── Repair truncated product FSNs ──
+  // The scraper capped FSNs at 20 chars and the portal's product_id at 15,
+  // but the real FSNs are 22 chars (listing_id minus 'LST'). Upgrade any
+  // product whose FSN is a unique prefix of a listing's full FSN.
+  const fullFsnList = listings.map(function(l) { return l.fsn; }).filter(Boolean);
+  let fsnRepaired = 0;
+  state.products.forEach(function(p) {
+    if (!p.fsn) return;
+    const pf = String(p.fsn).toUpperCase();
+    if (fullFsnList.indexOf(pf) !== -1) return; // already exact
+    if (pf.length < 12) return; // too short to trust as a prefix
+    const candidates = fullFsnList.filter(function(f) {
+      return f.length > pf.length && f.indexOf(pf) === 0;
+    });
+    if (candidates.length === 1) { p.fsn = candidates[0]; fsnRepaired++; }
+  });
+  if (fsnRepaired > 0) saveProducts();
 
   // ── AUTO-FIX: if Base Price < Max Price, raise Base Price to equal Max Price ──
   var basePriceFixed = 0;
