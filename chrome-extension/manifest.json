@@ -54,6 +54,7 @@
         "https://*.makromarketplace.co.za/*"
       ],
       "js": [
+        "portal_api.js",
         "portal.js"
       ],
       "run_at": "document_idle"

@@ -224,6 +224,33 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
     sendResponse({ ok: true });
     return true;
   }
+
+  // ── PORTAL API RELAY (dashboard → seller tab) ────────────────────────────
+  if (msg.action === 'portal_get_orders' || msg.action === 'portal_get_listings') {
+    chrome.tabs.query({}, function(tabs) {
+      var portalTab = null;
+      for (var i = 0; i < tabs.length; i++) {
+        var u = tabs[i].url || '';
+        if (u.indexOf('https://seller.makro.co.za') === 0 ||
+            u.indexOf('https://www.makromarketplace.co.za') === 0) {
+          portalTab = tabs[i];
+          break;
+        }
+      }
+      if (!portalTab) {
+        sendResponse({ ok: false, error: 'no_portal_tab' });
+        return;
+      }
+      chrome.tabs.sendMessage(portalTab.id, { action: msg.action }, function(resp) {
+        if (chrome.runtime.lastError) {
+          sendResponse({ ok: false, error: 'portal_not_ready' });
+          return;
+        }
+        sendResponse(resp);
+      });
+    });
+    return true; // async
+  }
 });
 
 // ── OPEN SCRAPE WINDOW WITH FIRST BATCH OF TABS ──────────────────────────

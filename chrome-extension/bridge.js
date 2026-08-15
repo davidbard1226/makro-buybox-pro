@@ -229,6 +229,44 @@
     }
 
     if (ev.data.type === 'REQUEST_EXTENSION') announce();
+
+    // ── PORTAL API PULLS (dashboard → seller tab via background) ────────────
+    if (ev.data.type === 'PORTAL_GET_ORDERS') {
+      safe(function() {
+        chrome.runtime.sendMessage({ action: 'portal_get_orders' }, function(resp) {
+          if (chrome.runtime.lastError) {
+            window.postMessage({ type: 'PORTAL_ORDERS', ok: false, error: 'Extension error' }, '*');
+            return;
+          }
+          window.postMessage({
+            type: 'PORTAL_ORDERS',
+            ok: !!(resp && resp.ok),
+            orders: resp && resp.orders,
+            counts: resp && resp.counts,
+            error: resp && resp.error
+          }, '*');
+        });
+      });
+    }
+
+    if (ev.data.type === 'PORTAL_GET_LISTINGS') {
+      safe(function() {
+        chrome.runtime.sendMessage({ action: 'portal_get_listings' }, function(resp) {
+          if (chrome.runtime.lastError) {
+            window.postMessage({ type: 'PORTAL_LISTINGS', ok: false, error: 'Extension error' }, '*');
+            return;
+          }
+          window.postMessage({
+            type: 'PORTAL_LISTINGS',
+            ok: !!(resp && resp.ok),
+            listings: resp && resp.listings,
+            counts: resp && resp.counts,
+            stockMap: resp && resp.stockMap,
+            error: resp && resp.error
+          }, '*');
+        });
+      });
+    }
   });
 
   // Forward scrape_done, queue_finished, queue_aborted from background → dashboard
