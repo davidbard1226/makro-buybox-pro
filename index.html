@@ -2207,7 +2207,11 @@ async function applyListingsData(listings, counts) {
   // The scraper capped FSNs at 20 chars and the portal's product_id at 15,
   // but the real FSNs are 22 chars (listing_id minus 'LST'). Upgrade any
   // product whose FSN is a unique prefix of a listing's full FSN.
-  const fullFsnList = listings.map(function(l) { return l.fsn; }).filter(Boolean);
+  const fullFsnList = [];
+  const seenFsn = {};
+  listings.forEach(function(l) {
+    if (l.fsn && !seenFsn[l.fsn]) { seenFsn[l.fsn] = true; fullFsnList.push(l.fsn); }
+  });
   let fsnRepaired = 0;
   state.products.forEach(function(p) {
     if (!p.fsn) return;
@@ -2234,13 +2238,28 @@ async function applyListingsData(listings, counts) {
   });
   safeSet('makro_listings', JSON.stringify(listings));
 
-  // ── Stamp real SKU onto matched products via FSN ──
+  // ── Stamp real SKU onto matched products via FSN (exact OR unique prefix) ──
+  // Product FSNs may be truncated (15-16 chars) while listing FSNs are full
+  // (22 chars) — so also match when the product FSN is the start of a listing
+  // FSN, and upgrade the product FSN to the full value at the same time.
   const fsnToSku = {};
   listings.forEach(function(l) { if (l.fsn && l.sku) fsnToSku[l.fsn] = l.sku; });
   let skuCount = 0;
   state.products.forEach(function(p) {
     if (p.sku && p.sku.startsWith('itm')) p.sku = '';
-    if (p.fsn && fsnToSku[p.fsn]) { p.sku = fsnToSku[p.fsn]; skuCount++; }
+    if (!p.fsn) return;
+    const pf = String(p.fsn).toUpperCase();
+    let sku = fsnToSku[pf];
+    if (!sku && pf.length >= 12) {
+      const matches = listings.filter(function(l) {
+        return l.fsn && l.fsn.length > pf.length && l.fsn.indexOf(pf) === 0;
+      });
+      if (matches.length === 1) {
+        sku = matches[0].sku;
+        p.fsn = matches[0].fsn; // upgrade to the full FSN
+      }
+    }
+    if (sku) { p.sku = sku; skuCount++; }
   });
   if (skuCount > 0) saveProducts();
 
@@ -3789,9 +3808,14 @@ function importSellerData(data) {
       }
     }
 
-    // Check if product already exists
+    // Check if product already exists — exact FSN, or the incoming (possibly
+    // truncated) pid is the start of a stored full FSN (avoids duplicates
+    // when the local server sends 15-char pids but we stored 22-char FSNs).
     var existing = state.products.find(function(p) {
-      return (p.fsn && p.fsn === pid) || (p.pid && p.pid === pid);
+      if (!pid) return false;
+      var pf = (p.fsn || '').toUpperCase();
+      return pf === pid || (p.pid && p.pid === pid) ||
+             (pf.length > pid.length && pf.indexOf(pid) === 0);
     });
 
     if (existing) {
