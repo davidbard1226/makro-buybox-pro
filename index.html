@@ -4399,8 +4399,10 @@ function pushProductToPortal() {
   if (hardFloor > 0 && newPrice < hardFloor) newPrice = hardFloor;
   if (ceiling > 0 && newPrice > ceiling) newPrice = ceiling;
 
-  // Need the raw listing template to build the XLS
+  // Need the raw listing template to build the XLS — fall back to rebuilding
+  // it from the pulled listings when the original file isn't in this browser.
   var rawBase64 = localStorage.getItem('makro_listings_raw');
+  if (!rawBase64) rawBase64 = buildTemplateFromListings();
   if (!rawBase64) {
     document.getElementById('pushResult').innerHTML =
       '<span style="color:#ff4444">❌ Original listing file not found.<br>Please re-import your S_listing XLS from the Products tab (needed as template).</span>';
@@ -5258,9 +5260,10 @@ function initPricer() {
     el.innerHTML = '⚠️ <span style="color:#ff9500">No listings imported yet.</span> Go to <b>Products tab → 📂 Import Listings</b> first.';
     if (genBtn) genBtn.disabled = true;
   } else if (!hasRaw) {
-    el.innerHTML = '⚠️ <span style="color:#ff9500"><b>' + listings.length + ' listings loaded but original XLS file is missing from this browser.</b></span><br>' +
-      '<span style="color:var(--muted);font-size:12px">Re-import your S_listing XLS file on this PC (Products tab → 📂 Import Listings) before generating a price update file.</span>';
+    el.innerHTML = '✅ <span style="color:var(--accent)"><b>' + listings.length + ' listings loaded</b> (live portal pull).</span><br>' +
+      '<span style="color:var(--muted);font-size:12px">The price file will be rebuilt from your pulled listings — no XLS re-import needed.</span>';
     if (genBtn) genBtn.disabled = false;
+    buildPricerPreview();
   } else {
     el.innerHTML = '✅ <span style="color:var(--accent)">' + listings.length + ' listings loaded.</span> Ready to generate.';
     if (genBtn) genBtn.disabled = false;
@@ -5273,6 +5276,47 @@ function getListings() {
     const raw = localStorage.getItem('makro_listings');
     return raw ? JSON.parse(raw) : [];
   } catch(e) { return []; }
+}
+
+// Rebuild an S_listing-format workbook from the parsed listings when the raw
+// template file isn't available (e.g. listings were pulled live from the portal
+// instead of imported from an XLS). Columns match the S_listing export layout:
+// 0=Title, 1=SKU, 4=FSN, 6=Status, 8=Base Price, 9=Your Selling Price, 12=Stock.
+// Row 0 = headers, row 1 = blank (template convention), row 2+ = data — so the
+// existing push/bulk loops (which start at row 2) work unchanged.
+function buildTemplateFromListings() {
+  if (!window.XLSX) return null;
+  var listings = getListings();
+  if (!listings || !listings.length) return null;
+  var header = ['Title', 'SKU', '', '', 'FSN', '', 'Status', '', 'Base Price', 'Your Selling Price', '', '', 'Stock'];
+  var rows = [header, []];
+  listings.forEach(function(l) {
+    var row = new Array(13).fill('');
+    row[0]  = l.title || '';
+    row[1]  = l.sku || '';
+    row[4]  = l.fsn || '';
+    row[6]  = l.status || '';
+    row[8]  = l.basePrice || 0;
+    row[9]  = l.myPrice || 0;
+    row[12] = l.myStock || 0;
+    rows.push(row);
+  });
+  try {
+    var ws = XLSX.utils.aoa_to_sheet(rows);
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+    var out = XLSX.write(wb, { bookType: 'xls', type: 'array' });
+    var bytes = new Uint8Array(out);
+    var base64 = '';
+    var CHUNK = 8192;
+    for (var j = 0; j < bytes.length; j += CHUNK) {
+      base64 += String.fromCharCode.apply(null, bytes.subarray(j, j + CHUNK));
+    }
+    return btoa(base64);
+  } catch(e) {
+    console.warn('Could not rebuild listing template:', e);
+    return null;
+  }
 }
 
 function calcNewPrice(myPrice, buyboxPrice, strategy, beatBy, floorPct, minPrice, maxPrice) {
@@ -5457,8 +5501,10 @@ function generatePriceUpdate() {
   const minPrice    = minEnabled ? parseFloat(document.getElementById('pricerMinPrice').value) || 0    : null;
   const maxPrice    = maxEnabled ? parseFloat(document.getElementById('pricerMaxPrice').value) || 9999 : null;
 
-  // Check we have the raw template file
-  const rawBase64  = localStorage.getItem('makro_listings_raw');
+  // Check we have the raw template file — fall back to rebuilding it from the
+  // pulled listings when the original XLS isn't in this browser.
+  let rawBase64  = localStorage.getItem('makro_listings_raw');
+  if (!rawBase64) rawBase64 = buildTemplateFromListings();
   const rawFilename = localStorage.getItem('makro_listings_filename') || 'S_listing_price_update.xls';
   if (!rawBase64) {
     document.getElementById('pricerResult').innerHTML =
