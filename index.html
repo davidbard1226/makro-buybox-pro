@@ -689,6 +689,7 @@
     <button class="tab-btn" onclick="switchTab('intelligence')">🕵️ Intelligence</button>
     <button class="tab-btn" onclick="switchTab('orders')" style="background:rgba(0,229,160,.1);color:var(--accent)">📑 Orders <span class="tab-badge" id="newOrdersNavBadge" style="display:none;background:var(--accent);color:#0b0f19">0</span></button>
     <button class="tab-btn" onclick="switchTab('recon')">🔗 Reconciliation</button>
+    <button class="tab-btn" onclick="switchTab('backup')">💾 Backup</button>
   </nav>
 
   <!-- MAIN -->
@@ -1513,6 +1514,61 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
 
      </div><!-- /orders -->
 
+     <!-- ========== BACKUP TAB ========== -->
+     <div class="tab-content" id="tab-backup">
+
+       <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+         <div class="card-title" style="margin:0">💾 BACKUP & RESTORE</div>
+         <span style="font-size:12px;color:var(--muted)">All data lives in your browser's localStorage (tied to this site URL). Back it up regularly — clearing browsing data or switching browsers erases it.</span>
+       </div>
+
+       <!-- Storage meter -->
+       <div class="card" style="margin-bottom:16px">
+         <div class="card-title">📦 Storage Usage</div>
+         <div style="margin-top:10px">
+           <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px">
+             <span id="storageUsed" style="color:var(--muted)">0 KB used</span>
+             <span id="storageQuota" style="color:var(--muted)">~5 MB limit</span>
+           </div>
+           <div style="height:10px;background:var(--surface2);border-radius:5px;overflow:hidden">
+             <div id="storageBar" style="height:100%;width:0%;background:var(--accent);border-radius:5px;transition:width .3s"></div>
+           </div>
+           <div id="storageWarn" style="display:none;margin-top:8px;font-size:12px;color:#ff4d6d">⚠ Storage nearly full — new saves will FAIL silently. Download a backup and free space.</div>
+         </div>
+       </div>
+
+       <!-- Backup actions -->
+       <div class="stats-grid" style="grid-template-columns:repeat(3,1fr)">
+         <div class="card">
+           <div class="card-title">⬇ Download Backup</div>
+           <p style="font-size:12px;color:var(--muted)">Saves ALL dashboard data (products, SKU matches, costs, orders, listings, settings) to a JSON file you keep anywhere.</p>
+           <button class="btn-primary" onclick="downloadBackup()" style="width:auto">⬇ Backup All Data</button>
+         </div>
+         <div class="card">
+           <div class="card-title">⬆ Restore Backup</div>
+           <p style="font-size:12px;color:var(--muted)">Load a backup file to restore everything. Current data is replaced. Use after a wipe or on a new browser.</p>
+           <label class="btn-primary" style="width:auto;cursor:pointer;display:inline-block">⬆ Restore from File
+             <input type="file" id="restoreBackupInput" accept=".json,application/json" style="display:none" onchange="restoreBackup(this)">
+           </label>
+         </div>
+         <div class="card">
+           <div class="card-title">🔄 Auto-Backup</div>
+           <p style="font-size:12px;color:var(--muted)">A snapshot of your last good data is kept automatically each time you open the dashboard.</p>
+           <div id="autoBackupInfo" style="font-size:12px;color:var(--muted);margin-bottom:8px">No auto-backup yet</div>
+           <button class="btn-secondary" onclick="restoreAutoBackup()" style="width:auto">↩ Restore Last Auto-Backup</button>
+         </div>
+       </div>
+
+       <!-- Maintenance -->
+       <div class="card" style="margin-top:16px">
+         <div class="card-title">🧹 Maintenance</div>
+         <p style="font-size:12px;color:var(--muted)">Remove stray/junk keys (e.g. a key literally named "undefined" left by an older version).</p>
+         <button class="btn-secondary" onclick="cleanJunkKeys()" style="width:auto">🧹 Clean Junk Keys</button>
+         <span id="cleanJunkStatus" style="font-size:12px;color:var(--muted);margin-left:10px"></span>
+       </div>
+
+     </div><!-- /backup -->
+
    </main>
 </div>
 
@@ -1692,17 +1748,17 @@ let extensionId = null;
 // ORDER & INVOICE STORAGE
 // ============================================================
 function getOrders()     { try { return JSON.parse(localStorage.getItem(ORDERS_KEY) || '[]'); } catch(e) { return []; } }
-function saveOrders(o)   { state.orders = o; try { localStorage.setItem(ORDERS_KEY, JSON.stringify(o)); } catch(e) {} }
+function saveOrders(o)   { state.orders = o; safeSet(ORDERS_KEY, JSON.stringify(o)); }
 function getInvoices()   { try { return JSON.parse(localStorage.getItem(INVOICES_KEY) || '[]'); } catch(e) { return []; } }
-function saveInvoices(o) { state.invoices = o; try { localStorage.setItem(INVOICES_KEY, JSON.stringify(o)); } catch(e) {} }
+function saveInvoices(o) { state.invoices = o; safeSet(INVOICES_KEY, JSON.stringify(o)); }
 function getReconciled() { try { return JSON.parse(localStorage.getItem(RECON_KEY) || '{}'); } catch(e) { return {}; } }
-function saveRecon(r)   { state.recon = r; try { localStorage.setItem(RECON_KEY, JSON.stringify(r)); } catch(e) {} }
+function saveRecon(r)   { state.recon = r; safeSet(RECON_KEY, JSON.stringify(r)); }
 
 // ============================================================
 // STORAGE
 // ============================================================
 function saveProducts() {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state.products)); } catch(e) {}
+  safeSet(STORAGE_KEY, JSON.stringify(state.products));
 }
 
 function loadProducts() {
@@ -2020,7 +2076,7 @@ function getPortalOrders() {
   try { return JSON.parse(localStorage.getItem('makro_portal_orders') || '[]'); } catch(e) { return []; }
 }
 function savePortalOrders(o) {
-  try { localStorage.setItem('makro_portal_orders', JSON.stringify(o)); } catch(e) {}
+  safeSet('makro_portal_orders', JSON.stringify(o));
 }
 
 function mergePortalOrderEntry(oldEntry, fresh) {
@@ -2039,7 +2095,7 @@ function getNewPortalOrders() {
   try { return JSON.parse(localStorage.getItem('makro_portal_new_orders') || '[]'); } catch(e) { return []; }
 }
 function saveNewPortalOrders(o) {
-  try { localStorage.setItem('makro_portal_new_orders', JSON.stringify(o)); } catch(e) {}
+  safeSet('makro_portal_new_orders', JSON.stringify(o));
 }
 
 function mergePortalOrders(items) {
@@ -2140,7 +2196,7 @@ function handlePortalListings(d) {
 // auto-match costs, re-render. Used by the live portal pull (and mirrors
 // the S_listing XLS import behaviour).
 function applyListingsData(listings, counts) {
-  localStorage.setItem('makro_listings', JSON.stringify(listings));
+  safeSet('makro_listings', JSON.stringify(listings));
 
   // ── AUTO-FIX: if Base Price < Max Price, raise Base Price to equal Max Price ──
   var basePriceFixed = 0;
@@ -2153,7 +2209,7 @@ function applyListingsData(listings, counts) {
       basePriceFixed++;
     }
   });
-  localStorage.setItem('makro_listings', JSON.stringify(listings));
+  safeSet('makro_listings', JSON.stringify(listings));
 
   // ── Stamp real SKU onto matched products via FSN ──
   // Length-agnostic: exact FSN match first, then 15-char prefix match in
@@ -2233,7 +2289,7 @@ function setExtStatus(online) {
 // TABS
 // ============================================================
 function switchTab(name) {
-  const names = ['dashboard','products','scraper','pricer','analytics','log','intelligence','orders','recon'];
+  const names = ['dashboard','products','scraper','pricer','analytics','log','intelligence','orders','recon','backup'];
   document.querySelectorAll('.tab-btn').forEach((b,i) => {
     b.classList.toggle('active', names[i] === name);
   });
@@ -2248,6 +2304,7 @@ function switchTab(name) {
   if (name === 'intelligence') renderIntelligence();
   if (name === 'orders')   renderPortalOrders();
   if (name === 'recon')    renderOrders();
+  if (name === 'backup')   renderBackup();
 }
 
 function syncSellerConfig() {
@@ -2615,7 +2672,7 @@ function autoReprice(prod) {
     }
   });
   if (changed) {
-    localStorage.setItem('makro_listings', JSON.stringify(listings));
+    safeSet('makro_listings', JSON.stringify(listings));
     // Mark product as pending price upload
     prod.pending_price    = targetPrice;
     prod.pending_updated  = new Date().toISOString();
@@ -3251,7 +3308,7 @@ function deleteSelected() {
     if (p.fsn && !deleted.includes(p.fsn.toUpperCase())) deleted.push(p.fsn.toUpperCase());
     window.postMessage({ type: 'DELETE_PRODUCT', url: p.url, fsn: p.fsn || '' }, '*');
   });
-  localStorage.setItem('makro_deleted', JSON.stringify(deleted));
+  safeSet('makro_deleted', JSON.stringify(deleted));
 
   idxs.sort((a,b) => b-a).forEach(i => state.products.splice(i, 1));
   saveProducts(); renderProducts(); updateProductCount(); renderDashboard();
@@ -3341,7 +3398,7 @@ function importListings(input) {
         }
       });
 
-      localStorage.setItem('makro_listings', JSON.stringify(listings));
+      safeSet('makro_listings', JSON.stringify(listings));
 
       // ── Stamp real SKU onto matched products via FSN ──────────────────────
       const fsnToSku = {};
@@ -3924,7 +3981,7 @@ function deleteProduct(idx) {
   try { deleted = JSON.parse(localStorage.getItem('makro_deleted') || '[]'); } catch(e) {}
   if (p.url  && !deleted.includes(p.url))  deleted.push(p.url);
   if (p.fsn  && !deleted.includes(p.fsn.toUpperCase())) deleted.push(p.fsn.toUpperCase());
-  localStorage.setItem('makro_deleted', JSON.stringify(deleted));
+  safeSet('makro_deleted', JSON.stringify(deleted));
 
   // Tell bridge to remove from chrome.storage.local too
   window.postMessage({ type: 'DELETE_PRODUCT', url: p.url, fsn: p.fsn || '' }, '*');
@@ -4099,7 +4156,7 @@ function saveListingField(fsn, field, val) {
   }
 
   entry[field] = v;
-  localStorage.setItem('makro_listings', JSON.stringify(listings));
+  safeSet('makro_listings', JSON.stringify(listings));
   renderProducts();
 }
 
@@ -5701,7 +5758,7 @@ function addPriceLogEntry(entry) {
   var log = getPriceLog();
   log.unshift(entry);
   if (log.length > 2000) log.length = 2000;
-  localStorage.setItem(PRICE_LOG_KEY, JSON.stringify(log));
+safeSet(PRICE_LOG_KEY, JSON.stringify(log));
 }
 
 function addTestLogEntry() {
@@ -5740,7 +5797,7 @@ function renderPriceLog() {
     });
     if (backfill.length) {
       backfill.sort(function(a,b){ return new Date(b.ts) - new Date(a.ts); });
-      localStorage.setItem(PRICE_LOG_KEY, JSON.stringify(backfill.slice(0,2000)));
+      safeSet(PRICE_LOG_KEY, JSON.stringify(backfill.slice(0,2000)));
     }
   }
   var log = getPriceLog();
@@ -6444,7 +6501,7 @@ function saveBulkSkus() {
     var lFsn = (l.fsn || '').trim().toUpperCase();
     if (lFsn && map[lFsn]) l.sku = map[lFsn];
   });
-  localStorage.setItem('makro_listings', JSON.stringify(listings));
+  safeSet('makro_listings', JSON.stringify(listings));
   saveProducts();
 
   // Build result message
@@ -7191,6 +7248,144 @@ function downloadFile(content, filename) {
   link.click();
 }
 
+// ============================================================
+// STORAGE SAFETY — write-failure detection + backup/restore
+// ============================================================
+function safeSet(key, value) {
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch(e) {
+    console.error('STORAGE WRITE FAILED for key "' + key + '":', e);
+    showStorageFullBanner();
+    return false;
+  }
+}
+
+function showStorageFullBanner() {
+  var b = document.getElementById('storageFullBanner');
+  if (b) return;
+  b = document.createElement('div');
+  b.id = 'storageFullBanner';
+  b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#ff4d6d;color:#fff;padding:10px 16px;font-size:13px;text-align:center;font-family:inherit';
+  b.innerHTML = '⚠ <b>Storage full — data NOT saved!</b> Go to the 💾 Backup tab, download a backup, then free space. ' +
+    '<button onclick="this.parentNode.remove()" style="margin-left:10px;background:#fff;color:#ff4d6d;border:none;border-radius:4px;padding:4px 10px;cursor:pointer">Dismiss</button>';
+  document.body.appendChild(b);
+}
+
+function storageUsage() {
+  var total = 0;
+  for (var i = 0; i < localStorage.length; i++) {
+    var k = localStorage.key(i);
+    total += (localStorage.getItem(k) || '').length * 2;
+  }
+  return total;
+}
+
+function renderBackup() {
+  var used = storageUsage();
+  var usedMB = used / 1048576;
+  var pct = Math.min(100, usedMB / 5 * 100);
+  var usedEl = document.getElementById('storageUsed');
+  var bar = document.getElementById('storageBar');
+  var warn = document.getElementById('storageWarn');
+  if (usedEl) usedEl.textContent = (usedMB >= 1 ? usedMB.toFixed(2) + ' MB' : Math.round(used / 1024) + ' KB') + ' used';
+  if (bar) {
+    bar.style.width = pct + '%';
+    bar.style.background = pct > 80 ? '#ff4d6d' : pct > 60 ? 'var(--accent3)' : 'var(--accent)';
+  }
+  if (warn) warn.style.display = pct > 80 ? '' : 'none';
+  var ab = getAutoBackup();
+  var info = document.getElementById('autoBackupInfo');
+  if (info) {
+    info.textContent = ab && ab.savedAt
+      ? 'Last auto-backup: ' + new Date(ab.savedAt).toLocaleString('en-ZA') + ' (' + Object.keys(ab.data || {}).length + ' keys)'
+      : 'No auto-backup yet';
+  }
+}
+
+function downloadBackup() {
+  var data = {};
+  for (var i = 0; i < localStorage.length; i++) {
+    var k = localStorage.key(i);
+    data[k] = localStorage.getItem(k);
+  }
+  var payload = { app: 'makro-buybox-pro', version: 2, exportedAt: new Date().toISOString(), data: data };
+  downloadFile(JSON.stringify(payload, null, 1), 'makro-backup-' + new Date().toISOString().slice(0,10) + '.json');
+}
+
+function restoreBackup(input) {
+  var file = input.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var payload = JSON.parse(e.target.result);
+      var data = payload && payload.data ? payload.data : payload;
+      if (typeof data !== 'object' || Array.isArray(data)) throw new Error('not a key/value map');
+      var count = 0;
+      Object.keys(data).forEach(function(k) {
+        try { localStorage.setItem(k, data[k]); count++; } catch(err) {}
+      });
+      alert('✅ Restored ' + count + ' keys from backup. Reloading dashboard...');
+      location.reload();
+    } catch(err) {
+      alert('❌ Invalid backup file: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+
+// ── Auto-backup: rolling snapshot of the main data keys, taken on load ──
+var AUTO_BACKUP_KEY = 'makro_auto_backup';
+var AUTO_BACKUP_MAIN = ['makro_buybox_v2','makro_orders','makro_portal_orders','makro_listings','makro_price_log','makro_invoices','makro_recon','makro_deleted'];
+
+function getAutoBackup() {
+  try { return JSON.parse(localStorage.getItem(AUTO_BACKUP_KEY) || 'null'); } catch(e) { return null; }
+}
+
+function takeAutoBackup() {
+  var snapshot = {};
+  var hasData = false;
+  AUTO_BACKUP_MAIN.forEach(function(k) {
+    var v = localStorage.getItem(k);
+    if (v && v.length > 2) { snapshot[k] = v; hasData = true; }
+  });
+  if (!hasData) return;
+  var size = JSON.stringify(snapshot).length * 2;
+  if (storageUsage() + size > 4.5 * 1048576) return; // skip if it would overflow quota
+  var prev = getAutoBackup();
+  if (prev && prev.data && JSON.stringify(prev.data) === JSON.stringify(snapshot)) return; // unchanged
+  try {
+    localStorage.setItem(AUTO_BACKUP_KEY, JSON.stringify({ savedAt: new Date().toISOString(), data: snapshot }));
+  } catch(e) {}
+}
+
+function restoreAutoBackup() {
+  var ab = getAutoBackup();
+  if (!ab || !ab.data) { alert('No auto-backup available yet.'); return; }
+  if (!confirm('Restore the auto-backup from ' + new Date(ab.savedAt).toLocaleString('en-ZA') + '? Current data will be replaced.')) return;
+  var count = 0;
+  Object.keys(ab.data).forEach(function(k) {
+    try { localStorage.setItem(k, ab.data[k]); count++; } catch(err) {}
+  });
+  alert('✅ Restored ' + count + ' keys from auto-backup. Reloading...');
+  location.reload();
+}
+
+function cleanJunkKeys() {
+  var junk = [];
+  for (var i = 0; i < localStorage.length; i++) {
+    var k = localStorage.key(i);
+    if (k === 'undefined' || k === 'null' || k === 'NaN' || k === '') junk.push(k);
+  }
+  junk.forEach(function(k) { localStorage.removeItem(k); });
+  var st = document.getElementById('cleanJunkStatus');
+  if (st) st.textContent = junk.length ? '🧹 Removed ' + junk.length + ' junk key(s).' : '✅ No junk keys found.';
+  renderBackup();
+}
+
 function matchOrders() {
   const orders = getOrders();
   const invoices = getInvoices();
@@ -7712,6 +7907,15 @@ function importMultiChannelProducts(input) {
     alert(alertMsg);
   };
   reader.readAsText(file);
+}
+
+// Storage safety: snapshot last-good data + render the backup tab meter.
+// Runs at the very end so every function/constant above is already defined.
+try {
+  takeAutoBackup();
+  renderBackup();
+} catch(e) {
+  console.error('auto-backup init failed:', e);
 }
 </script>
 </body>
