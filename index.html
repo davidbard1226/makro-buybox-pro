@@ -876,6 +876,7 @@
           </label>
           <button class="btn-secondary" id="syncCostsBtn" style="width:auto;padding:8px 16px;color:#60a5fa;border-color:rgba(96,165,250,0.4)" onclick="syncCostsFromSheet()" title="Fetch cost prices from Google Sheet by matching SKU">📊 Sync Costs</button>
           <button class="btn-secondary" style="width:auto;padding:8px 16px;color:#00e5a0;border-color:rgba(0,229,160,0.3)" onclick="recalcAllMinPrices()" title="Recalculate all min prices using current profit % setting">🔄 Recalc Min Prices</button>
+          <button class="btn-secondary" style="width:auto;padding:8px 16px;color:#ffd60a;border-color:rgba(255,214,10,0.4)" onclick="openBulkProfitModal()" title="Set min profit % for many products at once — Min/Max auto-recalculate">⚙ Bulk Set Profit %</button>
           <button class="btn-secondary" style="width:auto;padding:8px 16px;color:#818cf8;border-color:#818cf844" onclick="openBulkSkuModal()" title="Bulk import SKU → FSN mappings">🔗 Bulk SKU Import</button>
           <button class="btn-secondary" style="width:auto;padding:8px 16px" onclick="refreshSelected()">↻ Refresh Selected</button>
           <button class="btn-secondary danger" style="width:auto;padding:8px 16px;color:#ff9500;border-color:#ff950044" onclick="deleteSelected()">🗑 Delete Selected</button>
@@ -1624,6 +1625,48 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
       <button class="btn-secondary" style="width:auto" onclick="document.getElementById('bulkSkuModal').classList.remove('show')">Cancel</button>
       <button class="btn-secondary" style="width:auto;color:#818cf8;border-color:#818cf844" onclick="showProductFsns()" title="Show FSNs of products on dashboard">🔍 Show Product FSNs</button>
       <button class="btn-primary" style="width:auto;min-width:120px" onclick="saveBulkSkus()">💾 Import SKUs</button>
+    </div>
+  </div>
+</div>
+
+<!-- BULK SET MIN PROFIT % MODAL -->
+<div class="modal-backdrop" id="bulkProfitModal">
+  <div class="modal" style="width:520px">
+    <h3>⚙ Bulk Set Min Profit %</h3>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:14px">Set the min profit % for many products at once. Each product's <b>Min Price</b> and <b>Max Price</b> auto-recalculate from its cost price. Products without a cost price are skipped.</p>
+
+    <div style="display:grid;gap:12px">
+      <div>
+        <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:5px">Apply to</label>
+        <select id="bulkProfitScope" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;padding:8px;border-radius:6px;outline:none" onchange="updateBulkProfitScope()">
+          <option value="all">All products</option>
+          <option value="filtered">Currently filtered / searched products</option>
+          <option value="supplier">By supplier</option>
+        </select>
+      </div>
+
+      <div id="bulkProfitSupplierWrap" style="display:none">
+        <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:5px">Supplier</label>
+        <select id="bulkProfitSupplier" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;padding:8px;border-radius:6px;outline:none"></select>
+      </div>
+
+      <div>
+        <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:5px">Min profit %</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="bulkProfitPct" type="number" step="0.5" min="1" max="50" value="7"
+            style="flex:1;background:var(--surface2);border:1px solid #ffd60a;color:#ffd60a;font-family:'Space Mono',monospace;font-size:14px;padding:8px 10px;border-radius:6px;outline:none">
+          <span style="font-size:13px;color:var(--muted)">%</span>
+        </div>
+      </div>
+
+      <div id="bulkProfitPreview" style="font-size:12px;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px;line-height:1.6"></div>
+    </div>
+
+    <div id="bulkProfitResult" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
+
+    <div class="modal-actions" style="margin-top:14px">
+      <button class="btn-secondary" style="width:auto" onclick="document.getElementById('bulkProfitModal').classList.remove('show')">Cancel</button>
+      <button class="btn-primary" style="width:auto;min-width:140px" onclick="applyBulkProfit()">💾 Apply & Recalc</button>
     </div>
   </div>
 </div>
@@ -4104,6 +4147,123 @@ function recalcAllMinPrices() {
     alert('✅ Recalculated min/max prices for ' + updated + ' products (per-product profit % where set, else global).');
   } else {
     alert('⚠ No products with cost prices found — sync costs first.');
+  }
+}
+
+// ── BULK SET MIN PROFIT % ─────────────────────────────────────────────────
+// Set min_profit_pct for many products at once (all / filtered / by supplier)
+// and auto-recalculate each product's Min/Max from its cost price.
+
+function getFilteredProductsForBulk() {
+  // Mirror the renderProducts filter logic so "currently filtered" matches the view
+  const search = (document.getElementById('prodSearch').value || '').toLowerCase();
+  const filter = document.getElementById('prodFilter').value;
+  const channelFilter = document.getElementById('prodChannelFilter').value;
+  const listingsMap = {};
+  try {
+    const raw = localStorage.getItem('makro_listings');
+    if (raw) JSON.parse(raw).forEach(l => { listingsMap[l.fsn] = l; });
+  } catch(e) {}
+  return state.products.filter(p => {
+    if (channelFilter !== 'all' && (p.channel||'makro') !== channelFilter) return false;
+    if (filter === 'win' && p.status !== 'win') return false;
+    if (filter === 'lose' && p.status !== 'lose') return false;
+    if (filter === 'unknown' && p.status !== 'unknown' && p.status) return false;
+    if (filter === 'no-sku' && p.sku) return false;
+    if (filter === 'no-cost' && p.cost_price > 0) return false;
+    if (filter === 'pending' && p.pending_price == null) return false;
+    if (filter === 'base-below-max') {
+      var lBP = listingsMap[p.fsn];
+      var bp = lBP && lBP.basePrice > 0 ? lBP.basePrice : 0;
+      var mx = p.max_price || 0;
+      if (!bp || !mx || bp >= mx) return false;
+    }
+    if (filter === 'win-at-loss') {
+      var lWL = listingsMap[p.fsn];
+      if (p.status !== 'win') return false;
+      if (!lWL || !lWL.myPrice) return false;
+      if (!(p.min_price > 0) || lWL.myPrice >= p.min_price) return false;
+    }
+    const titleOk = (p.title||'').toLowerCase().includes(search);
+    const sellerOk = (p.seller||'').toLowerCase().includes(search);
+    const fsnOk = (p.fsn||'').toLowerCase().includes(search);
+    const skuOk = (p.sku||'').toLowerCase().includes(search);
+    if (search && !titleOk && !sellerOk && !fsnOk && !skuOk) return false;
+    return true;
+  });
+}
+
+function openBulkProfitModal() {
+  // Populate supplier dropdown from cost_supplier values
+  var suppliers = {};
+  state.products.forEach(function(p) {
+    var s = (p.cost_supplier || '').trim();
+    if (s) suppliers[s] = (suppliers[s] || 0) + 1;
+  });
+  var sel = document.getElementById('bulkProfitSupplier');
+  var opts = Object.keys(suppliers).sort().map(function(s) {
+    return '<option value="' + escHtml(s) + '">' + escHtml(s) + ' (' + suppliers[s] + ')</option>';
+  }).join('');
+  sel.innerHTML = opts || '<option value="">— no suppliers yet —</option>';
+
+  // Default pct to global setting
+  var gp = Math.round(getMinProfitPct() * 100);
+  document.getElementById('bulkProfitPct').value = gp;
+
+  document.getElementById('bulkProfitResult').innerHTML = '';
+  updateBulkProfitScope();
+  document.getElementById('bulkProfitModal').classList.add('show');
+}
+
+function updateBulkProfitScope() {
+  var scope = document.getElementById('bulkProfitScope').value;
+  document.getElementById('bulkProfitSupplierWrap').style.display = scope === 'supplier' ? 'block' : 'none';
+  updateBulkProfitPreview();
+}
+
+function getBulkProfitTargets() {
+  var scope = document.getElementById('bulkProfitScope').value;
+  if (scope === 'filtered') return getFilteredProductsForBulk();
+  if (scope === 'supplier') {
+    var sup = document.getElementById('bulkProfitSupplier').value;
+    return state.products.filter(function(p) { return (p.cost_supplier || '').trim() === sup; });
+  }
+  return state.products.slice();
+}
+
+function updateBulkProfitPreview() {
+  var targets = getBulkProfitTargets();
+  var withCost = targets.filter(function(p) { return p.cost_price > 0; });
+  var el = document.getElementById('bulkProfitPreview');
+  el.innerHTML =
+    '<b>' + targets.length + '</b> product(s) in scope · <b>' + withCost.length + '</b> with a cost price (will be recalculated)' +
+    (targets.length - withCost.length > 0 ? ' · <span style="color:#ff9500">' + (targets.length - withCost.length) + ' skipped (no cost)</span>' : '');
+}
+
+function applyBulkProfit() {
+  var pct = parseFloat(document.getElementById('bulkProfitPct').value);
+  if (isNaN(pct) || pct <= 0) {
+    document.getElementById('bulkProfitResult').innerHTML = '<span style="color:#ff4444">❌ Enter a valid profit %.</span>';
+    return;
+  }
+  var targets = getBulkProfitTargets();
+  var updated = 0, skipped = 0;
+  targets.forEach(function(p) {
+    if (!(p.cost_price > 0)) { skipped++; return; }
+    p.min_profit_pct = pct;
+    p.min_price = calcMinViablePrice(p.cost_price, pct / 100);
+    p.max_price = calcAutoMaxPrice(p.min_price);
+    updated++;
+  });
+  if (updated > 0) {
+    saveProducts();
+    renderProducts();
+    document.getElementById('bulkProfitResult').innerHTML =
+      '<span style="color:#00e5a0">✅ Set ' + pct + '% min profit on ' + updated + ' product(s) — Min/Max recalculated.' +
+      (skipped > 0 ? ' <span style="color:#ff9500">' + skipped + ' skipped (no cost).</span>' : '') + '</span>';
+  } else {
+    document.getElementById('bulkProfitResult').innerHTML =
+      '<span style="color:#ff9500">⚠ No products with a cost price in this scope — sync costs first.</span>';
   }
 }
 
