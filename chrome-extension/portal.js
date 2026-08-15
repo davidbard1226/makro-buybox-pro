@@ -7,6 +7,10 @@
   if (!window.location.hostname.includes('seller.makro.co.za') &&
       !window.location.hostname.includes('makromarketplace')) return;
 
+  // If the extension was reloaded, previously-injected scripts are orphaned
+  // (chrome.* APIs become undefined) — exit cleanly instead of throwing.
+  if (!chrome.runtime || !chrome.runtime.id) return;
+
   const FILE_KEY     = 'portal_upload_file';
   const NAME_KEY     = 'portal_upload_filename';
   const STATUS_KEY   = 'bbp_upload_status';

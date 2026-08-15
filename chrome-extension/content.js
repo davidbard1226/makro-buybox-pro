@@ -4,6 +4,10 @@
 (function() {
   'use strict';
 
+  // If the extension was reloaded, previously-injected scripts are orphaned
+  // (chrome.* APIs become undefined) — exit cleanly instead of throwing.
+  if (!chrome.runtime || !chrome.runtime.id) return;
+
   // ── PRICE EXTRACTOR ───────────────────────────────────────────────────────
   function extractPrice(text) {
     if (!text) return null;

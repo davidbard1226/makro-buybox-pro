@@ -7,6 +7,10 @@
 
   if (!/\/search(\?|$|\/)/i.test(window.location.pathname + window.location.search)) return;
 
+  // If the extension was reloaded, previously-injected scripts are orphaned
+  // (chrome.* APIs become undefined) — exit cleanly instead of throwing.
+  if (!chrome.runtime || !chrome.runtime.id) return;
+
   function scrapeSearchResult() {
     const result = {
       searchUrl: window.location.href,

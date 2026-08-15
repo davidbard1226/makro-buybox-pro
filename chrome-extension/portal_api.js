@@ -16,6 +16,10 @@
   if (window.__bbpPortalApiLoaded) return;
   window.__bbpPortalApiLoaded = true;
 
+  // If the extension was reloaded, previously-injected scripts are orphaned
+  // (chrome.* APIs become undefined) — exit cleanly instead of throwing.
+  if (!chrome.runtime || !chrome.runtime.id) return;
+
   const SELLER_HOST = 'https://seller.makro.co.za';
 
   // ── AUTH CAPTURE ──────────────────────────────────────────────────────────
