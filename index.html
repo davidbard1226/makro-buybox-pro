@@ -1145,6 +1145,10 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
                 <div style="font-size:10px;color:var(--muted);margin-top:8px;line-height:1.5">
                   Products clamped to min/max will show <span style="color:#ff9500">⚠ CLAMPED</span> in the preview and be skipped from the upload to avoid pricing mistakes.
                 </div>
+                <label style="font-size:11px;display:flex;align-items:center;gap:6px;color:#ffd60a;cursor:pointer;margin-top:8px;padding:6px 8px;background:#2a1f0e;border:1px solid #ff9500;border-radius:6px">
+                  <input type="checkbox" id="pricerAllowBelowFloor" onchange="buildPricerPreview()" style="width:14px;height:14px;accent-color:#ff9500">
+                  ⚠ Allow prices below <b>R150</b> (override absolute floor + min floor + no-cost skip)
+                </label>
               </div>
 
               <label style="font-size:13px;display:flex;align-items:center;gap:8px;color:var(--muted);cursor:pointer">
@@ -1653,8 +1657,12 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
           <span style="font-size:11px;color:var(--muted)">Min profit %:</span>
           <select id="editMinProfitPct" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:12px;padding:3px 6px;border-radius:4px;outline:none" onchange="updateEditCalcPreview()">
+            <option value="3">3%</option>
+            <option value="4">4%</option>
             <option value="5">5%</option>
+            <option value="6">6%</option>
             <option value="7" selected>7%</option>
+            <option value="8">8%</option>
             <option value="10">10%</option>
             <option value="12">12%</option>
             <option value="15">15%</option>
@@ -1710,6 +1718,13 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
       style="width:100%;background:var(--surface2);border:1px solid #a78bfa;color:#a78bfa;font-family:'Space Mono',monospace;font-size:13px;padding:8px 10px;border-radius:6px;outline:none"
       oninput="updatePushPreview()">
 
+    <div id="pushFloorOverrideWrap" style="display:none;margin-top:8px;padding:8px 10px;background:#2a1f0e;border:1px solid #ff9500;border-radius:6px;font-size:11px;color:#ffd60a">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="pushAllowBelowFloor" onchange="updatePushPreview()" style="width:14px;height:14px;accent-color:#ff9500">
+        ⚠ Allow price below <b>R150</b> (override absolute floor)
+      </label>
+    </div>
+
     <div id="pushGuards" style="margin-top:12px;padding:10px;background:var(--surface2);border-radius:6px;font-size:11px;color:var(--muted);line-height:1.7"></div>
     <div id="pushPreview" style="margin-top:10px;padding:10px;background:var(--surface2);border-radius:6px;font-size:12px;line-height:1.7"></div>
     <div id="pushResult" style="margin-top:10px;font-size:12px;line-height:1.6"></div>
@@ -1730,6 +1745,13 @@ const SELLER_KEY  = 'makro_seller_name';
 const ORDERS_KEY   = 'makro_orders';
 const INVOICES_KEY = 'makro_invoices';
 const RECON_KEY    = 'makro_recon';
+
+// ABSOLUTE PRICE FLOOR — no automated price update may ever go below this
+// without the user explicitly ticking the override. Prevents R1-glitch
+// disasters (e.g. the Takealot incident). Applies to push options, the bulk
+// updater and auto-reprice. Manual edits in the Products tab are the user's
+// own explicit action and are not clamped.
+const ABSOLUTE_PRICE_FLOOR = 150;
 
 // Channel badge colors
 const CHANNEL_INFO = {
@@ -1814,7 +1836,7 @@ function deduplicateProducts(products) {
       var existing = result[seen[key]];
       var fields = ['sku','title','url','seller','status','buybox_price','cost_price',
                     'min_price','max_price','cost_supplier','lastChecked','pending_price',
-                    'pending_updated','history'];
+                    'pending_updated','min_profit_pct','history'];
       fields.forEach(function(f) {
         if (f === 'history') {
           // Merge history arrays, dedupe by ts
@@ -2666,14 +2688,24 @@ function getMinProfitPct() {
   return (!isNaN(v) && v > 0) ? v / 100 : 0.07; // default 7%
 }
 
+// Per-product min profit % override — falls back to the global setting.
+// Each product can carry its own min_profit_pct (e.g. 5%, 7%, 3%) so the
+// auto-calculated Min/Max prices differ per product line.
+function getProductProfitPct(p) {
+  if (p && p.min_profit_pct != null && !isNaN(p.min_profit_pct) && p.min_profit_pct > 0) {
+    return p.min_profit_pct / 100;
+  }
+  return getMinProfitPct();
+}
+
 // Min price to achieve target profit margin % of selling price after Makro fees
 // Makro takes: 10% commission + delivery fee (R50/<1500, R120/1500-3000, R200/>3000)
 // Solve: price × (1 - 0.10 - profitPct) = cost + deliveryFee
 // => price = (cost + deliveryFee) / (1 - 0.10 - profitPct)
 // e.g. 7% margin: price = (cost + 50) / 0.83
-function calcMinViablePrice(costPrice) {
+function calcMinViablePrice(costPrice, profitPct) {
   if (!costPrice || costPrice <= 0) return null;
-  var pct = getMinProfitPct(); // e.g. 0.07
+  var pct = (profitPct != null && !isNaN(profitPct) && profitPct > 0) ? profitPct : getMinProfitPct(); // e.g. 0.07
   var divisor = 1 - 0.10 - pct; // e.g. 0.83 for 7%
   if (divisor <= 0) return null; // sanity check
   var p50  = (costPrice + 50)  / divisor;
@@ -2703,14 +2735,16 @@ function autoReprice(prod) {
     // Even when winning, check if we're selling below min price (at a loss)
     // If so, flag it as pending so generatePriceUpdate raises it to the floor
     if (prod.cost_price > 0) {
-      var winMin = prod.min_price || calcMinViablePrice(prod.cost_price);
+      var winMin = prod.min_price || calcMinViablePrice(prod.cost_price, getProductProfitPct(prod));
       var listings = getListings();
       var winListing = listings.find(function(l) { return l.fsn === prod.fsn; });
       var winMyPrice = winListing ? winListing.myPrice : null;
       if (winMyPrice && winMin && winMyPrice < winMin) {
+        // Never flag a raise below the R150 absolute floor
+        var winRaise = Math.max(winMin, ABSOLUTE_PRICE_FLOOR);
         log('info', '⚠ WIN at LOSS: ' + String(prod.title || prod.fsn || '').slice(0,35) +
           ' | R' + winMyPrice + ' < min R' + winMin + ' — flagged for price raise');
-        prod.pending_price   = winMin;
+        prod.pending_price   = winRaise;
         prod.pending_updated = new Date().toISOString();
         saveProducts();
         updatePendingBadge();
@@ -2728,7 +2762,7 @@ function autoReprice(prod) {
   var minPrice = prod.min_price;
 
   // Always recalculate min from cost — ensures min is never stale
-  var freshMin = calcMinViablePrice(prod.cost_price);
+  var freshMin = calcMinViablePrice(prod.cost_price, getProductProfitPct(prod));
   if (freshMin && freshMin > 0) {
     if (!minPrice || minPrice < freshMin) {
       minPrice = freshMin;
@@ -2742,6 +2776,7 @@ function autoReprice(prod) {
   var maxPrice = prod.max_price || null;
 
   var targetPrice = roundPrice(buybox - 1);   // beat by R1, rounded to whole number
+  if (targetPrice < ABSOLUTE_PRICE_FLOOR) targetPrice = ABSOLUTE_PRICE_FLOOR; // never below R150 absolute floor
   if (targetPrice < minPrice) targetPrice = minPrice;   // never below floor
   if (maxPrice && targetPrice > maxPrice) targetPrice = maxPrice; // never above ceiling
 
@@ -3223,13 +3258,21 @@ function renderProducts() {
           : `<button class="action-btn" style="font-size:10px;color:#60a5fa;border-color:#60a5fa44" onclick="openEditModal(${realIdx})">+ Enter Cost</button>`}
       </td>
       <td>
-        <input type="number" step="1" min="0"
-          value="${p.min_price != null ? p.min_price : ''}"
-          placeholder="—"
-          title="Min sell price for this product"
-          style="width:54px;background:var(--surface2);border:1px solid var(--border);color:var(--accent3);font-family:'Space Mono',monospace;font-size:11px;padding:3px 5px;border-radius:4px;text-align:right"
-          onchange="setProductPriceSilent(${realIdx},'min_price',this.value)"
-        >
+        <div style="display:flex;flex-direction:column;gap:2px;align-items:flex-end">
+          <input type="number" step="1" min="0"
+            value="${p.min_price != null ? p.min_price : ''}"
+            placeholder="—"
+            title="Min sell price for this product"
+            style="width:54px;background:var(--surface2);border:1px solid var(--border);color:var(--accent3);font-family:'Space Mono',monospace;font-size:11px;padding:3px 5px;border-radius:4px;text-align:right"
+            onchange="setProductPriceSilent(${realIdx},'min_price',this.value)"
+          >
+          ${(() => {
+            var gp = Math.round(getMinProfitPct() * 100);
+            var pp = p.min_profit_pct != null && p.min_profit_pct > 0 ? Math.round(p.min_profit_pct) : gp;
+            var isOverride = pp !== gp;
+            return `<span style="font-size:9px;color:${isOverride ? '#ffd60a' : 'var(--muted)'}" title="${isOverride ? 'Per-product min profit % override' : 'Global min profit %'}">${pp}% ${isOverride ? '✎' : ''}</span>`;
+          })()}
+        </div>
       </td>
       <td>
         <input type="number" step="1" min="0"
@@ -3655,8 +3698,8 @@ async function buildCostLookup(force) {
 function applyCostToProduct(p, match) {
   p.cost_price    = match.cost;
   p.cost_supplier = match.supplier;
-  // Always recalculate min price from current profit % setting + cost
-  p.min_price = calcMinViablePrice(match.cost);
+  // Always recalculate min price from THIS product's profit % (or global) + cost
+  p.min_price = calcMinViablePrice(match.cost, getProductProfitPct(p));
   // Only use supplier max if they provide one, otherwise auto-calc 20% above min
   if (match.maxPrice != null) {
     p.max_price = match.maxPrice;
@@ -4047,18 +4090,18 @@ async function syncCostsFromSheet() {
 // Recalculate min (and max) prices for all products that have a cost price,
 // using the current min_profit_pct setting. Call after changing the profit % slider.
 function recalcAllMinPrices() {
-  var pct = getMinProfitPct() * 100;
   var updated = 0;
   state.products.forEach(function(p) {
     if (!p.cost_price || p.cost_price <= 0) return;
-    p.min_price = calcMinViablePrice(p.cost_price);
+    var pct = getProductProfitPct(p) * 100;
+    p.min_price = calcMinViablePrice(p.cost_price, getProductProfitPct(p));
     p.max_price = calcAutoMaxPrice(p.min_price);
     updated++;
   });
   if (updated > 0) {
     saveProducts();
     renderProducts();
-    alert('✅ Recalculated min/max prices for ' + updated + ' products at ' + pct.toFixed(0) + '% min profit.');
+    alert('✅ Recalculated min/max prices for ' + updated + ' products (per-product profit % where set, else global).');
   } else {
     alert('⚠ No products with cost prices found — sync costs first.');
   }
@@ -4105,9 +4148,10 @@ function openEditModal(idx) {
   document.getElementById('editMinInput').value  = p.min_price != null ? p.min_price : '';
   document.getElementById('editMaxInput').value  = p.max_price != null ? p.max_price : '';
 
-  // Set profit pct selector to saved global pref
+  // Set profit pct selector — per-product override if set, else global pref
   var savedPct = parseFloat(localStorage.getItem('min_profit_pct')) || 7;
-  document.getElementById('editMinProfitPct').value = savedPct;
+  var prodPct  = (p.min_profit_pct != null && p.min_profit_pct > 0) ? p.min_profit_pct : savedPct;
+  document.getElementById('editMinProfitPct').value = prodPct;
 
   updateEditCalcPreview();
 
@@ -4125,8 +4169,8 @@ function openEditModal(idx) {
 function updateEditCalcPreview() {
   var cost = parseFloat(document.getElementById('editCostInput').value);
   var pct  = parseFloat(document.getElementById('editMinProfitPct').value) || 7;
-  // Save pct as global preference
-  localStorage.setItem('min_profit_pct', pct);
+  // NOTE: pct is now per-product — saved to the product on Save, not globally.
+  // The global default lives in Settings (min_profit_pct).
 
   var preview = document.getElementById('editCalcPreview');
   var minHint = document.getElementById('editMinHint');
@@ -4138,7 +4182,7 @@ function updateEditCalcPreview() {
     return;
   }
 
-  var autoMin = calcMinViablePrice(cost);
+  var autoMin = calcMinViablePrice(cost, pct / 100);
   var fees    = makroFees(autoMin);
   var profit  = autoMin - fees - cost;
   var profitPct = (profit / autoMin * 100).toFixed(1);
@@ -4183,8 +4227,8 @@ function saveEditModal() {
   var max  = document.getElementById('editMaxInput').value.trim();
   var pct  = parseFloat(document.getElementById('editMinProfitPct').value) || 7;
 
-  // Save profit % preference globally
-  localStorage.setItem('min_profit_pct', pct);
+  // Per-product min profit % override — drives auto Min/Max for THIS product
+  p.min_profit_pct = pct;
 
   if (fsn)  p.fsn = fsn;
   if (sku)  p.sku = sku;
@@ -4192,13 +4236,13 @@ function saveEditModal() {
   if (!isNaN(cost) && cost > 0) {
     p.cost_price    = cost;
     p.cost_supplier = p.cost_supplier || 'Manual';
-    // Auto-recalc min price unless user provided one
-    if (!min) p.min_price = calcMinViablePrice(cost);
+    // Auto-recalc min price unless user provided one — using THIS product's pct
+    if (!min) p.min_price = calcMinViablePrice(cost, pct / 100);
   }
 
   // If product has a cost but min_price is missing or zero, always auto-calc it
   if (p.cost_price > 0 && (!p.min_price || p.min_price <= 0)) {
-    p.min_price = calcMinViablePrice(p.cost_price);
+    p.min_price = calcMinViablePrice(p.cost_price, pct / 100);
   }
 
   if (min !== '') {
@@ -4342,35 +4386,52 @@ function updatePushPreview() {
 
   var guards = document.getElementById('pushGuards');
   var preview = document.getElementById('pushPreview');
+  var overrideWrap = document.getElementById('pushFloorOverrideWrap');
+  var allowBelow = document.getElementById('pushAllowBelowFloor') && document.getElementById('pushAllowBelowFloor').checked;
 
-  // Guards: min_price floor, max_price ceiling, basePrice ceiling
+  // Guards: min_price floor, max_price ceiling, basePrice ceiling, cost price, R150 absolute floor
   var listing = getListings().find(function(l) { return l.fsn === p.fsn; });
   var hardFloor = p.min_price > 0 ? p.min_price : 0;
   var basePrice = listing && listing.basePrice > 0 ? listing.basePrice : 0;
   var ceiling = basePrice > 0 ? (p.max_price > 0 ? Math.min(basePrice, p.max_price) : basePrice) : (p.max_price > 0 ? p.max_price : 0);
+  var hasCost = p.cost_price > 0;
 
   var guardLines = [];
   guardLines.push('🛡 Min floor: <b style="color:var(--accent3)">' + (hardFloor > 0 ? 'R' + hardFloor : '— none set') + '</b>');
   guardLines.push('🛡 Max ceiling: <b style="color:#a78bfa">' + (ceiling > 0 ? 'R' + ceiling : '— none set') + '</b>');
   if (basePrice > 0) guardLines.push('🛡 Base Price (RRP): <b style="color:#a78bfa">R' + basePrice + '</b>');
+  guardLines.push('🛡 Absolute floor: <b style="color:#ff9500">R' + ABSOLUTE_PRICE_FLOOR + '</b>');
+  guardLines.push('🛡 Cost price: <b style="color:' + (hasCost ? 'var(--accent)' : '#ff4444') + '">' + (hasCost ? 'R' + Math.round(p.cost_price) : '⚠ NONE — update blocked') + '</b>');
   guards.innerHTML = guardLines.join(' &nbsp;·&nbsp; ');
 
   if (newPrice === null) {
     preview.innerHTML = '<span style="color:var(--muted)">Select an option or enter a custom price.</span>';
+    if (overrideWrap) overrideWrap.style.display = 'none';
     return;
   }
 
+  // Show the override checkbox whenever any guard would be violated
+  var violatesFloor = newPrice < ABSOLUTE_PRICE_FLOOR;
+  var violatesMin   = hardFloor > 0 && newPrice < hardFloor;
+  var violatesCost  = !hasCost;
+  if (overrideWrap) overrideWrap.style.display = (violatesFloor || violatesMin || violatesCost) ? 'block' : 'none';
+
   var clamped = [];
-  if (hardFloor > 0 && newPrice < hardFloor) { newPrice = hardFloor; clamped.push('raised to floor'); }
-  if (ceiling > 0 && newPrice > ceiling)     { newPrice = ceiling; clamped.push('lowered to ceiling'); }
+  if (!allowBelow) {
+    if (violatesFloor) { newPrice = ABSOLUTE_PRICE_FLOOR; clamped.push('raised to R' + ABSOLUTE_PRICE_FLOOR + ' absolute floor'); }
+    if (violatesMin)   { newPrice = hardFloor; clamped.push('raised to min floor'); }
+  }
+  if (ceiling > 0 && newPrice > ceiling) { newPrice = ceiling; clamped.push('lowered to ceiling'); }
 
   var oldPrice = listing && listing.myPrice > 0 ? Math.round(listing.myPrice) : null;
   var diff = oldPrice !== null ? newPrice - oldPrice : null;
-  preview.innerHTML =
+  var html =
     '<div style="font-size:13px">New price: <b style="color:var(--accent);font-size:16px">R' + newPrice + '</b>' +
     (diff !== null ? ' <span style="color:' + (diff < 0 ? '#ff9500' : 'var(--accent)') + '">(' + (diff > 0 ? '+' : '') + 'R' + diff + ' vs current)</span>' : '') +
-    '</div>' +
-    (clamped.length ? '<div style="color:#ff9500;font-size:11px;margin-top:4px">⚠ ' + clamped.join(', ') + ' by price guards</div>' : '');
+    '</div>';
+  if (clamped.length) html += '<div style="color:#ff9500;font-size:11px;margin-top:4px">⚠ ' + clamped.join(', ') + ' by price guards</div>';
+  if (violatesCost && !allowBelow) html += '<div style="color:#ff4444;font-size:11px;margin-top:4px">⛔ No cost price — update blocked. Tick the override to force.</div>';
+  preview.innerHTML = html;
 }
 
 function closePushModal() {
@@ -4397,7 +4458,30 @@ function pushProductToPortal() {
   var hardFloor = p.min_price > 0 ? p.min_price : 0;
   var basePrice = listing && listing.basePrice > 0 ? listing.basePrice : 0;
   var ceiling = basePrice > 0 ? (p.max_price > 0 ? Math.min(basePrice, p.max_price) : basePrice) : (p.max_price > 0 ? p.max_price : 0);
-  if (hardFloor > 0 && newPrice < hardFloor) newPrice = hardFloor;
+  var allowBelow = document.getElementById('pushAllowBelowFloor') && document.getElementById('pushAllowBelowFloor').checked;
+
+  // FAIL-SAFES (all overridable via the checkbox):
+  // 1) Never below the R150 absolute floor
+  // 2) Never below the product's min floor
+  // 3) Never update without a cost price
+  if (!allowBelow) {
+    if (newPrice < ABSOLUTE_PRICE_FLOOR) {
+      document.getElementById('pushResult').innerHTML =
+        '<span style="color:#ff4444">❌ R' + newPrice + ' is below the R' + ABSOLUTE_PRICE_FLOOR + ' absolute floor.<br>Tick "Allow price below R150" to override.</span>';
+      return;
+    }
+    if (hardFloor > 0 && newPrice < hardFloor) {
+      document.getElementById('pushResult').innerHTML =
+        '<span style="color:#ff4444">❌ R' + newPrice + ' is below this product\'s min floor of R' + hardFloor + '.<br>Tick "Allow price below R150" to override.</span>';
+      return;
+    }
+    if (!(p.cost_price > 0)) {
+      document.getElementById('pushResult').innerHTML =
+        '<span style="color:#ff4444">❌ No cost price on this product — update blocked.<br>Add a cost price in the Products tab, or tick "Allow price below R150" to override.</span>';
+      return;
+    }
+  }
+  if (!allowBelow && hardFloor > 0 && newPrice < hardFloor) newPrice = hardFloor;
   if (ceiling > 0 && newPrice > ceiling) newPrice = ceiling;
 
   // Need the raw listing template to build the XLS — Makro requires the exact
@@ -4555,10 +4639,10 @@ function updateProductCount() {
 
 function exportCSV() {
   if (state.products.length === 0) { alert('No products to export.'); return; }
-  const headers = ['Title', 'SKU', 'FSN', 'BuyBox Price', 'Seller', 'Status', 'Cost Price', 'Min Price', 'Max Price', 'Last Checked'];
+  const headers = ['Title', 'SKU', 'FSN', 'BuyBox Price', 'Seller', 'Status', 'Cost Price', 'Min Price', 'Max Price', 'Min Profit %', 'Last Checked'];
   const rows = state.products.map(p => [
     p.title, p.sku, p.fsn, p.buybox_price, p.seller, p.status,
-    p.cost_price || '', p.min_price || '', p.max_price || '', p.lastChecked
+    p.cost_price || '', p.min_price || '', p.max_price || '', p.min_profit_pct || '', p.lastChecked
   ].map(v => '"' + String(v||'').replace(/"/g,'""') + '"'));
   const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
@@ -5328,6 +5412,7 @@ function buildPricerPreview() {
   const maxEnabled  = document.getElementById('pricerMaxEnabled').checked;
   const minPrice    = minEnabled ? parseFloat(document.getElementById('pricerMinPrice').value) || 0    : null;
   const maxPrice    = maxEnabled ? parseFloat(document.getElementById('pricerMaxPrice').value) || 9999 : null;
+  const allowBelow  = document.getElementById('pricerAllowBelowFloor') && document.getElementById('pricerAllowBelowFloor').checked;
 
   const scrapedMap = {};
   state.products.forEach(function(p) { if (p.fsn) scrapedMap[p.fsn] = p; });
@@ -5336,21 +5421,30 @@ function buildPricerPreview() {
   listings.forEach(function(l) {
     const scraped = scrapedMap[l.fsn];
     if (!scraped) return;
-    // Safety guard — skip products with no cost or no min price
-    if (!(scraped.cost_price > 0) || !(scraped.min_price > 0)) return;
+    // Safety guard — skip products with no cost or no min price (unless overridden)
+    if (!allowBelow && (!(scraped.cost_price > 0) || !(scraped.min_price > 0))) return;
     if (skipUnknown && (!scraped.buybox_price || scraped.buybox_price <= 0)) return;
     if (winsOnly && scraped.status === 'win') return;
     const result = calcNewPrice(l.myPrice, scraped.buybox_price, strategy, beatBy, floorPct, minPrice, maxPrice);
     if (!result) return;
+    // R150 absolute floor (unless overridden) — clamp for preview consistency
+    var previewPrice = result.price;
+    var previewClamped = result.clamped;
+    var previewClampDir = result.clampDir;
+    if (!allowBelow && previewPrice < ABSOLUTE_PRICE_FLOOR) {
+      previewPrice = ABSOLUTE_PRICE_FLOOR;
+      previewClamped = true;
+      previewClampDir = 'floor';
+    }
     rows.push({
       fsn:      l.fsn,
       sku:      l.sku,
       title:    l.title,
       myPrice:  l.myPrice,
       buybox:   scraped.buybox_price,
-      newPrice: result.price,
-      clamped:  result.clamped,
-      clampDir: result.clampDir,
+      newPrice: previewPrice,
+      clamped:  previewClamped,
+      clampDir: previewClampDir,
       status:   scraped.status,
       seller:   scraped.seller
     });
@@ -5428,7 +5522,7 @@ function buildPricerPreview() {
     const changeColor = r.clamped ? '#ff9500' : (change < 0 ? '#ff9500' : 'var(--accent)');
     const changeStr   = (change >= 0 ? '+' : '') + 'R' + change.toFixed(2);
     const rowStyle    = r.clamped ? 'opacity:0.5;background:rgba(255,149,0,0.05)' : '';
-    const clampBadge  = r.clamped ? ' <span style="color:#ff9500;font-size:9px">⚠ ' + r.clampDir.toUpperCase() + '</span>' : '';
+    const clampBadge  = r.clamped ? ' <span style="color:#ff9500;font-size:9px">⚠ ' + (r.clampDir === 'floor' ? 'R150 FLOOR' : r.clampDir.toUpperCase()) + '</span>' : '';
     html += '<tr style="border-bottom:1px solid var(--border);' + rowStyle + '">' +
       '<td style="padding:5px 4px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml(r.title) + '">' +
         escHtml(r.title.slice(0, 28)) + clampBadge + '</td>' +
@@ -5467,6 +5561,7 @@ function generatePriceUpdate() {
   const maxEnabled  = document.getElementById('pricerMaxEnabled').checked;
   const minPrice    = minEnabled ? parseFloat(document.getElementById('pricerMinPrice').value) || 0    : null;
   const maxPrice    = maxEnabled ? parseFloat(document.getElementById('pricerMaxPrice').value) || 9999 : null;
+  const allowBelow  = document.getElementById('pricerAllowBelowFloor') && document.getElementById('pricerAllowBelowFloor').checked;
 
   // Check we have the raw template file — Makro requires the exact exported
   // file (only price/stock may change), so we never rebuild it.
@@ -5492,13 +5587,15 @@ function generatePriceUpdate() {
 
     // ── SAFETY GUARD: never reprice without cost + min price set ────────────
     // Without these we can't know if the new price is profitable.
-    if (!(scraped.cost_price > 0) || !(scraped.min_price > 0)) {
+    // (The "Allow below R150" override bypasses this guard.)
+    if (!allowBelow && (!(scraped.cost_price > 0) || !(scraped.min_price > 0))) {
       skippedNoCost++;
       return;
     }
 
     // ── ABSOLUTE HARD FLOOR — applied to EVERY price path, no exceptions ───
-    var hardFloor = scraped.min_price;   // guaranteed > 0 (checked above)
+    // R150 absolute floor (unless overridden) + product min floor.
+    var hardFloor = scraped.min_price > 0 ? scraped.min_price : 0;   // 0 when overridden & missing
 
     // ── BASE PRICE (RRP) CEILING — never write a price above Makro's Base Price ───
     // Base Price comes from col I of the S_listing XLS. It is the RRP ceiling on Makro.
@@ -5518,7 +5615,10 @@ function generatePriceUpdate() {
     // Helper: apply floor + ceiling to any candidate price
     function applyGuards(price) {
       if (!window.XLSX) { ensureXLSX(function(){ applyGuards(price); }); return; }
-      if (price < hardFloor) price = hardFloor;
+      if (!allowBelow) {
+        if (price < ABSOLUTE_PRICE_FLOOR) price = ABSOLUTE_PRICE_FLOOR;
+        if (hardFloor > 0 && price < hardFloor) price = hardFloor;
+      }
       if (effectiveCeiling && price > effectiveCeiling) price = effectiveCeiling;
       return price;
     }
@@ -7928,6 +8028,7 @@ function importMultiChannelProducts(input) {
       if (hl.includes('amazon') && (hl.includes('price') || hl.includes('rrp') || hl.includes('sale'))) colMap.amazonPrice = i;
       if (hl.includes('retail') || (hl.includes('price') && !hl.includes('cost') && !hl.includes('sale') && !hl.includes('wholesale'))) colMap.retailPrice = i;
       if (hl.includes('cost')) colMap.costPrice = i;
+      if (hl.includes('min profit') || hl.includes('profit %') || hl.includes('profit pct')) colMap.minProfitPct = i;
       if (hl.includes('sale') || hl.includes('your price')) colMap.salePrice = i;
       if (hl.includes('soh') || hl.includes('stock')) colMap.stock = i;
       if (hl.includes('category')) colMap.category = i;
@@ -7980,6 +8081,7 @@ function importMultiChannelProducts(input) {
       else if (colMap.salePrice !== undefined) buyboxPrice = parseMoney(fields[colMap.salePrice]);
 
       var costPrice = colMap.costPrice !== undefined ? parseMoney(fields[colMap.costPrice]) : 0;
+      var minProfitPct = colMap.minProfitPct !== undefined ? parseFloat((fields[colMap.minProfitPct] || '').toString().replace(/[%\s]/g,'')) : NaN;
 
       var existing = state.products.find(function(p) {
         return (p.url === productUrl && productUrl) || (p.fsn && p.fsn === fsn && fsn) || (p.sku && p.sku === sku && sku);
@@ -7993,6 +8095,7 @@ function importMultiChannelProducts(input) {
         if (sku) existing.sku = sku;
         existing.buybox_price = buyboxPrice > 0 ? buyboxPrice : existing.buybox_price;
         if (costPrice > 0) existing.cost_price = costPrice;
+        if (!isNaN(minProfitPct) && minProfitPct > 0) existing.min_profit_pct = minProfitPct;
         existing.lastChecked = new Date().toISOString();
         updated++;
       } else {
@@ -8004,6 +8107,7 @@ function importMultiChannelProducts(input) {
           channel: channel,
           buybox_price: buyboxPrice,
           cost_price: costPrice,
+          min_profit_pct: !isNaN(minProfitPct) && minProfitPct > 0 ? minProfitPct : undefined,
           status: '',
           seller: '',
           lastChecked: new Date().toISOString(),
