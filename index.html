@@ -367,16 +367,17 @@
     text-transform:uppercase;
     letter-spacing:1px;
     color:var(--muted);
-    padding:10px 12px;
+    padding:8px 6px;
     text-align:left;
     border-bottom:1px solid var(--border);
+    white-space:nowrap;
   }
-  .product-table td { padding:12px 12px; border-bottom:1px solid rgba(30,37,48,.5); vertical-align:middle; }
+  .product-table td { padding:8px 6px; border-bottom:1px solid rgba(30,37,48,.5); vertical-align:middle; }
   .product-table tr:hover td { background:rgba(0,229,160,.03); }
   .product-table tr:last-child td { border:none; }
 
-  .prod-title { font-size:13px; font-weight:500; line-height:1.4; max-width:280px; }
-  .prod-url { font-size:11px; color:var(--accent); text-decoration:none; display:block; font-family:'Space Mono',monospace; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:200px; }
+  .prod-title { font-size:13px; font-weight:500; line-height:1.4; max-width:160px; }
+  .prod-url { font-size:11px; color:var(--accent); text-decoration:none; display:block; font-family:'Space Mono',monospace; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:110px; }
   .prod-url:hover { text-decoration:underline; }
 
   .price-cell { font-family:'Space Mono',monospace; font-size:14px; font-weight:700; }
@@ -880,9 +881,14 @@
           <button class="btn-secondary danger" style="width:auto;padding:8px 16px;color:#ff9500;border-color:#ff950044" onclick="deleteSelected()">🗑 Delete Selected</button>
           <button class="btn-secondary" style="width:auto;padding:8px 16px" onclick="exportCSV()">⬇ Export CSV</button>
           <button class="btn-secondary" style="width:auto;padding:8px 16px;color:#ffd60a;border-color:rgba(255,214,10,0.4)" onclick="exportUnmatchedCSV()" title="Export products with no SKU match so you can fix and re-upload">⬇ Export Unmatched</button>
+          <button class="btn-secondary" style="width:auto;padding:8px 16px;color:#ff9500;border-color:rgba(255,149,0,0.4)" onclick="exportMissingCosts()" title="Export products that have a SKU but no cost price yet — add these SKUs to your supplier sheets">⬇ Export Missing Costs</button>
           <button class="btn-secondary" style="width:auto;padding:8px 16px" onclick="clearAllConfirm()">🗑 Clear All</button>
         </div>
       </div>
+
+      <div id="matchReport" style="display:none;font-size:12px;color:var(--text);background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 14px;margin-bottom:10px;font-family:'Space Mono',monospace"></div>
+
+      <div id="prodPaginationTop" style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:10px;font-size:13px"></div>
 
       <div class="table-wrap">
         <table class="product-table">
@@ -893,18 +899,18 @@
               <th>FSN</th>
               <th>SKU</th>
               <th style="width:100px">Channel</th>
-              <th title="RRP / Base Price from your S_listing">Base Price</th>
-              <th>My Price</th>
+              <th title="RRP / Base Price from your S_listing">Base R</th>
+              <th title="Your current price on Makro">My R</th>
               <th>Stock</th>
-              <th>Buy Box Price</th>
+              <th title="Current Buy Box price">BuyBox</th>
               <th>Cost</th>
               <th title="Min sell price — never go below">Min R</th>
               <th title="Max sell price — never go above">Max R</th>
               <th>Margin</th>
-              <th title="Pending reprice or suggested new price">New Price</th>
+              <th title="Pending reprice or suggested new price">New R</th>
               <th>Seller</th>
               <th>Status</th>
-              <th>Last Checked</th>
+              <th title="Last time this product was checked">Checked</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -2247,6 +2253,18 @@ function applyListingsData(listings, counts) {
   // ── Auto-match cost prices from supplier sheets (by SKU) ──
   autoMatchCostsAfterImport();
 
+  // ── Match report (persistent — numbers don't vanish with the banner) ──
+  lastMatchReport = {
+    listings: listings.length,
+    skuMatched: skuCount,
+    withSku: state.products.filter(function(p){ return p.sku; }).length,
+    withCost: state.products.filter(function(p){ return p.cost_price > 0; }).length,
+    missingCost: state.products.filter(function(p){ return p.sku && !(p.cost_price > 0); }).length,
+    noSku: state.products.filter(function(p){ return !p.sku; }).length,
+    at: new Date().toISOString()
+  };
+  renderMatchReport();
+
   renderProducts();
   renderDashboard();
   updateProductCount();
@@ -2257,6 +2275,32 @@ function applyListingsData(listings, counts) {
     (skuCount > 0 ? ', matched ' + skuCount + ' SKU(s)' : '') +
     (basePriceFixed > 0 ? ', auto-raised ' + basePriceFixed + ' Base Price(s) to Max Price' : '') + '.';
   showImportBanner(msg, '#00e5a0');
+}
+
+// Persistent match report line under the Products toolbar — shows the last
+// pull's SKU/cost matching numbers so they don't vanish with the banner.
+function renderMatchReport() {
+  var el = document.getElementById('matchReport');
+  if (!el) return;
+  if (!lastMatchReport) { el.style.display = 'none'; return; }
+  var r = lastMatchReport;
+  el.style.display = 'block';
+  el.innerHTML = '📊 <b>' + r.listings + '</b> listings pulled · <b style="color:#818cf8">' + r.skuMatched + '</b> SKU(s) stamped · <b style="color:#60a5fa">' + r.withCost + '</b> products with cost · <b style="color:#ffd60a">' + r.missingCost + '</b> missing cost · <b style="color:var(--muted)">' + r.noSku + '</b> no SKU · <span style="color:var(--muted)">' + new Date(r.at).toLocaleTimeString('en-ZA') + '</span>';
+}
+
+// Export products that have a SKU but no cost price yet — the user adds these
+// SKUs to their supplier sheets, then one re-pull matches them.
+function exportMissingCosts() {
+  var missing = state.products.filter(function(p) { return p.sku && !(p.cost_price > 0); });
+  if (missing.length === 0) { alert('✅ All products with a SKU already have a cost — nothing to export!'); return; }
+  var headers = ['SKU', 'Title', 'FSN', 'Channel', 'BuyBox Price', 'Status'];
+  var rows = missing.map(function(p) {
+    return [p.sku||'', p.title||'', p.fsn||'', p.channel||'makro', p.buybox_price||'', p.status||'']
+      .map(function(v){ return '"' + String(v).replace(/"/g,'""') + '"'; });
+  });
+  var csv = [headers.map(function(h){ return '"'+h+'"'; }), ...rows].map(function(r){ return r.join(','); }).join('\n');
+  downloadFile(csv, 'makro-missing-costs-' + new Date().toISOString().slice(0,10) + '.csv');
+  alert('📥 Exported ' + missing.length + ' products missing a cost.\n\nAdd these SKUs to your supplier cost sheets, then click 💲 Sync Costs or re-pull listings.');
 }
 
 // Also check via chrome.runtime if available (same page)
@@ -2319,6 +2363,7 @@ function syncSellerConfig() {
 let scrapeQueue = [];
 let scrapeIdx   = 0;
 let prodPage    = 1;
+let lastMatchReport = null;
 
 function parseUrls() {
   const raw = document.getElementById('urlInput').value;
@@ -3061,7 +3106,7 @@ function renderProducts() {
   tbody.innerHTML = pageProds.map((p, i) => {
     const statusClass = p.status === 'win' ? 'win' : p.status === 'lose' ? 'lose' : 'unknown';
     const statusLabel = p.status === 'win' ? '✓ WIN' : p.status === 'lose' ? '✗ LOSE' : '? UNKNOWN';
-    const t = p.lastChecked ? new Date(p.lastChecked).toLocaleString() : '—';
+    const t = p.lastChecked ? new Date(p.lastChecked).toLocaleDateString('en-ZA') + ' ' + new Date(p.lastChecked).toLocaleTimeString('en-ZA', {hour:'2-digit',minute:'2-digit'}) : '—';
     const realIdx = findRealIdx(p);
     const myName = getMySellerName().toLowerCase().trim();
     const listing = listingsMap[p.fsn] || null;
@@ -3087,7 +3132,7 @@ function renderProducts() {
           value="${escHtml(p.fsn||'')}"
           placeholder="— enter FSN"
           title="Makro FSN / product ID — click to edit"
-          style="width:160px;background:transparent;border:1px solid transparent;color:var(--muted);font-family:'Space Mono',monospace;font-size:11px;padding:2px 4px;border-radius:4px;outline:none;cursor:pointer"
+          style="width:100px;background:transparent;border:1px solid transparent;color:var(--muted);font-family:'Space Mono',monospace;font-size:11px;padding:2px 4px;border-radius:4px;outline:none;cursor:pointer"
           onfocus="this.style.borderColor='var(--border)';this.style.background='var(--surface2)'"
           onblur="this.style.borderColor='transparent';this.style.background='transparent';setProductPriceSilent(${realIdx},'fsn',this.value)"
           onkeydown="if(event.key==='Enter')this.blur()"
@@ -3116,7 +3161,7 @@ function renderProducts() {
               value="${bp > 0 ? bp.toFixed(0) : ''}"
               placeholder="—"
               title="Base Price (RRP) — price will never go above this. Click to edit."
-              style="width:75px;background:var(--surface2);border:1px solid ${warn ? '#ff4d6d' : 'var(--border)'};color:#a78bfa;font-family:'Space Mono',monospace;font-size:11px;padding:3px 5px;border-radius:4px;text-align:right"
+              style="width:56px;background:var(--surface2);border:1px solid ${warn ? '#ff4d6d' : 'var(--border)'};color:#a78bfa;font-family:'Space Mono',monospace;font-size:11px;padding:3px 5px;border-radius:4px;text-align:right"
               onchange="saveListingField('${p.fsn}','basePrice',this.value)"
             >
             ${warn ? `<span style="font-size:9px;color:#ff4d6d" title="⚠ Base Price R${bp} is below Max Price R${mp} — raise Base Price or lower Max Price">⚠ below max</span>` : ''}
@@ -3126,7 +3171,7 @@ function renderProducts() {
       <td>${myPrice}${priceIndicator}</td>
        <td>${myStock}</td>
       <td>
-        <span class="price-cell ${p.status==='win'?'win':'lose'}">R ${(p.buybox_price||0).toFixed(2)}</span>
+        <span class="price-cell ${p.status==='win'?'win':'lose'}" style="font-size:12px">R ${(p.buybox_price||0).toFixed(2)}</span>
        </td>
       <td>
         ${p.cost_price > 0
@@ -3142,7 +3187,7 @@ function renderProducts() {
           value="${p.min_price != null ? p.min_price : ''}"
           placeholder="—"
           title="Min sell price for this product"
-          style="width:70px;background:var(--surface2);border:1px solid var(--border);color:var(--accent3);font-family:'Space Mono',monospace;font-size:11px;padding:3px 5px;border-radius:4px;text-align:right"
+          style="width:54px;background:var(--surface2);border:1px solid var(--border);color:var(--accent3);font-family:'Space Mono',monospace;font-size:11px;padding:3px 5px;border-radius:4px;text-align:right"
           onchange="setProductPriceSilent(${realIdx},'min_price',this.value)"
         >
       </td>
@@ -3151,7 +3196,7 @@ function renderProducts() {
           value="${p.max_price != null ? p.max_price : ''}"
           placeholder="—"
           title="Max sell price for this product"
-          style="width:70px;background:var(--surface2);border:1px solid var(--border);color:#a78bfa;font-family:'Space Mono',monospace;font-size:11px;padding:3px 5px;border-radius:4px;text-align:right"
+          style="width:54px;background:var(--surface2);border:1px solid var(--border);color:#a78bfa;font-family:'Space Mono',monospace;font-size:11px;padding:3px 5px;border-radius:4px;text-align:right"
           onchange="setProductPriceSilent(${realIdx},'max_price',this.value)"
         >
       </td>
@@ -3236,13 +3281,13 @@ function renderProducts() {
         </div>
        </td>
       <td><span class="status-pill ${statusClass}">${statusLabel}</span></td>
-      <td style="font-size:11px;color:var(--muted);white-space:nowrap">${t}</td>
-      <td style="display:flex;gap:4px">
-        <button class="action-btn" onclick="openPushModal(${realIdx})" title="Push new price to seller portal">🚀</button>
-        <button class="action-btn" onclick="syncCostForProduct(${realIdx})" title="Sync cost price from supplier sheets (by SKU)">💲</button>
-        <button class="action-btn" onclick="showHistory(${realIdx})" title="Price history">📈</button>
-        <button class="action-btn" onclick="rescrapeOne(${realIdx})" title="Re-scrape">↻</button>
-        <button class="action-btn danger" onclick="deleteProduct(${realIdx})" title="Delete">✕</button>
+      <td style="font-size:10px;color:var(--muted);white-space:nowrap">${t}</td>
+      <td style="display:flex;gap:2px;white-space:nowrap">
+        <button class="action-btn" style="font-size:10px;padding:1px 3px" onclick="openPushModal(${realIdx})" title="Push new price to seller portal">🚀</button>
+        <button class="action-btn" style="font-size:10px;padding:1px 3px" onclick="syncCostForProduct(${realIdx})" title="Sync cost price from supplier sheets (by SKU)">💲</button>
+        <button class="action-btn" style="font-size:10px;padding:1px 3px" onclick="showHistory(${realIdx})" title="Price history">📈</button>
+        <button class="action-btn" style="font-size:10px;padding:1px 3px" onclick="rescrapeOne(${realIdx})" title="Re-scrape">↻</button>
+        <button class="action-btn danger" style="font-size:10px;padding:1px 3px" onclick="deleteProduct(${realIdx})" title="Delete">✕</button>
       </td>
     </tr>`;
   }).join('');
@@ -3257,24 +3302,26 @@ function renderProducts() {
   // ── POPULATE SELLERS INLINE ───────────────────────────────────────────────
   loadAllSellersInline();
 
-  // ── PAGINATION BAR ────────────────────────────────────────────────────────
+  // ── PAGINATION BAR (top + bottom) ────────────────────────────────────────
+  const pagHtml = buildProdPaginationHtml(pageStart, pageSize, totalProds, totalPages, prodPage);
   const pagEl = document.getElementById('prodPagination');
-  if (pagEl) {
-    if (totalPages <= 1) { pagEl.innerHTML = ''; }
-    else {
-      const btnStyle = (active) => `style="background:${active?'var(--accent)':'var(--surface2)'};color:${active?'#000':'var(--text)'};border:1px solid ${active?'var(--accent)':'var(--border)'};border-radius:5px;padding:5px 11px;cursor:pointer;font-size:12px;font-family:'Space Mono',monospace"`;
-      let html = `<span style="font-size:12px;color:var(--muted)">${pageStart+1}–${Math.min(pageStart+pageSize,totalProds)} of ${totalProds}</span> `;
-      html += `<button ${btnStyle(false)} onclick="prodPage=Math.max(1,prodPage-1);renderProducts()" ${prodPage===1?'disabled':''}>‹ Prev</button>`;
-      // show up to 7 page buttons
-      const startP = Math.max(1, prodPage - 3);
-      const endP   = Math.min(totalPages, startP + 6);
-      for (let pg = startP; pg <= endP; pg++) {
-        html += `<button ${btnStyle(pg===prodPage)} onclick="prodPage=${pg};renderProducts()">${pg}</button>`;
-      }
-      html += `<button ${btnStyle(false)} onclick="prodPage=Math.min(totalPages,prodPage+1);renderProducts()" ${prodPage===totalPages?'disabled':''}>Next ›</button>`;
-      pagEl.innerHTML = html;
-    }
+  const pagTopEl = document.getElementById('prodPaginationTop');
+  if (pagEl) pagEl.innerHTML = pagHtml;
+  if (pagTopEl) pagTopEl.innerHTML = pagHtml;
+}
+
+function buildProdPaginationHtml(pageStart, pageSize, totalProds, totalPages, prodPage) {
+  if (totalPages <= 1) return '';
+  const btnStyle = (active) => `style="background:${active?'var(--accent)':'var(--surface2)'};color:${active?'#000':'var(--text)'};border:1px solid ${active?'var(--accent)':'var(--border)'};border-radius:5px;padding:4px 9px;cursor:pointer;font-size:12px;font-family:'Space Mono',monospace"`;
+  let html = `<span style="font-size:12px;color:var(--muted)">${pageStart+1}–${Math.min(pageStart+pageSize,totalProds)} of ${totalProds}</span> `;
+  html += `<button ${btnStyle(false)} onclick="prodPage=Math.max(1,prodPage-1);renderProducts()" ${prodPage===1?'disabled':''}>‹ Prev</button>`;
+  const startP = Math.max(1, prodPage - 3);
+  const endP   = Math.min(totalPages, startP + 6);
+  for (let pg = startP; pg <= endP; pg++) {
+    html += `<button ${btnStyle(pg===prodPage)} onclick="prodPage=${pg};renderProducts()">${pg}</button>`;
   }
+  html += `<button ${btnStyle(false)} onclick="prodPage=Math.min(totalPages,prodPage+1);renderProducts()" ${prodPage===totalPages?'disabled':''}>Next ›</button>`;
+  return html;
 }
 
 function toggleSelectAll(cb) {
@@ -7537,7 +7584,7 @@ function renderOrders() {
       '<td style="font-family:monospace;font-size:12px;font-weight:600">' + escHtml(o.orderId) + '</td>' +
       '<td style="font-size:11px;color:var(--muted);white-space:nowrap">' + escHtml(o.date) + '</td>' +
       '<td>' + channelBadge + '</td>' +
-      '<td style="font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml(o.product) + '">' + escHtml((o.product||'').slice(0,35)) + '</td>' +
+      '<td style="font-size:12px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml(o.product) + '">' + escHtml((o.product||'').slice(0,35)) + '</td>' +
       '<td style="text-align:center">' + o.qty + '</td>' +
       '<td style="font-family:monospace;font-size:13px;font-weight:700">R ' + o.total.toFixed(2) + '</td>' +
       '<td style="font-family:monospace;font-size:12px;color:var(--accent2)">' + (o.commission > 0 ? 'R ' + o.commission.toFixed(2) : '—') + '</td>' +
@@ -7625,7 +7672,7 @@ function renderPortalOrders() {
       '<td style="font-family:monospace;font-size:12px;font-weight:600">' + escHtml(portalOrderId(o)) + '</td>' +
       '<td style="font-size:11px;color:var(--muted);white-space:nowrap">' + escHtml(date) + '</td>' +
       '<td><span class="status-pill ' + pill + '">' + escHtml(label) + '</span></td>' +
-      '<td style="font-size:12px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml((first.product_details && first.product_details.title) || '') + '">' + escHtml(((first.product_details && first.product_details.title) || '').slice(0, 40)) + '</td>' +
+      '<td style="font-size:12px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml((first.product_details && first.product_details.title) || '') + '">' + escHtml(((first.product_details && first.product_details.title) || '').slice(0, 40)) + '</td>' +
       '<td style="font-family:monospace;font-size:11px">' + escHtml(first.fsn || '') + '</td>' +
       '<td style="font-family:monospace;font-size:11px">' + escHtml(first.sku || '') + '</td>' +
       '<td style="text-align:center">' + qty + '</td>' +
