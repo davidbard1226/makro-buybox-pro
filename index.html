@@ -2254,15 +2254,7 @@ function applyListingsData(listings, counts) {
   autoMatchCostsAfterImport();
 
   // ── Match report (persistent — numbers don't vanish with the banner) ──
-  lastMatchReport = {
-    listings: listings.length,
-    skuMatched: skuCount,
-    withSku: state.products.filter(function(p){ return p.sku; }).length,
-    withCost: state.products.filter(function(p){ return p.cost_price > 0; }).length,
-    missingCost: state.products.filter(function(p){ return p.sku && !(p.cost_price > 0); }).length,
-    noSku: state.products.filter(function(p){ return !p.sku; }).length,
-    at: new Date().toISOString()
-  };
+  lastMatchReport = computeMatchReport(listings.length);
   renderMatchReport();
 
   renderProducts();
@@ -2277,6 +2269,53 @@ function applyListingsData(listings, counts) {
   showImportBanner(msg, '#00e5a0');
 }
 
+// Re-stamp SKUs onto products from the saved listings on every load — so a
+// hard refresh can never wipe matched SKUs (same persistence as orders).
+function restampSkusFromListings() {
+  try {
+    var raw = localStorage.getItem('makro_listings');
+    if (!raw) return 0;
+    var listings = JSON.parse(raw);
+    if (!listings || !listings.length) return 0;
+    var fsnToSku = {}, prefixToSku = {};
+    listings.forEach(function(l) {
+      if (!l.fsn || !l.sku) return;
+      fsnToSku[l.fsn] = l.sku;
+      var short = l.fsn.slice(0, 15);
+      if (!prefixToSku[short]) prefixToSku[short] = l.sku;
+    });
+    var stamped = 0;
+    state.products.forEach(function(p) {
+      if (p.sku && p.sku.startsWith('itm')) p.sku = '';
+      if (!p.fsn) return;
+      var sku = fsnToSku[p.fsn] || prefixToSku[p.fsn.slice(0, 15)];
+      if (sku && p.sku !== sku) { p.sku = sku; stamped++; }
+    });
+    if (stamped > 0) saveProducts();
+    refreshMatchReport();
+    return stamped;
+  } catch(e) { return 0; }
+}
+
+// Current-state match numbers (used by pulls and on load).
+function computeMatchReport(listingsCount) {
+  return {
+    listings: listingsCount,
+    withSku: state.products.filter(function(p){ return p.sku; }).length,
+    withCost: state.products.filter(function(p){ return p.cost_price > 0; }).length,
+    missingCost: state.products.filter(function(p){ return p.sku && !(p.cost_price > 0); }).length,
+    noSku: state.products.filter(function(p){ return !p.sku; }).length,
+    at: new Date().toISOString()
+  };
+}
+
+function refreshMatchReport() {
+  var n = 0;
+  try { n = (JSON.parse(localStorage.getItem('makro_listings') || '[]') || []).length; } catch(e) {}
+  lastMatchReport = computeMatchReport(n);
+  renderMatchReport();
+}
+
 // Persistent match report line under the Products toolbar — shows the last
 // pull's SKU/cost matching numbers so they don't vanish with the banner.
 function renderMatchReport() {
@@ -2285,7 +2324,7 @@ function renderMatchReport() {
   if (!lastMatchReport) { el.style.display = 'none'; return; }
   var r = lastMatchReport;
   el.style.display = 'block';
-  el.innerHTML = '📊 <b>' + r.listings + '</b> listings pulled · <b style="color:#818cf8">' + r.skuMatched + '</b> SKU(s) stamped · <b style="color:#60a5fa">' + r.withCost + '</b> products with cost · <b style="color:#ffd60a">' + r.missingCost + '</b> missing cost · <b style="color:var(--muted)">' + r.noSku + '</b> no SKU · <span style="color:var(--muted)">' + new Date(r.at).toLocaleTimeString('en-ZA') + '</span>';
+  el.innerHTML = '📊 <b>' + r.listings + '</b> listings · <b style="color:#818cf8">' + r.withSku + '</b> products with SKU · <b style="color:#60a5fa">' + r.withCost + '</b> with cost · <b style="color:#ffd60a">' + r.missingCost + '</b> missing cost · <b style="color:var(--muted)">' + r.noSku + '</b> no SKU · <span style="color:var(--muted)">' + new Date(r.at).toLocaleTimeString('en-ZA') + '</span>';
 }
 
 // Export products that have a SKU but no cost price yet — the user adds these
@@ -3795,9 +3834,16 @@ function importSellerData(data) {
       }
     }
 
-    // Check if product already exists
+    // Check if product already exists (exact FSN, or either-side prefix —
+    // the portal truncates FSNs to 15 chars, so the stored product FSN and
+    // the server pid may differ in length. Avoids SKU-less duplicates.)
+    var pidU = String(pid).toUpperCase();
     var existing = state.products.find(function(p) {
-      return (p.fsn && p.fsn === pid) || (p.pid && p.pid === pid);
+      if (!p.fsn) return (p.pid && p.pid === pid);
+      var pf = String(p.fsn).toUpperCase();
+      if (pf === pidU) return true;
+      if (pf.length >= 12 && pidU.length >= 12 && (pf.indexOf(pidU) === 0 || pidU.indexOf(pf) === 0)) return true;
+      return false;
     });
 
     if (existing) {
@@ -3825,6 +3871,9 @@ function importSellerData(data) {
     saveProducts();
     renderProducts();
     updateProductCount();
+    // Re-stamp SKUs from saved listings — the import may have added/updated
+    // products, so make sure matched SKUs are applied immediately.
+    restampSkusFromListings();
   }
 }
 
@@ -5097,6 +5146,9 @@ document.addEventListener('scroll', function() {
 (function init() {
   loadProducts();
   renderNewOrders();
+
+  // Re-stamp SKUs from saved listings so matched SKUs survive hard refreshes
+  restampSkusFromListings();
 
   // Auto-fetch scraper data from local server
   autoFetchScraperData();
