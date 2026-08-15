@@ -687,9 +687,8 @@
     <button class="tab-btn" onclick="switchTab('analytics')">📈 Analytics</button>
     <button class="tab-btn" onclick="switchTab('log')">📋 Price Log</button>
     <button class="tab-btn" onclick="switchTab('intelligence')">🕵️ Intelligence</button>
-    <button class="tab-btn" onclick="switchTab('orders')" style="background:rgba(0,229,160,.1);color:var(--accent)">📑 Orders <span class="tab-badge" id="newOrdersNavBadge" style="display:none;background:var(--accent);color:#0b0f19">0</span></button>
+    <button class="tab-btn" onclick="switchTab('orders')" style="background:rgba(0,229,160,.1);color:var(--accent)">📑 Orders</button>
     <button class="tab-btn" onclick="switchTab('recon')">🔗 Reconciliation</button>
-    <button class="tab-btn" onclick="switchTab('backup')">💾 Backup</button>
   </nav>
 
   <!-- MAIN -->
@@ -759,26 +758,6 @@
             <div class="stat-label" style="color:#ff4d6d">🔴 Losing BuyBox</div>
             <div class="stat-value" id="w-losing" style="font-size:28px;color:#ff4d6d">0</div>
             <div class="stat-sub">click to filter losses</div>
-          </div>
-        </div>
-
-        <!-- NEW INCOMING ORDERS ALERT -->
-        <div id="newOrdersCard" class="card" style="display:none;border-color:rgba(0,229,160,.45);margin-bottom:16px">
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
-            <div class="card-title" style="margin:0;color:var(--accent)">🆕 New Incoming Orders</div>
-            <span class="status-pill win" id="newOrdersCount" style="font-size:11px">0</span>
-            <span style="font-size:11px;color:var(--muted)">orders that arrived since your last pull</span>
-            <button class="btn-secondary" onclick="clearNewPortalOrders()" style="width:auto;padding:6px 14px;margin-left:auto;font-size:12px">✓ Mark as seen</button>
-          </div>
-          <div style="overflow-x:auto">
-            <table class="product-table">
-              <thead>
-                <tr>
-                  <th>Order ID</th><th>Date</th><th>Status</th><th>Product</th><th>Qty</th><th>Total</th><th>Waybill</th>
-                </tr>
-              </thead>
-              <tbody id="newOrdersBody"></tbody>
-            </table>
           </div>
         </div>
 
@@ -1336,7 +1315,6 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
          <div class="card-title" style="margin:0">📑 LIVE ORDERS</div>
          <span style="font-size:12px;color:var(--muted)">Orders pulled live from the Makro Seller Portal</span>
          <button class="btn-primary" id="pullOrdersBtn2" onclick="pullPortalOrders()" style="width:auto;padding:10px 24px;margin-left:auto">🔄 Pull Orders from Portal</button>
-         <button class="btn-secondary" onclick="exportPortalOrders()" style="width:auto;padding:10px 18px" title="Export all portal orders to CSV (includes waybill numbers)">⬇ Export</button>
        </div>
 
        <!-- Portal state stats -->
@@ -1381,11 +1359,10 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
                  <th>Total</th>
                  <th>Payment</th>
                  <th>Dispatch By</th>
-                 <th>Waybill</th>
                </tr>
              </thead>
              <tbody id="portalOrdersBody">
-               <tr><td colspan="13">
+               <tr><td colspan="12">
                  <div class="empty-state">
                    <div class="empty-icon">📑</div>
                    <div class="empty-title">No Orders Pulled Yet</div>
@@ -1513,61 +1490,6 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
        </div>
 
      </div><!-- /orders -->
-
-     <!-- ========== BACKUP TAB ========== -->
-     <div class="tab-content" id="tab-backup">
-
-       <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
-         <div class="card-title" style="margin:0">💾 BACKUP & RESTORE</div>
-         <span style="font-size:12px;color:var(--muted)">All data lives in your browser's localStorage (tied to this site URL). Back it up regularly — clearing browsing data or switching browsers erases it.</span>
-       </div>
-
-       <!-- Storage meter -->
-       <div class="card" style="margin-bottom:16px">
-         <div class="card-title">📦 Storage Usage</div>
-         <div style="margin-top:10px">
-           <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px">
-             <span id="storageUsed" style="color:var(--muted)">0 KB used</span>
-             <span id="storageQuota" style="color:var(--muted)">~5 MB limit</span>
-           </div>
-           <div style="height:10px;background:var(--surface2);border-radius:5px;overflow:hidden">
-             <div id="storageBar" style="height:100%;width:0%;background:var(--accent);border-radius:5px;transition:width .3s"></div>
-           </div>
-           <div id="storageWarn" style="display:none;margin-top:8px;font-size:12px;color:#ff4d6d">⚠ Storage nearly full — new saves will FAIL silently. Download a backup and free space.</div>
-         </div>
-       </div>
-
-       <!-- Backup actions -->
-       <div class="stats-grid" style="grid-template-columns:repeat(3,1fr)">
-         <div class="card">
-           <div class="card-title">⬇ Download Backup</div>
-           <p style="font-size:12px;color:var(--muted)">Saves ALL dashboard data (products, SKU matches, costs, orders, listings, settings) to a JSON file you keep anywhere.</p>
-           <button class="btn-primary" onclick="downloadBackup()" style="width:auto">⬇ Backup All Data</button>
-         </div>
-         <div class="card">
-           <div class="card-title">⬆ Restore Backup</div>
-           <p style="font-size:12px;color:var(--muted)">Load a backup file to restore everything. Current data is replaced. Use after a wipe or on a new browser.</p>
-           <label class="btn-primary" style="width:auto;cursor:pointer;display:inline-block">⬆ Restore from File
-             <input type="file" id="restoreBackupInput" accept=".json,application/json" style="display:none" onchange="restoreBackup(this)">
-           </label>
-         </div>
-         <div class="card">
-           <div class="card-title">🔄 Auto-Backup</div>
-           <p style="font-size:12px;color:var(--muted)">A snapshot of your last good data is kept automatically each time you open the dashboard.</p>
-           <div id="autoBackupInfo" style="font-size:12px;color:var(--muted);margin-bottom:8px">No auto-backup yet</div>
-           <button class="btn-secondary" onclick="restoreAutoBackup()" style="width:auto">↩ Restore Last Auto-Backup</button>
-         </div>
-       </div>
-
-       <!-- Maintenance -->
-       <div class="card" style="margin-top:16px">
-         <div class="card-title">🧹 Maintenance</div>
-         <p style="font-size:12px;color:var(--muted)">Remove stray/junk keys (e.g. a key literally named "undefined" left by an older version).</p>
-         <button class="btn-secondary" onclick="cleanJunkKeys()" style="width:auto">🧹 Clean Junk Keys</button>
-         <span id="cleanJunkStatus" style="font-size:12px;color:var(--muted);margin-left:10px"></span>
-       </div>
-
-     </div><!-- /backup -->
 
    </main>
 </div>
@@ -1748,17 +1670,17 @@ let extensionId = null;
 // ORDER & INVOICE STORAGE
 // ============================================================
 function getOrders()     { try { return JSON.parse(localStorage.getItem(ORDERS_KEY) || '[]'); } catch(e) { return []; } }
-function saveOrders(o)   { state.orders = o; safeSet(ORDERS_KEY, JSON.stringify(o)); }
+function saveOrders(o)   { state.orders = o; try { localStorage.setItem(ORDERS_KEY, JSON.stringify(o)); } catch(e) {} }
 function getInvoices()   { try { return JSON.parse(localStorage.getItem(INVOICES_KEY) || '[]'); } catch(e) { return []; } }
-function saveInvoices(o) { state.invoices = o; safeSet(INVOICES_KEY, JSON.stringify(o)); }
+function saveInvoices(o) { state.invoices = o; try { localStorage.setItem(INVOICES_KEY, JSON.stringify(o)); } catch(e) {} }
 function getReconciled() { try { return JSON.parse(localStorage.getItem(RECON_KEY) || '{}'); } catch(e) { return {}; } }
-function saveRecon(r)   { state.recon = r; safeSet(RECON_KEY, JSON.stringify(r)); }
+function saveRecon(r)   { state.recon = r; try { localStorage.setItem(RECON_KEY, JSON.stringify(r)); } catch(e) {} }
 
 // ============================================================
 // STORAGE
 // ============================================================
 function saveProducts() {
-  safeSet(STORAGE_KEY, JSON.stringify(state.products));
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state.products)); } catch(e) {}
 }
 
 function loadProducts() {
@@ -2028,38 +1950,18 @@ function handlePortalOrders(d) {
   var raw = getPortalOrders();
   var seen = {};
   raw.forEach(function(o) { seen[o.id] = true; });
-  var newIncoming = [];
   items.forEach(function(o) {
     if (o.id && seen[o.id]) {
-      // refresh existing entry (statuses change over time) but keep the
-      // waybill/tracking if the fresh pull lacks it
+      // refresh existing entry (statuses change over time)
       var idx = raw.findIndex(function(x) { return x.id === o.id; });
-      raw[idx] = mergePortalOrderEntry(raw[idx], o);
+      raw[idx] = o;
     } else if (o.id) {
       raw.push(o);
       seen[o.id] = true;
-      // Only alert on orders that need attention — completed/delivered orders
-      // are history, not "incoming".
-      var lbl = portalOrderLabel(o);
-      if (lbl.toLowerCase().indexOf('deliver') === -1 && lbl.toLowerCase().indexOf('completed') === -1) {
-        newIncoming.push(o);
-      }
     }
   });
   savePortalOrders(raw);
   if (d.counts) localStorage.setItem('makro_portal_counts', JSON.stringify(d.counts));
-
-  // Track NEW incoming orders (never seen before) so the dashboard can alert.
-  if (newIncoming.length) {
-    var prevNew = getNewPortalOrders();
-    var prevIds = {};
-    prevNew.forEach(function(o) { prevIds[portalOrderId(o)] = true; });
-    newIncoming.forEach(function(o) {
-      var oid = portalOrderId(o);
-      if (oid && !prevIds[oid]) { prevNew.unshift(o); prevIds[oid] = true; }
-    });
-    saveNewPortalOrders(prevNew.slice(0, 25));
-  }
 
   var added = mergePortalOrders(items);
   if (statusEl) {
@@ -2069,33 +1971,13 @@ function handlePortalOrders(d) {
   showImportBanner('✅ Pulled ' + items.length + ' order item(s) from portal (' + added + ' new).', '#00e5a0');
   renderPortalOrders();
   renderOrders();
-  renderNewOrders();
 }
 
 function getPortalOrders() {
   try { return JSON.parse(localStorage.getItem('makro_portal_orders') || '[]'); } catch(e) { return []; }
 }
 function savePortalOrders(o) {
-  safeSet('makro_portal_orders', JSON.stringify(o));
-}
-
-function mergePortalOrderEntry(oldEntry, fresh) {
-  // Keep the previously stored waybill/tracking if the fresh pull doesn't
-  // include one (waybill must persist across pulls).
-  var merged = Object.assign({}, oldEntry, fresh);
-  var freshT = fresh.tracking || {};
-  var oldT = oldEntry.tracking || {};
-  if (!(freshT.tracking_id || freshT.pickup_tracking_id) && (oldT.tracking_id || oldT.pickup_tracking_id)) {
-    merged.tracking = oldT;
-  }
-  return merged;
-}
-
-function getNewPortalOrders() {
-  try { return JSON.parse(localStorage.getItem('makro_portal_new_orders') || '[]'); } catch(e) { return []; }
-}
-function saveNewPortalOrders(o) {
-  safeSet('makro_portal_new_orders', JSON.stringify(o));
+  try { localStorage.setItem('makro_portal_orders', JSON.stringify(o)); } catch(e) {}
 }
 
 function mergePortalOrders(items) {
@@ -2103,24 +1985,12 @@ function mergePortalOrders(items) {
   var existingIds = {};
   orders.forEach(function(o) { existingIds[o.orderId] = true; });
   var added = 0;
-  var updated = 0;
   items.forEach(function(it) {
     var oi = (it.order_items || [])[0];
     if (!oi) return;
     var orderId = oi.order_id;
-    if (!orderId) return;
+    if (!orderId || existingIds[orderId]) return;
     var sh = it.shipment_history || {};
-    if (existingIds[orderId]) {
-      // Backfill waybill/courier on already-tracked orders (append-only list,
-      // so this is the only chance to fill them in).
-      var ex = orders.find(function(o) { return o.orderId === orderId; });
-      if (ex && !ex.waybill && portalWaybill(it)) {
-        ex.waybill = portalWaybill(it);
-        ex.courier = portalCourier(it);
-        updated++;
-      }
-      return;
-    }
     orders.push({
       orderId: orderId,
       date: (oi.order_date || '').slice(0, 10),
@@ -2132,15 +2002,13 @@ function mergePortalOrders(items) {
       payout: 0,
       status: deriveOrderStatus(oi, sh, it.__bbpStatusLabel),
       channel: 'makro',
-      waybill: portalWaybill(it),
-      courier: portalCourier(it),
       invoiceRef: '',
       invoiceAmt: 0
     });
     existingIds[orderId] = true;
     added++;
   });
-  if (added > 0 || updated > 0) saveOrders(orders);
+  if (added > 0) saveOrders(orders);
   return added;
 }
 
@@ -2179,13 +2047,8 @@ function handlePortalListings(d) {
     return;
   }
   var listings = (d.listings || []).map(function(l) {
-    // The portal's product_id is TRUNCATED to 15 chars. The full FSN (22 chars)
-    // is always listing_id minus the 'LST' prefix (verified live: 480/480).
-    var fsn = (l.listing_id && l.listing_id.indexOf('LST') === 0)
-      ? l.listing_id.slice(3)
-      : (l.product_id || '');
     return {
-      fsn: fsn,
+      fsn: l.product_id || '',
       sku: l.sku_id || '',
       title: l.title || '',
       myPrice: l.ssp || 0,
@@ -2200,30 +2063,8 @@ function handlePortalListings(d) {
 // Shared post-import pipeline: store makro_listings, stamp SKUs/FSNs,
 // auto-match costs, re-render. Used by the live portal pull (and mirrors
 // the S_listing XLS import behaviour).
-async function applyListingsData(listings, counts) {
-  safeSet('makro_listings', JSON.stringify(listings));
-
-  // ── Repair truncated product FSNs ──
-  // The scraper capped FSNs at 20 chars and the portal's product_id at 15,
-  // but the real FSNs are 22 chars (listing_id minus 'LST'). Upgrade any
-  // product whose FSN is a unique prefix of a listing's full FSN.
-  const fullFsnList = [];
-  const seenFsn = {};
-  listings.forEach(function(l) {
-    if (l.fsn && !seenFsn[l.fsn]) { seenFsn[l.fsn] = true; fullFsnList.push(l.fsn); }
-  });
-  let fsnRepaired = 0;
-  state.products.forEach(function(p) {
-    if (!p.fsn) return;
-    const pf = String(p.fsn).toUpperCase();
-    if (fullFsnList.indexOf(pf) !== -1) return; // already exact
-    if (pf.length < 12) return; // too short to trust as a prefix
-    const candidates = fullFsnList.filter(function(f) {
-      return f.length > pf.length && f.indexOf(pf) === 0;
-    });
-    if (candidates.length === 1) { p.fsn = candidates[0]; fsnRepaired++; }
-  });
-  if (fsnRepaired > 0) saveProducts();
+function applyListingsData(listings, counts) {
+  localStorage.setItem('makro_listings', JSON.stringify(listings));
 
   // ── AUTO-FIX: if Base Price < Max Price, raise Base Price to equal Max Price ──
   var basePriceFixed = 0;
@@ -2236,30 +2077,15 @@ async function applyListingsData(listings, counts) {
       basePriceFixed++;
     }
   });
-  safeSet('makro_listings', JSON.stringify(listings));
+  localStorage.setItem('makro_listings', JSON.stringify(listings));
 
-  // ── Stamp real SKU onto matched products via FSN (exact OR unique prefix) ──
-  // Product FSNs may be truncated (15-16 chars) while listing FSNs are full
-  // (22 chars) — so also match when the product FSN is the start of a listing
-  // FSN, and upgrade the product FSN to the full value at the same time.
+  // ── Stamp real SKU onto matched products via FSN ──
   const fsnToSku = {};
   listings.forEach(function(l) { if (l.fsn && l.sku) fsnToSku[l.fsn] = l.sku; });
   let skuCount = 0;
   state.products.forEach(function(p) {
     if (p.sku && p.sku.startsWith('itm')) p.sku = '';
-    if (!p.fsn) return;
-    const pf = String(p.fsn).toUpperCase();
-    let sku = fsnToSku[pf];
-    if (!sku && pf.length >= 12) {
-      const matches = listings.filter(function(l) {
-        return l.fsn && l.fsn.length > pf.length && l.fsn.indexOf(pf) === 0;
-      });
-      if (matches.length === 1) {
-        sku = matches[0].sku;
-        p.fsn = matches[0].fsn; // upgrade to the full FSN
-      }
-    }
-    if (sku) { p.sku = sku; skuCount++; }
+    if (p.fsn && fsnToSku[p.fsn]) { p.sku = fsnToSku[p.fsn]; skuCount++; }
   });
   if (skuCount > 0) saveProducts();
 
@@ -2276,44 +2102,17 @@ async function applyListingsData(listings, counts) {
   if (fsnCount > 0) saveProducts();
 
   // ── Auto-match cost prices from supplier sheets (by SKU) ──
-  var costMatched = await autoMatchCostsAfterImport();
-
-  // ── Match summary: how many listings matched a tracked product ──
-  var prodFsnSet = {}, prodSkuSet = {};
-  state.products.forEach(function(p) {
-    if (p.fsn) prodFsnSet[String(p.fsn).toUpperCase()] = true;
-    if (p.sku) prodSkuSet[String(p.sku).toLowerCase()] = true;
-  });
-  var matchedCount = 0, withCost = 0;
-  listings.forEach(function(l) {
-    var byFsn = l.fsn && prodFsnSet[String(l.fsn).toUpperCase()];
-    var bySku = l.sku && prodSkuSet[String(l.sku).toLowerCase()];
-    if (byFsn || bySku) {
-      matchedCount++;
-      var p = state.products.find(function(x) {
-        return (x.fsn && l.fsn && String(x.fsn).toUpperCase() === String(l.fsn).toUpperCase()) ||
-               (x.sku && l.sku && String(x.sku).toLowerCase() === String(l.sku).toLowerCase());
-      });
-      if (p && p.cost_supplier) withCost++;
-    }
-  });
-  var missingCost = matchedCount - withCost;
+  autoMatchCostsAfterImport();
 
   renderProducts();
   renderDashboard();
   updateProductCount();
   if (document.getElementById('pricerListingsStatus')) initPricer();
 
-  var msg = '✅ Pulled ' + listings.length + ' live listings' +
+  var msg = '✅ Pulled ' + listings.length + ' live listings from portal' +
     (counts && counts.ACTIVE ? ' (' + counts.ACTIVE + ' active)' : '') +
-    ' — ' + matchedCount + ' matched to products' +
-    (withCost > 0 ? ', ' + withCost + ' with cost' : '') +
-    (missingCost > 0 ? ', ' + missingCost + ' missing cost' : '') +
-    (skuCount > 0 ? ' · ' + skuCount + ' SKU(s) stamped' : '') +
-    (fsnRepaired > 0 ? ' · ' + fsnRepaired + ' FSN(s) repaired' : '') +
-    (costMatched > 0 ? ' · cost matched for ' + costMatched : '') +
-    (basePriceFixed > 0 ? ' · ' + basePriceFixed + ' base price(s) raised' : '') +
-    '.';
+    (skuCount > 0 ? ', matched ' + skuCount + ' SKU(s)' : '') +
+    (basePriceFixed > 0 ? ', auto-raised ' + basePriceFixed + ' Base Price(s) to Max Price' : '') + '.';
   showImportBanner(msg, '#00e5a0');
 }
 
@@ -2347,7 +2146,7 @@ function setExtStatus(online) {
 // TABS
 // ============================================================
 function switchTab(name) {
-  const names = ['dashboard','products','scraper','pricer','analytics','log','intelligence','orders','recon','backup'];
+  const names = ['dashboard','products','scraper','pricer','analytics','log','intelligence','orders','recon'];
   document.querySelectorAll('.tab-btn').forEach((b,i) => {
     b.classList.toggle('active', names[i] === name);
   });
@@ -2362,7 +2161,6 @@ function switchTab(name) {
   if (name === 'intelligence') renderIntelligence();
   if (name === 'orders')   renderPortalOrders();
   if (name === 'recon')    renderOrders();
-  if (name === 'backup')   renderBackup();
 }
 
 function syncSellerConfig() {
@@ -2730,7 +2528,7 @@ function autoReprice(prod) {
     }
   });
   if (changed) {
-    safeSet('makro_listings', JSON.stringify(listings));
+    localStorage.setItem('makro_listings', JSON.stringify(listings));
     // Mark product as pending price upload
     prod.pending_price    = targetPrice;
     prod.pending_updated  = new Date().toISOString();
@@ -3366,7 +3164,7 @@ function deleteSelected() {
     if (p.fsn && !deleted.includes(p.fsn.toUpperCase())) deleted.push(p.fsn.toUpperCase());
     window.postMessage({ type: 'DELETE_PRODUCT', url: p.url, fsn: p.fsn || '' }, '*');
   });
-  safeSet('makro_deleted', JSON.stringify(deleted));
+  localStorage.setItem('makro_deleted', JSON.stringify(deleted));
 
   idxs.sort((a,b) => b-a).forEach(i => state.products.splice(i, 1));
   saveProducts(); renderProducts(); updateProductCount(); renderDashboard();
@@ -3456,7 +3254,7 @@ function importListings(input) {
         }
       });
 
-      safeSet('makro_listings', JSON.stringify(listings));
+      localStorage.setItem('makro_listings', JSON.stringify(listings));
 
       // ── Stamp real SKU onto matched products via FSN ──────────────────────
       const fsnToSku = {};
@@ -3691,10 +3489,8 @@ async function autoMatchCostsAfterImport() {
       banner.style.display = 'block';
       setTimeout(function(){ banner.style.display = 'none'; }, 4000);
     }
-    return updated;
   } catch(e) {
     console.warn('Auto cost match failed (sheets may be unreachable):', e);
-    return 0;
   }
 }
 
@@ -3808,14 +3604,9 @@ function importSellerData(data) {
       }
     }
 
-    // Check if product already exists — exact FSN, or the incoming (possibly
-    // truncated) pid is the start of a stored full FSN (avoids duplicates
-    // when the local server sends 15-char pids but we stored 22-char FSNs).
+    // Check if product already exists
     var existing = state.products.find(function(p) {
-      if (!pid) return false;
-      var pf = (p.fsn || '').toUpperCase();
-      return pf === pid || (p.pid && p.pid === pid) ||
-             (pf.length > pid.length && pf.indexOf(pid) === 0);
+      return (p.fsn && p.fsn === pid) || (p.pid && p.pid === pid);
     });
 
     if (existing) {
@@ -4046,7 +3837,7 @@ function deleteProduct(idx) {
   try { deleted = JSON.parse(localStorage.getItem('makro_deleted') || '[]'); } catch(e) {}
   if (p.url  && !deleted.includes(p.url))  deleted.push(p.url);
   if (p.fsn  && !deleted.includes(p.fsn.toUpperCase())) deleted.push(p.fsn.toUpperCase());
-  safeSet('makro_deleted', JSON.stringify(deleted));
+  localStorage.setItem('makro_deleted', JSON.stringify(deleted));
 
   // Tell bridge to remove from chrome.storage.local too
   window.postMessage({ type: 'DELETE_PRODUCT', url: p.url, fsn: p.fsn || '' }, '*');
@@ -4221,7 +4012,7 @@ function saveListingField(fsn, field, val) {
   }
 
   entry[field] = v;
-  safeSet('makro_listings', JSON.stringify(listings));
+  localStorage.setItem('makro_listings', JSON.stringify(listings));
   renderProducts();
 }
 
@@ -5114,7 +4905,6 @@ document.addEventListener('scroll', function() {
 // ============================================================
 (function init() {
   loadProducts();
-  renderNewOrders();
 
   // Auto-fetch scraper data from local server
   autoFetchScraperData();
@@ -5823,7 +5613,7 @@ function addPriceLogEntry(entry) {
   var log = getPriceLog();
   log.unshift(entry);
   if (log.length > 2000) log.length = 2000;
-safeSet(PRICE_LOG_KEY, JSON.stringify(log));
+  localStorage.setItem(PRICE_LOG_KEY, JSON.stringify(log));
 }
 
 function addTestLogEntry() {
@@ -5862,7 +5652,7 @@ function renderPriceLog() {
     });
     if (backfill.length) {
       backfill.sort(function(a,b){ return new Date(b.ts) - new Date(a.ts); });
-      safeSet(PRICE_LOG_KEY, JSON.stringify(backfill.slice(0,2000)));
+      localStorage.setItem(PRICE_LOG_KEY, JSON.stringify(backfill.slice(0,2000)));
     }
   }
   var log = getPriceLog();
@@ -6566,7 +6356,7 @@ function saveBulkSkus() {
     var lFsn = (l.fsn || '').trim().toUpperCase();
     if (lFsn && map[lFsn]) l.sku = map[lFsn];
   });
-  safeSet('makro_listings', JSON.stringify(listings));
+  localStorage.setItem('makro_listings', JSON.stringify(listings));
   saveProducts();
 
   // Build result message
@@ -7272,27 +7062,12 @@ function clearInvoices() {
 function exportOrders() {
   const orders = getOrders();
   if (!orders.length) { alert('No orders to export.'); return; }
-  var csv = 'Order ID,Date,Channel,Product,SKU,Qty,Total,Commission,Payout,Status,Waybill,Courier,Invoice Ref,Invoice Amt,Reconciled\n';
+  var csv = 'Order ID,Date,Channel,Product,SKU,Qty,Total,Commission,Payout,Status,Invoice Ref,Invoice Amt,Reconciled\n';
   var recon = getReconciled();
   orders.forEach(function(o) {
-    csv += '"' + escHtml(o.orderId) + '","' + escHtml(o.date) + '","' + escHtml(o.channel||'makro') + '","' + escHtml(o.product||'').replace(/"/g,'""').substring(0,100) + '","' + escHtml(o.sku||'') + '",' + o.qty + ',' + o.total.toFixed(2) + ',' + o.commission.toFixed(2) + ',' + o.payout.toFixed(2) + ',"' + escHtml(o.status) + '","' + escHtml(o.waybill||'') + '","' + escHtml(o.courier||'') + '","' + (o.invoiceRef||'') + '",' + (o.invoiceAmt||0).toFixed(2) + ',' + (recon[o.orderId] ? 'Yes' : 'No') + '\n';
+    csv += '"' + escHtml(o.orderId) + '","' + escHtml(o.date) + '","' + escHtml(o.channel||'makro') + '","' + escHtml(o.product||'').replace(/"/g,'""').substring(0,100) + '","' + escHtml(o.sku||'') + '",' + o.qty + ',' + o.total.toFixed(2) + ',' + o.commission.toFixed(2) + ',' + o.payout.toFixed(2) + ',"' + escHtml(o.status) + '","' + (o.invoiceRef||'') + '",' + (o.invoiceAmt||0).toFixed(2) + ',' + (recon[o.orderId] ? 'Yes' : 'No') + '\n';
   });
   downloadFile(csv, 'orders-export-' + new Date().toISOString().slice(0,10) + '.csv');
-}
-
-function exportPortalOrders() {
-  var orders = getPortalOrders();
-  if (!orders.length) { alert('No portal orders to export.'); return; }
-  var csv = 'Order ID,Date,Status,Product,FSN,SKU,Qty,Unit Price,Total,Payment,Waybill,Courier,Dispatch By\n';
-  orders.forEach(function(o) {
-    var items = o.order_items || [];
-    var first = items[0] || {};
-    var qty = items.reduce(function(s, oi) { return s + (oi.quantity || 0); }, 0);
-    var total = items.reduce(function(s, oi) { return s + ((oi.pricing && oi.pricing.total_price) || 0); }, 0);
-    var unit = (first.pricing && first.pricing.list_price) || 0;
-    csv += '"' + escHtml(portalOrderId(o)) + '","' + escHtml((first.order_date || '').slice(0,10)) + '","' + escHtml(portalOrderLabel(o)) + '","' + escHtml((first.product_details && first.product_details.title) || '').replace(/"/g,'""').substring(0,100) + '","' + escHtml(first.fsn || '') + '","' + escHtml(first.sku || '') + '",' + qty + ',' + unit.toFixed(2) + ',' + total.toFixed(2) + ',"' + escHtml(o.payment_type || '') + '","' + escHtml(portalWaybill(o)) + '","' + escHtml(portalCourier(o)) + '","' + escHtml((o.dispatch_by_date || '').slice(0,10)) + '"\n';
-  });
-  downloadFile(csv, 'portal-orders-export-' + new Date().toISOString().slice(0,10) + '.csv');
 }
 
 function exportInvoices() {
@@ -7311,144 +7086,6 @@ function downloadFile(content, filename) {
   link.href = URL.createObjectURL(blob);
   link.download = filename;
   link.click();
-}
-
-// ============================================================
-// STORAGE SAFETY — write-failure detection + backup/restore
-// ============================================================
-function safeSet(key, value) {
-  try {
-    localStorage.setItem(key, value);
-    return true;
-  } catch(e) {
-    console.error('STORAGE WRITE FAILED for key "' + key + '":', e);
-    showStorageFullBanner();
-    return false;
-  }
-}
-
-function showStorageFullBanner() {
-  var b = document.getElementById('storageFullBanner');
-  if (b) return;
-  b = document.createElement('div');
-  b.id = 'storageFullBanner';
-  b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#ff4d6d;color:#fff;padding:10px 16px;font-size:13px;text-align:center;font-family:inherit';
-  b.innerHTML = '⚠ <b>Storage full — data NOT saved!</b> Go to the 💾 Backup tab, download a backup, then free space. ' +
-    '<button onclick="this.parentNode.remove()" style="margin-left:10px;background:#fff;color:#ff4d6d;border:none;border-radius:4px;padding:4px 10px;cursor:pointer">Dismiss</button>';
-  document.body.appendChild(b);
-}
-
-function storageUsage() {
-  var total = 0;
-  for (var i = 0; i < localStorage.length; i++) {
-    var k = localStorage.key(i);
-    total += (localStorage.getItem(k) || '').length * 2;
-  }
-  return total;
-}
-
-function renderBackup() {
-  var used = storageUsage();
-  var usedMB = used / 1048576;
-  var pct = Math.min(100, usedMB / 5 * 100);
-  var usedEl = document.getElementById('storageUsed');
-  var bar = document.getElementById('storageBar');
-  var warn = document.getElementById('storageWarn');
-  if (usedEl) usedEl.textContent = (usedMB >= 1 ? usedMB.toFixed(2) + ' MB' : Math.round(used / 1024) + ' KB') + ' used';
-  if (bar) {
-    bar.style.width = pct + '%';
-    bar.style.background = pct > 80 ? '#ff4d6d' : pct > 60 ? 'var(--accent3)' : 'var(--accent)';
-  }
-  if (warn) warn.style.display = pct > 80 ? '' : 'none';
-  var ab = getAutoBackup();
-  var info = document.getElementById('autoBackupInfo');
-  if (info) {
-    info.textContent = ab && ab.savedAt
-      ? 'Last auto-backup: ' + new Date(ab.savedAt).toLocaleString('en-ZA') + ' (' + Object.keys(ab.data || {}).length + ' keys)'
-      : 'No auto-backup yet';
-  }
-}
-
-function downloadBackup() {
-  var data = {};
-  for (var i = 0; i < localStorage.length; i++) {
-    var k = localStorage.key(i);
-    data[k] = localStorage.getItem(k);
-  }
-  var payload = { app: 'makro-buybox-pro', version: 2, exportedAt: new Date().toISOString(), data: data };
-  downloadFile(JSON.stringify(payload, null, 1), 'makro-backup-' + new Date().toISOString().slice(0,10) + '.json');
-}
-
-function restoreBackup(input) {
-  var file = input.files[0];
-  if (!file) return;
-  var reader = new FileReader();
-  reader.onload = function(e) {
-    try {
-      var payload = JSON.parse(e.target.result);
-      var data = payload && payload.data ? payload.data : payload;
-      if (typeof data !== 'object' || Array.isArray(data)) throw new Error('not a key/value map');
-      var count = 0;
-      Object.keys(data).forEach(function(k) {
-        try { localStorage.setItem(k, data[k]); count++; } catch(err) {}
-      });
-      alert('✅ Restored ' + count + ' keys from backup. Reloading dashboard...');
-      location.reload();
-    } catch(err) {
-      alert('❌ Invalid backup file: ' + err.message);
-    }
-  };
-  reader.readAsText(file);
-  input.value = '';
-}
-
-// ── Auto-backup: rolling snapshot of the main data keys, taken on load ──
-var AUTO_BACKUP_KEY = 'makro_auto_backup';
-var AUTO_BACKUP_MAIN = ['makro_buybox_v2','makro_orders','makro_portal_orders','makro_listings','makro_price_log','makro_invoices','makro_recon','makro_deleted'];
-
-function getAutoBackup() {
-  try { return JSON.parse(localStorage.getItem(AUTO_BACKUP_KEY) || 'null'); } catch(e) { return null; }
-}
-
-function takeAutoBackup() {
-  var snapshot = {};
-  var hasData = false;
-  AUTO_BACKUP_MAIN.forEach(function(k) {
-    var v = localStorage.getItem(k);
-    if (v && v.length > 2) { snapshot[k] = v; hasData = true; }
-  });
-  if (!hasData) return;
-  var size = JSON.stringify(snapshot).length * 2;
-  if (storageUsage() + size > 4.5 * 1048576) return; // skip if it would overflow quota
-  var prev = getAutoBackup();
-  if (prev && prev.data && JSON.stringify(prev.data) === JSON.stringify(snapshot)) return; // unchanged
-  try {
-    localStorage.setItem(AUTO_BACKUP_KEY, JSON.stringify({ savedAt: new Date().toISOString(), data: snapshot }));
-  } catch(e) {}
-}
-
-function restoreAutoBackup() {
-  var ab = getAutoBackup();
-  if (!ab || !ab.data) { alert('No auto-backup available yet.'); return; }
-  if (!confirm('Restore the auto-backup from ' + new Date(ab.savedAt).toLocaleString('en-ZA') + '? Current data will be replaced.')) return;
-  var count = 0;
-  Object.keys(ab.data).forEach(function(k) {
-    try { localStorage.setItem(k, ab.data[k]); count++; } catch(err) {}
-  });
-  alert('✅ Restored ' + count + ' keys from auto-backup. Reloading...');
-  location.reload();
-}
-
-function cleanJunkKeys() {
-  var junk = [];
-  for (var i = 0; i < localStorage.length; i++) {
-    var k = localStorage.key(i);
-    if (k === 'undefined' || k === 'null' || k === 'NaN' || k === '') junk.push(k);
-  }
-  junk.forEach(function(k) { localStorage.removeItem(k); });
-  var st = document.getElementById('cleanJunkStatus');
-  if (st) st.textContent = junk.length ? '🧹 Removed ' + junk.length + ' junk key(s).' : '✅ No junk keys found.';
-  renderBackup();
 }
 
 function matchOrders() {
@@ -7668,7 +7305,7 @@ function renderPortalOrders() {
 
   var tbody = document.getElementById('portalOrdersBody');
   if (!portalOrdersFiltered.length) {
-    tbody.innerHTML = '<tr><td colspan="13"><div class="empty-state"><div class="empty-icon">📑</div><div class="empty-title">No Orders</div><div class="empty-text">Pull orders from the portal to see them here.</div></div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="12"><div class="empty-state"><div class="empty-icon">📑</div><div class="empty-title">No Orders</div><div class="empty-text">Pull orders from the portal to see them here.</div></div></td></tr>';
     return;
   }
 
@@ -7682,8 +7319,6 @@ function renderPortalOrders() {
     var pill = label.toLowerCase().includes('deliver') ? 'win' : label.toLowerCase().includes('cancel') ? 'lose' : 'unknown';
     var date = (first.order_date || '').slice(0, 10);
     var dispatchBy = (o.dispatch_by_date || '').slice(0, 10);
-    var waybill = portalWaybill(o);
-    var courier = portalCourier(o);
 
     return '<tr>' +
       '<td style="text-align:center"><span id="pot-' + i + '" style="cursor:pointer;color:var(--accent);font-size:13px" onclick="togglePortalOrderDetail(' + i + ')">▸</span></td>' +
@@ -7698,10 +7333,9 @@ function renderPortalOrders() {
       '<td style="font-family:monospace;font-size:13px;font-weight:700;color:var(--accent)">R ' + total.toFixed(2) + '</td>' +
       '<td style="font-size:11px">' + escHtml(o.payment_type || '—') + '</td>' +
       '<td style="font-size:11px;color:var(--muted);white-space:nowrap">' + escHtml(dispatchBy || '—') + '</td>' +
-      '<td style="font-family:monospace;font-size:11px;white-space:nowrap" title="' + escHtml(courier) + '">' + (waybill ? escHtml(waybill) + (courier ? ' <span style="color:var(--muted);font-size:10px">(' + escHtml(courier) + ')</span>' : '') : '—') + '</td>' +
       '</tr>' +
       '<tr id="pod-' + i + '" style="display:none;background:rgba(0,229,160,.03)">' +
-        '<td colspan="13" style="padding:14px 20px">' + portalOrderDetailHtml(o) + '</td>' +
+        '<td colspan="12" style="padding:14px 20px">' + portalOrderDetailHtml(o) + '</td>' +
       '</tr>';
   }).join('');
 }
@@ -7711,17 +7345,6 @@ function portalOrderId(o) {
   // order_items[0].order_id (e.g. OD438358462535473100).
   var first = (o.order_items || [])[0] || {};
   return first.order_id || o.id || '';
-}
-
-function portalWaybill(o) {
-  // Waybill / tracking number lives in order.tracking.tracking_id (e.g. MMDF-6230544)
-  var t = o.tracking || {};
-  return t.tracking_id || t.pickup_tracking_id || '';
-}
-
-function portalCourier(o) {
-  var t = o.tracking || {};
-  return t.delivery_vendor_display_name || t.pickup_vendor_display_name || '';
 }
 
 function portalOrderLabel(o) {
@@ -7769,7 +7392,7 @@ function portalOrderDetailHtml(o) {
       '<span style="font-size:11px;font-family:monospace">' + escHtml(String(ts).slice(0, 19).replace('T', ' ')) + '</span></div>';
   }).join('');
 
-  var addrHtml = [addr.address_name || addr.name, addr.line1, addr.line2, addr.city, addr.state, addr.pincode, addr.phone]
+  var addrHtml = [addr.name, addr.line1, addr.line2, addr.city, addr.state, addr.pincode, addr.phone]
     .filter(Boolean).map(function(x) { return escHtml(x); }).join(', ');
 
   return '<div style="display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:20px">' +
@@ -7781,8 +7404,6 @@ function portalOrderDetailHtml(o) {
     '</div>' +
     '<div>' +
       '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">SHIPMENT HISTORY</div>' + (timeline || '<span style="font-size:11px;color:var(--muted)">No history recorded</span>') +
-      (portalWaybill(o) ? '<div style="font-size:11px;color:var(--muted);margin-top:10px">WAYBILL</div>' +
-        '<div style="font-size:12px;font-family:monospace;margin-top:4px">' + escHtml(portalWaybill(o)) + (portalCourier(o) ? ' <span style="color:var(--muted);font-size:10px">(' + escHtml(portalCourier(o)) + ')</span>' : '') + '</div>' : '') +
       '<div style="font-size:11px;color:var(--muted);margin-top:10px">DISPATCH</div>' +
       '<div style="font-size:11px;margin-top:4px">After: ' + escHtml((o.dispatch_after_date || '—').slice(0, 10)) + '<br>By: ' + escHtml((o.dispatch_by_date || '—').slice(0, 10)) + '<br>Tier: ' + escHtml(o.dispatch_service_tier || '—') + '</div>' +
     '</div>' +
@@ -7802,52 +7423,6 @@ function togglePortalOrderDetail(idx) {
   var open = row.style.display !== 'none';
   row.style.display = open ? 'none' : '';
   if (btn) btn.textContent = open ? '▸' : '▾';
-}
-
-function renderNewOrders() {
-  var list = getNewPortalOrders();
-  var card = document.getElementById('newOrdersCard');
-  var badge = document.getElementById('newOrdersCount');
-  var body = document.getElementById('newOrdersBody');
-  if (!card || !body) return;
-  if (!list.length) {
-    card.style.display = 'none';
-    if (badge) badge.textContent = '0';
-    return;
-  }
-  card.style.display = '';
-  if (badge) badge.textContent = list.length + ' new';
-  body.innerHTML = list.map(function(o) {
-    var items = o.order_items || [];
-    var first = items[0] || {};
-    var qty = items.reduce(function(s, oi) { return s + (oi.quantity || 0); }, 0);
-    var total = items.reduce(function(s, oi) { return s + ((oi.pricing && oi.pricing.total_price) || 0); }, 0);
-    var label = portalOrderLabel(o);
-    var pill = label.toLowerCase().includes('deliver') ? 'win' : label.toLowerCase().includes('cancel') ? 'lose' : 'unknown';
-    var waybill = portalWaybill(o);
-    return '<tr>' +
-      '<td style="font-family:monospace;font-size:12px;font-weight:600">' + escHtml(portalOrderId(o)) + '</td>' +
-      '<td style="font-size:11px;color:var(--muted);white-space:nowrap">' + escHtml((first.order_date || '').slice(0, 10)) + '</td>' +
-      '<td><span class="status-pill ' + pill + '">' + escHtml(label) + '</span></td>' +
-      '<td style="font-size:12px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml((first.product_details && first.product_details.title) || '') + '">' + escHtml(((first.product_details && first.product_details.title) || '').slice(0, 45)) + '</td>' +
-      '<td style="text-align:center">' + qty + '</td>' +
-      '<td style="font-family:monospace;font-size:12px;font-weight:700;color:var(--accent)">R ' + total.toFixed(2) + '</td>' +
-      '<td style="font-family:monospace;font-size:11px">' + (waybill ? escHtml(waybill) : '—') + '</td>' +
-      '</tr>';
-  }).join('');
-  // nav badge
-  var navBadge = document.getElementById('newOrdersNavBadge');
-  if (navBadge) {
-    navBadge.textContent = list.length;
-    navBadge.style.display = list.length ? 'inline-block' : 'none';
-  }
-}
-
-function clearNewPortalOrders() {
-  saveNewPortalOrders([]);
-  renderNewOrders();
-  var badge = document.getElementById('newOrdersNavBadge');
-  if (badge) badge.style.display = 'none';
 }
 
 // ====================================================================
@@ -7972,15 +7547,6 @@ function importMultiChannelProducts(input) {
     alert(alertMsg);
   };
   reader.readAsText(file);
-}
-
-// Storage safety: snapshot last-good data + render the backup tab meter.
-// Runs at the very end so every function/constant above is already defined.
-try {
-  takeAutoBackup();
-  renderBackup();
-} catch(e) {
-  console.error('auto-backup init failed:', e);
 }
 </script>
 </body>

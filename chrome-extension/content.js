@@ -209,8 +209,8 @@
           try {
             const j = JSON.parse(s.textContent);
             const mp = j.mpn || j.sku || (j.offers && j.offers.mpn) || '';
-            // FSNs are uppercase alphanumeric, 12-30 chars (full FSNs are 22)
-            if (/^[A-Z0-9]{10,30}$/.test(mp)) { data.fsn = mp; break; }
+            // FSNs are uppercase alphanumeric, 12-20 chars
+            if (/^[A-Z0-9]{10,20}$/.test(mp)) { data.fsn = mp; break; }
           } catch(e) {}
         }
       }
@@ -236,9 +236,9 @@
       // 5. Search page body text for FSN-like patterns near product identifier labels
       if (!data.fsn) {
         const bodyHtml = document.body.innerHTML || '';
-        const m = bodyHtml.match(/"fsn"\s*:\s*"([A-Z0-9]{10,30})"/i) ||
-                  bodyHtml.match(/"productId"\s*:\s*"([A-Z0-9]{10,30})"/i) ||
-                  bodyHtml.match(/fsn[=:]["']([A-Z0-9]{10,30})/i);
+        const m = bodyHtml.match(/"fsn"\s*:\s*"([A-Z0-9]{10,20})"/i) ||
+                  bodyHtml.match(/"productId"\s*:\s*"([A-Z0-9]{10,20})"/i) ||
+                  bodyHtml.match(/fsn[=:]["']([A-Z0-9]{10,20})/i);
         if (m) data.fsn = m[1].toUpperCase();
       }
 
