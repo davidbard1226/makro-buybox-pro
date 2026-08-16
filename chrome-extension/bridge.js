@@ -166,6 +166,12 @@
           portal_upload_filename: ev.data.filename
         }, function() {
           console.log('[Bridge] Portal file saved to chrome.storage:', ev.data.filename);
+          // Auto-upload flag: portal.js picks this up and uploads without any clicks
+          if (ev.data.autoUpload) {
+            chrome.storage.local.set({ bbp_auto_upload: true }, function() {
+              console.log('[Bridge] bbp_auto_upload = true — portal.js will auto-upload.');
+            });
+          }
         });
       });
     }
@@ -262,6 +268,24 @@
             listings: resp && resp.listings,
             counts: resp && resp.counts,
             stockMap: resp && resp.stockMap,
+            error: resp && resp.error
+          }, '*');
+        });
+      });
+    }
+
+    // ── PORTAL LOOKUP PRODUCT (read-only — dashboard → seller tab) ─────────
+    if (ev.data.type === 'PORTAL_LOOKUP_PRODUCT') {
+      safe(function() {
+        chrome.runtime.sendMessage({ action: 'portal_lookup_product', fsn: ev.data.fsn }, function(resp) {
+          if (chrome.runtime.lastError) {
+            window.postMessage({ type: 'PORTAL_LOOKUP_PRODUCT_RESULT', ok: false, error: 'Extension error' }, '*');
+            return;
+          }
+          window.postMessage({
+            type: 'PORTAL_LOOKUP_PRODUCT_RESULT',
+            ok: !!(resp && resp.ok),
+            data: resp && resp.data,
             error: resp && resp.error
           }, '*');
         });

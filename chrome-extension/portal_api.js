@@ -181,6 +181,37 @@
     return { listings: all, counts: counts, stockMap: stockMap };
   }
 
+  // ── LATCH-ON PRODUCT LOOKUP (READ-ONLY) ───────────────────────────────────
+  // Given an FSN, asks the portal what catalog product you'd be listing against
+  // (the "Search by Brand, FSN, Product URL" step of the latch-on flow).
+  // Endpoint + payload verified from the portal's own bundle (chunk_497.js):
+  //   POST napi/listing/listing-price-recommendation
+  //   body: { request: { filter_by: [{filter_type:"TEXT_MATCH",
+  //                                   field_name:"product_id", values:[FSN]}],
+  //                      order_by:[], group_by:[], page_number:0, page_size:1,
+  //                      "x-feature-id":"all_markets_feature" },
+  //           viewId: "pr.insight_listing_latchon_search_view_v2" }
+  // Read-only — never mutates the portal.
+  async function lookupProduct(fsn) {
+    const f = String(fsn || '').trim().toUpperCase();
+    if (!f) throw new Error('FSN is required');
+    const j = await napi('/napi/listing/listing-price-recommendation', {
+      method: 'POST',
+      body: {
+        request: {
+          filter_by: [{ filter_type: 'TEXT_MATCH', field_name: 'product_id', values: [f] }],
+          order_by: [],
+          group_by: [],
+          page_number: 0,
+          page_size: 1,
+          'x-feature-id': 'all_markets_feature'
+        },
+        viewId: 'pr.insight_listing_latchon_search_view_v2'
+      }
+    });
+    return j;
+  }
+
   // ── LATCH-ON LISTING (WRITE) ──────────────────────────────────────────────
   // Lists a product that already exists on the Makro catalog (you have the FSN)
   // but that you don't yet sell. Mirrors the portal's own "START SELLING" flow:
@@ -278,7 +309,21 @@
       });
       return true; // async
     }
-  if (msg.action === 'portal_list_product') {
+  if (msg.action === 'portal_lookup_product') {
+      ensureAuth().then(function(ok) {
+        if (!ok) {
+          sendResponse({ ok: false, error: 'Could not capture session token — reload the portal page and try again.' });
+          return;
+        }
+        lookupProduct(msg.fsn || '').then(function(res) {
+          sendResponse({ ok: true, data: res });
+        }).catch(function(e) {
+          sendResponse({ ok: false, error: e.message });
+        });
+      });
+      return true; // async
+    }
+    if (msg.action === 'portal_list_product') {
     ensureAuth().then(function(ok) {
       if (!ok) {
         sendResponse({ ok: false, error: 'Could not capture session token — reload the portal page and try again.' });

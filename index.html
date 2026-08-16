@@ -687,6 +687,7 @@
     <button class="tab-btn" onclick="switchTab('pricer')">💰 Price Updater</button>
     <button class="tab-btn" onclick="switchTab('analytics')">📈 Analytics</button>
     <button class="tab-btn" onclick="switchTab('log')">📋 Price Log</button>
+    <button class="tab-btn" onclick="switchTab('autopush')">🤖 Auto-Push</button>
     <button class="tab-btn" onclick="switchTab('intelligence')">🕵️ Intelligence</button>
     <button class="tab-btn" onclick="switchTab('orders')" style="background:rgba(0,229,160,.1);color:var(--accent)">📑 Orders <span class="tab-badge" id="newOrdersNavBadge" style="display:none;background:var(--accent);color:#0b0f19">0</span></button>
     <button class="tab-btn" onclick="switchTab('recon')">🔗 Reconciliation</button>
@@ -843,6 +844,9 @@
           <option value="makro">Makro</option>
           <option value="takealot">Takealot</option>
           <option value="amazon">Amazon</option>
+        </select>
+        <select class="filter-select" id="prodSellerFilter" onchange="prodPage=1;renderProducts()" title="Filter by competitor seller (e.g. Korvex)">
+          <option value="all">All Sellers</option>
         </select>
         <select class="filter-select" id="prodFilter" onchange="prodPage=1;renderProducts()">
           <option value="all">All Status</option>
@@ -1009,6 +1013,7 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
               <label>🕐 Auto-Scrape Schedule</label>
               <select class="config-input" id="autoScrapeInterval">
                 <option value="0">Off (manual only)</option>
+                <option value="10">Every 10 minutes</option>
                 <option value="60" selected>Every 1 hour</option>
                 <option value="240">Every 4 hours</option>
                 <option value="480">Every 8 hours</option>
@@ -1021,7 +1026,14 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
                   <option value="smart">🧠 Smart — losses first, then wins</option>
                   <option value="losses">🔴 Losses only (fastest)</option>
                   <option value="all">🔄 All products</option>
+                  <option value="korvex">🎯 Korvex only — beat Korvex by R1, auto-push</option>
                 </select>
+              </div>
+
+              <div style="margin-top:8px" id="autoScrapeSellerWrap">
+                <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:1px">Competitor Seller (Korvex mode)</label>
+                <input class="config-input" id="autoScrapeSeller" placeholder="Korvex" value="Korvex"
+                  oninput="localStorage.setItem('auto_scrape_seller', this.value.trim())">
               </div>
 
               <div id="autoScrapeStatus" style="font-size:10px;color:var(--accent);margin-top:6px;line-height:1.6"></div>
@@ -1281,6 +1293,41 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
         <div id="priceLogTable" style="overflow-x:auto;font-size:12px"></div>
       </div>
     </div><!-- /log -->
+
+    <!-- ========== AUTO-PUSH TAB ========== -->
+    <div class="tab-content" id="tab-autopush">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+        <div class="card-title" style="margin:0">🤖 FULL-AUTO PRICE PUSH (KORVEX)</div>
+        <button class="btn-secondary" style="width:auto;padding:6px 14px;font-size:12px" onclick="exportAutoPushLog()">⬇ Export CSV</button>
+        <button class="btn-secondary" style="width:auto;padding:6px 14px;font-size:12px;color:#ff9500;border-color:#ff950044" onclick="clearAutoPushLog()">🗑 Clear Log</button>
+        <span id="autoPushLogCount" style="font-size:12px;color:var(--muted);margin-left:auto"></span>
+      </div>
+
+      <div class="card" style="margin-bottom:16px;padding:14px 20px">
+        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+          <div style="font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">⚙️ Auto-Push Control</div>
+          <label style="font-size:12px;color:var(--text);display:flex;align-items:center;gap:6px">
+            <input type="checkbox" id="autoPushEnabled" onchange="toggleAutoPush()" style="width:14px;height:14px"> Enable auto-push after every scrape (Korvex mode)
+          </label>
+          <div id="autoPushStatus" style="font-size:11px;color:var(--accent);font-family:'Space Mono',monospace"></div>
+        </div>
+        <div style="font-size:10px;color:var(--muted);margin-top:8px;line-height:1.6">
+          Chain: scrape (10 min) → beat Korvex by R1 → generate XLS → send to portal → auto-upload. Guards: never below Min Price, skip no-cost / no-SKU products.
+        </div>
+      </div>
+
+      <div class="card">
+        <div id="autoPushLogTable" style="overflow-x:auto;font-size:12px"></div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <div class="card-title" style="margin-bottom:14px">📉 Korvex Price-Change History — How Often Korvex Changes Pricing</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.6">
+          Built from per-scrape history (products whose competitor seller matches your Korvex seller name). Counts every time Korvex's price changed between scrapes.
+        </div>
+        <div id="korvexTrackTable" style="overflow-x:auto;font-size:12px"></div>
+      </div>
+    </div><!-- /autopush -->
 
     <!-- ========== INTELLIGENCE TAB ========== -->
     <div class="tab-content" id="tab-intelligence">
@@ -1681,8 +1728,12 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
     <div style="display:grid;gap:12px">
       <div>
         <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:5px">FSN (Makro Product ID)</label>
-        <input id="listFsnInput" type="text" placeholder="e.g. INTHKZAZDGJFVHMW"
-          style="width:100%;background:var(--surface2);border:1px solid #f59e0b;color:#f59e0b;font-family:'Space Mono',monospace;font-size:13px;padding:8px 10px;border-radius:6px;outline:none">
+        <div style="display:flex;gap:8px">
+          <input id="listFsnInput" type="text" placeholder="e.g. INTHKZAZDGJFVHMW"
+            style="flex:1;background:var(--surface2);border:1px solid #f59e0b;color:#f59e0b;font-family:'Space Mono',monospace;font-size:13px;padding:8px 10px;border-radius:6px;outline:none">
+          <button class="btn-secondary" style="width:auto;padding:8px 14px;color:#00e5a0;border-color:rgba(0,229,160,0.3)" onclick="lookupListProduct()" title="Ask the portal what catalog product this FSN is (read-only — nothing is submitted)">🔍 Lookup</button>
+        </div>
+        <div id="listLookupInfo" style="font-size:12px;color:var(--muted);margin-top:6px;line-height:1.5"></div>
         <div style="font-size:10px;color:var(--muted);margin-top:4px">⚠ Only products already on the Makro catalog can be listed this way. If you already sell it, the portal blocks it ("ALREADY SELLING").</div>
       </div>
       <div>
@@ -2125,6 +2176,11 @@ window.addEventListener('message', function(ev) {
     handleListProductResult(d);
     return;
   }
+
+  if (d.type === 'PORTAL_LOOKUP_PRODUCT_RESULT') {
+    handleLookupProductResult(d);
+    return;
+  }
 });
 
 // ============================================================
@@ -2370,7 +2426,67 @@ function openListOnMakroModal() {
   if (prev) { prev.style.display = 'none'; prev.textContent = ''; }
   var res = document.getElementById('listResult');
   if (res) { res.textContent = ''; res.style.color = 'var(--muted)'; }
+  var info = document.getElementById('listLookupInfo');
+  if (info) { info.innerHTML = ''; }
   document.getElementById('listOnMakroModal').classList.add('show');
+}
+
+// Look up what catalog product an FSN is (read-only — the "Search by Brand,
+// FSN, Product URL" step of the latch-on flow). Nothing is submitted.
+function lookupListProduct() {
+  var fsn = (document.getElementById('listFsnInput').value || '').trim().toUpperCase();
+  var info = document.getElementById('listLookupInfo');
+  var res = document.getElementById('listResult');
+  if (!fsn) {
+    if (info) info.innerHTML = '<span style="color:#ff9500">Enter an FSN first.</span>';
+    return;
+  }
+  if (!state.extReady) {
+    if (info) info.innerHTML = '<span style="color:#ff4444">Extension not connected.</span>';
+    return;
+  }
+  if (info) info.innerHTML = '<span style="color:#ffd60a">🔍 Looking up ' + escHtml(fsn) + '...</span>';
+  if (res) { res.textContent = ''; res.style.color = 'var(--muted)'; }
+  window.postMessage({ type: 'PORTAL_LOOKUP_PRODUCT', fsn: fsn }, '*');
+}
+
+function handleLookupProductResult(d) {
+  var info = document.getElementById('listLookupInfo');
+  if (!info) return;
+  if (!d.ok) {
+    var msg = d.error === 'no_portal_tab'
+      ? '❌ No logged-in portal tab found. Open seller.makro.co.za and log in first.'
+      : d.error === 'portal_not_ready'
+        ? '❌ Portal tab not ready — reload the portal page and try again.'
+        : '❌ Lookup failed: ' + (d.error || 'unknown error');
+    info.innerHTML = '<span style="color:#ff4444">' + escHtml(msg) + '</span>';
+    return;
+  }
+  // The response is insights-shaped; surface whatever product info exists.
+  var data = d.data || {};
+  var insights = (data.data && data.data.insights_data) || [];
+  var lines = [];
+  var title = '', brand = '', fsn = '', reco = null;
+  insights.forEach(function(entry) {
+    var arr = entry && entry.data ? entry.data : [];
+    arr.forEach(function(item) {
+      var attrs = item.insight_attributes || {};
+      if (attrs.title) title = attrs.title;
+      if (attrs.brand) brand = attrs.brand;
+      if (attrs.fsn) fsn = attrs.fsn;
+      if (attrs.recommended_fsp != null) reco = attrs.recommended_fsp;
+    });
+  });
+  if (title) lines.push('<div style="font-weight:600;color:var(--text)">' + escHtml(title) + '</div>');
+  if (brand) lines.push('<div style="color:var(--muted)">Brand: <b style="color:var(--text)">' + escHtml(brand) + '</b></div>');
+  if (fsn) lines.push('<div style="color:var(--muted)">FSN: <b style="color:#f59e0b">' + escHtml(fsn) + '</b></div>');
+  if (reco != null) lines.push('<div style="color:var(--accent)">💡 Recommended selling price: <b>R' + Number(reco).toFixed(2) + '</b></div>');
+  if (lines.length === 0) {
+    // No product info extracted — show raw keys so we can adapt the parser.
+    var keys = Object.keys(data).join(', ');
+    lines.push('<span style="color:#ff9500">⚠ FSN found but no product info extracted (response keys: ' + escHtml(keys || 'none') + ').</span>');
+  }
+  info.innerHTML = lines.join('');
 }
 
 function buildListProductReq() {
@@ -2670,7 +2786,7 @@ function setExtStatus(online) {
 // TABS
 // ============================================================
 function switchTab(name) {
-  const names = ['dashboard','products','scraper','pricer','analytics','log','intelligence','orders','recon','backup'];
+  const names = ['dashboard','products','scraper','pricer','analytics','log','autopush','intelligence','orders','recon','backup'];
   document.querySelectorAll('.tab-btn').forEach((b,i) => {
     b.classList.toggle('active', names[i] === name);
   });
@@ -2682,6 +2798,7 @@ function switchTab(name) {
   if (name === 'scraper')   syncSellerConfig();
   if (name === 'pricer')    initPricer();
   if (name === 'log')       renderPriceLog();
+  if (name === 'autopush')  { renderAutoPushLog(); updateAutoPushStatus(); renderKorvexTrack(); }
   if (name === 'intelligence') renderIntelligence();
   if (name === 'orders')   renderPortalOrders();
   if (name === 'recon')    renderOrders();
@@ -2899,6 +3016,46 @@ function finishScraping() {
   renderDashboard();
   renderProducts();
   updateProductCount();
+
+  // ── AUTO-PUSH CHAIN: after a scrape completes, if Korvex auto-push is on,
+  // generate the price file and hand it to the portal extension for upload. ──
+  maybeAutoPushPrices();
+}
+
+// Korvex full-auto: generate price file + auto-upload after each scrape cycle.
+// Enabled when auto-scrape mode is 'korvex' (or the toggle is forced on).
+function maybeAutoPushPrices() {
+  try {
+    var mode = (document.getElementById('autoScrapeMode') || {}).value
+            || localStorage.getItem('auto_scrape_mode') || 'smart';
+    var forced = localStorage.getItem('bbp_auto_push_enabled') === '1';
+    if (mode !== 'korvex' && !forced) return;
+
+    var pending = state.products.filter(function(p){ return p.pending_price != null; });
+    if (!pending.length) {
+      addAutoPushLogEntry({ level: 'skip', msg: 'No pending price changes after scrape — nothing to push.' });
+      return;
+    }
+
+    log('info', '🤖 Auto-push: generating price file for ' + pending.length + ' pending product(s)...');
+    var result = generatePriceUpdate(true);
+    if (!result || !result.changed) {
+      addAutoPushLogEntry({ level: 'skip', msg: 'Price file generated 0 changes (guards skipped everything).' });
+      return;
+    }
+
+    var sent = sendFileToPortal(true);
+    addAutoPushLogEntry({
+      level: sent ? 'push' : 'error',
+      msg: (sent ? '🚀 Auto-pushed ' : '❌ Push failed: ') + result.changed + ' price(s) → ' + result.filename +
+           (result.skippedNoCost ? ' | ' + result.skippedNoCost + ' skipped (no cost/min)' : '') +
+           (result.skippedClamped ? ' | ' + result.skippedClamped + ' skipped (guard)' : '')
+    });
+    log(sent ? 'ok' : 'error', '🤖 Auto-push: ' + (sent ? 'file sent to portal — auto-upload armed.' : 'FAILED to send file.'));
+  } catch(e) {
+    addAutoPushLogEntry({ level: 'error', msg: 'Auto-push error: ' + e.message });
+    log('error', '🤖 Auto-push error: ' + e.message);
+  }
 }
 
 function handleBulkResults(d) { /* legacy compat */ }
@@ -3361,10 +3518,33 @@ function drawDonut(wins, loses, unk) {
 // ============================================================
 // PRODUCTS
 // ============================================================
+function populateSellerFilter() {
+  const sel = document.getElementById('prodSellerFilter');
+  if (!sel) return;
+  const prev = sel.value;
+  const sellers = {};
+  state.products.forEach(function(p) {
+    const s = (p.seller || '').trim();
+    if (s && s !== 'Unknown Seller') sellers[s] = (sellers[s] || 0) + 1;
+  });
+  const names = Object.keys(sellers).sort(function(a,b){ return a.toLowerCase().localeCompare(b.toLowerCase()); });
+  let html = '<option value="all">All Sellers</option>';
+  names.forEach(function(s) {
+    html += '<option value="' + escHtml(s) + '">' + escHtml(s) + ' (' + sellers[s] + ')</option>';
+  });
+  sel.innerHTML = html;
+  if (prev && prev !== 'all' && sellers[prev]) sel.value = prev;
+}
+
 function renderProducts() {
   const search = (document.getElementById('prodSearch').value || '').toLowerCase();
   const filter = document.getElementById('prodFilter').value;
   const channelFilter = document.getElementById('prodChannelFilter').value;
+  const sellerFilter = document.getElementById('prodSellerFilter').value;
+
+  // Refresh seller dropdown only when the seller set changed (cheap signature)
+  var sellerSig = state.products.map(function(p){ return (p.seller||'').trim(); }).filter(Boolean).sort().join('|');
+  if (sellerSig !== _lastSellerSig) { _lastSellerSig = sellerSig; populateSellerFilter(); }
 
   // ── PRESERVE checked state before re-render ───────────────────────────────
   const prevChecked = new Set();
@@ -3389,6 +3569,7 @@ function renderProducts() {
 
   let prods = state.products.filter(p => {
     if (channelFilter !== 'all' && (p.channel||'makro') !== channelFilter) return false;
+    if (sellerFilter !== 'all' && (p.seller||'').toLowerCase() !== sellerFilter.toLowerCase()) return false;
     if (filter === 'win' && p.status !== 'win') return false;
     if (filter === 'lose' && p.status !== 'lose') return false;
     if (filter === 'unknown' && p.status !== 'unknown' && p.status) return false;
@@ -4391,6 +4572,7 @@ function getFilteredProductsForBulk() {
   const search = (document.getElementById('prodSearch').value || '').toLowerCase();
   const filter = document.getElementById('prodFilter').value;
   const channelFilter = document.getElementById('prodChannelFilter').value;
+  const sellerFilter = document.getElementById('prodSellerFilter').value;
   const listingsMap = {};
   try {
     const raw = localStorage.getItem('makro_listings');
@@ -4398,6 +4580,7 @@ function getFilteredProductsForBulk() {
   } catch(e) {}
   return state.products.filter(p => {
     if (channelFilter !== 'all' && (p.channel||'makro') !== channelFilter) return false;
+    if (sellerFilter !== 'all' && (p.seller||'').toLowerCase() !== sellerFilter.toLowerCase()) return false;
     if (filter === 'win' && p.status !== 'win') return false;
     if (filter === 'lose' && p.status !== 'lose') return false;
     if (filter === 'unknown' && p.status !== 'unknown' && p.status) return false;
@@ -5648,6 +5831,13 @@ document.addEventListener('scroll', function() {
   if (pEl) pEl.value = savedParallel;
   initAutoScrape();
 
+  // Load saved auto-push toggle
+  var apEl = document.getElementById('autoPushEnabled');
+  if (apEl) {
+    apEl.checked = localStorage.getItem('bbp_auto_push_enabled') === '1';
+    updateAutoPushStatus();
+  }
+
   // Load saved seller name
   const savedSeller = localStorage.getItem(SELLER_KEY);
   if (savedSeller) document.getElementById('sellerNameInput').value = savedSeller;
@@ -5942,7 +6132,7 @@ function buildPricerPreview() {
   });
 });
 
-function generatePriceUpdate() {
+function generatePriceUpdate(autoMode) {
   const listings    = getListings();
   const strategy    = document.getElementById('pricerStrategy').value;
   const beatBy      = document.getElementById('pricerBeatBy').value;
@@ -5960,9 +6150,11 @@ function generatePriceUpdate() {
   let rawBase64  = localStorage.getItem('makro_listings_raw');
   const rawFilename = localStorage.getItem('makro_listings_filename') || 'S_listing_price_update.xls';
   if (!rawBase64) {
-    document.getElementById('pricerResult').innerHTML =
-      '❌ <span style="color:#ff4444">Original listing file not found.<br>Please re-import your S_listing XLS file from the Products tab — the raw file is needed as a template.</span>';
-    return;
+    if (!autoMode) {
+      document.getElementById('pricerResult').innerHTML =
+        '❌ <span style="color:#ff4444">Original listing file not found.<br>Please re-import your S_listing XLS file from the Products tab — the raw file is needed as a template.</span>';
+    }
+    return null;
   }
 
   // Build FSN → new price map
@@ -6047,8 +6239,8 @@ function generatePriceUpdate() {
   });
 
   if (updateCount === 0) {
-    document.getElementById('pricerResult').innerHTML = '⚠️ No products to update with current settings.';
-    return;
+    if (!autoMode) document.getElementById('pricerResult').innerHTML = '⚠️ No products to update with current settings.';
+    return null;
   }
 
   // Build base price map — any listing where user manually edited basePrice
@@ -6120,8 +6312,8 @@ function generatePriceUpdate() {
     localStorage.setItem('portal_upload_file', base64);
     localStorage.setItem('portal_upload_filename', filename);
 
-    // Also trigger download for manual fallback
-    XLSX.writeFile(wb, filename);
+    // Also trigger download for manual fallback (skip in auto mode — no popups)
+    if (!autoMode) XLSX.writeFile(wb, filename);
 
     // Clear pending flags now that prices are in the file
     state.products.forEach(function(p) {
@@ -6129,6 +6321,10 @@ function generatePriceUpdate() {
     });
     saveProducts();
     updatePendingBadge();
+
+    if (autoMode) {
+      return { filename: filename, changed: changed, changeLog: changeLog, skippedNoCost: skippedNoCost, skippedClamped: skippedClamped };
+    }
 
     document.getElementById('pricerResult').innerHTML =
       '✅ <span style="color:var(--accent)">Downloaded <b>' + filename + '</b> — ' +
@@ -6166,25 +6362,27 @@ function generatePriceUpdate() {
     buildPricerPreview();
 
   } catch(err) {
+    if (autoMode) return null;
     document.getElementById('pricerResult').innerHTML =
       '❌ <span style="color:#ff4444">Error building file: ' + err.message + '<br>Please re-import your listing file.</span>';
   }
 }
 
-function sendFileToPortal() {
+function sendFileToPortal(autoUpload) {
   const base64   = localStorage.getItem('portal_upload_file');
   const filename = localStorage.getItem('portal_upload_filename');
   if (!base64) {
     alert('No price file generated yet.\nGo to Price Updater → Generate & Download first.');
-    return;
+    return false;
   }
   // Send to bridge → chrome.storage.local so portal.js can read it
-  window.postMessage({ type: 'SAVE_PORTAL_FILE', base64, filename }, '*');
+  window.postMessage({ type: 'SAVE_PORTAL_FILE', base64, filename, autoUpload: !!autoUpload }, '*');
   setTimeout(function() {
     document.getElementById('pricerResult').innerHTML =
       (document.getElementById('pricerResult').innerHTML || '') +
       '<br><span style="color:#ffd60a">✅ File sent to portal extension. Open seller.makro.co.za — click <b style="color:#00e5a0">🚀 Auto Upload Now</b> in the green overlay.</span>';
   }, 300);
+  return true;
 }
 
 // ============================================================
@@ -6452,6 +6650,156 @@ function clearPriceLog() {
   if (!confirm('Clear all ' + getPriceLog().length + ' log entries? This cannot be undone.')) return;
   localStorage.removeItem(PRICE_LOG_KEY);
   renderPriceLog();
+}
+
+// ============================================================
+// AUTO-PUSH LOG — full-automation monitor (Korvex mode)
+// ============================================================
+var AUTO_PUSH_LOG_KEY = 'makro_auto_push_log';
+
+function getAutoPushLog() {
+  try { return JSON.parse(localStorage.getItem(AUTO_PUSH_LOG_KEY) || '[]'); } catch(e) { return []; }
+}
+
+function addAutoPushLogEntry(entry) {
+  var log = getAutoPushLog();
+  log.unshift({
+    ts: new Date().toISOString(),
+    level: entry.level || 'info',
+    msg: entry.msg || ''
+  });
+  if (log.length > 2000) log.length = 2000;
+  safeSet(AUTO_PUSH_LOG_KEY, JSON.stringify(log));
+  renderAutoPushLog();
+}
+
+function renderAutoPushLog() {
+  var log = getAutoPushLog();
+  var el = document.getElementById('autoPushLogTable');
+  var countEl = document.getElementById('autoPushLogCount');
+  if (!el) return;
+  if (countEl) countEl.textContent = log.length + ' entries';
+  if (!log.length) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">🤖</div><div class="empty-title">No Auto-Push Activity Yet</div><div class="empty-text">Enable Korvex mode + auto-push, then run a scrape. Every automated price push is logged here.</div></div>';
+    return;
+  }
+  var rows = log.slice(0, 500).map(function(e) {
+    var d = new Date(e.ts).toLocaleString();
+    var col = e.level === 'push' ? 'var(--accent)' : e.level === 'error' ? '#ff4444' : e.level === 'skip' ? '#ff9500' : 'var(--muted)';
+    var icon = e.level === 'push' ? '🚀' : e.level === 'error' ? '❌' : e.level === 'skip' ? '⏭' : 'ℹ️';
+    return '<tr><td style="padding:7px 10px;color:var(--muted);white-space:nowrap;font-size:11px">' + d + '</td>' +
+      '<td style="padding:7px 10px;color:' + col + ';font-weight:700;white-space:nowrap">' + icon + ' ' + e.level.toUpperCase() + '</td>' +
+      '<td style="padding:7px 10px;color:var(--text)">' + escHtml(e.msg||'') + '</td></tr>';
+  }).join('');
+  var hdr = ['Time','Level','Message'].map(function(h) {
+    return '<th style="padding:7px 10px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap">' + h + '</th>';
+  }).join('');
+  el.innerHTML = '<table style="width:100%;border-collapse:collapse">' +
+    '<thead><tr style="font-family:monospace;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">' + hdr + '</tr></thead>' +
+    '<tbody>' + rows + '</tbody></table>';
+}
+
+function exportAutoPushLog() {
+  var log = getAutoPushLog();
+  if (!log.length) { alert('No auto-push log entries yet.'); return; }
+  var csv = 'Time,Level,Message\n' +
+    log.map(function(e) {
+      return [new Date(e.ts).toLocaleString(), e.level||'', e.msg||'']
+        .map(function(v){ return '"' + String(v).replace(/"/g,'""') + '"'; }).join(',');
+    }).join('\n');
+  var a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = 'makro_auto_push_log_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+}
+
+function clearAutoPushLog() {
+  if (!confirm('Clear all ' + getAutoPushLog().length + ' auto-push log entries? This cannot be undone.')) return;
+  localStorage.removeItem(AUTO_PUSH_LOG_KEY);
+  renderAutoPushLog();
+}
+
+function toggleAutoPush() {
+  var on = document.getElementById('autoPushEnabled').checked;
+  localStorage.setItem('bbp_auto_push_enabled', on ? '1' : '0');
+  updateAutoPushStatus();
+}
+
+function updateAutoPushStatus() {
+  var el = document.getElementById('autoPushStatus');
+  if (!el) return;
+  var on = localStorage.getItem('bbp_auto_push_enabled') === '1';
+  var mode = (document.getElementById('autoScrapeMode') || {}).value || 'smart';
+  var seller = localStorage.getItem('auto_scrape_seller') || 'Korvex';
+  if (on) {
+    el.innerHTML = '✅ Auto-push ON — after each scrape, prices are generated & uploaded automatically (competitor: <b>' + escHtml(seller) + '</b>).';
+  } else {
+    el.innerHTML = '⏸ Auto-push OFF — scrape only, no automatic upload.';
+  }
+}
+
+// Korvex price-change tracking: scan each product's scrape history for entries
+// where the competitor seller matches, and count how often their price changed.
+function renderKorvexTrack() {
+  var el = document.getElementById('korvexTrackTable');
+  if (!el) return;
+  var sellerName = (localStorage.getItem('auto_scrape_seller') || 'Korvex').toLowerCase().trim();
+  var rows = [];
+  state.products.forEach(function(p) {
+    var hist = (p.history || []).filter(function(h) {
+      var s = (h.seller || '').toLowerCase();
+      return s && s !== 'unknown seller' && s.includes(sellerName);
+    });
+    if (!hist.length) return;
+    // Count price changes between consecutive Korvex observations
+    var changes = 0;
+    var lastPrice = null;
+    hist.forEach(function(h) {
+      if (lastPrice !== null && h.price !== lastPrice) changes++;
+      lastPrice = h.price;
+    });
+    var latest = hist[hist.length - 1];
+    rows.push({
+      fsn: p.fsn || '—',
+      title: p.title || p.url || '',
+      sku: p.sku || '—',
+      observations: hist.length,
+      changes: changes,
+      lastPrice: latest ? latest.price : null,
+      lastTs: latest ? latest.ts : null
+    });
+  });
+  rows.sort(function(a,b){ return b.changes - a.changes || b.observations - a.observations; });
+
+  if (!rows.length) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">🕵️</div><div class="empty-title">No Korvex History Yet</div><div class="empty-text">Run a few scrape cycles against Korvex products — each scrape records Korvex\'s price, and price changes are counted here.</div></div>';
+    return;
+  }
+
+  var totalChanges = rows.reduce(function(s,r){ return s + r.changes; }, 0);
+  var totalObs = rows.reduce(function(s,r){ return s + r.observations; }, 0);
+  var hdr = ['FSN','Product','SKU','Korvex Observations','Price Changes','Last Korvex Price','Last Seen'].map(function(h) {
+    return '<th style="padding:7px 10px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap">' + h + '</th>';
+  }).join('');
+  var body = rows.slice(0, 200).map(function(r) {
+    var d = r.lastTs ? new Date(r.lastTs).toLocaleString() : '—';
+    return '<tr style="border-bottom:1px solid var(--border)">' +
+      '<td style="padding:7px 10px;font-family:monospace;font-size:11px;color:#818cf8">' + escHtml(r.fsn) + '</td>' +
+      '<td style="padding:7px 10px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml(r.title) + '">' + escHtml((r.title||'').slice(0,40)) + '</td>' +
+      '<td style="padding:7px 10px;font-family:monospace;font-size:11px;color:var(--muted)">' + escHtml(r.sku) + '</td>' +
+      '<td style="padding:7px 10px;color:var(--muted)">' + r.observations + '</td>' +
+      '<td style="padding:7px 10px;color:' + (r.changes > 0 ? '#ff9500' : 'var(--muted)') + ';font-weight:700">' + r.changes + (r.changes > 0 ? ' 🔄' : '') + '</td>' +
+      '<td style="padding:7px 10px;font-family:monospace">' + (r.lastPrice ? 'R' + Number(r.lastPrice).toFixed(2) : '—') + '</td>' +
+      '<td style="padding:7px 10px;color:var(--muted);font-size:11px;white-space:nowrap">' + d + '</td></tr>';
+  }).join('');
+  el.innerHTML =
+    '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">' +
+    '<b style="color:var(--accent)">' + rows.length + ' products</b> tracked · ' +
+    '<b style="color:#ff9500">' + totalChanges + ' Korvex price changes</b> across ' + totalObs + ' observations' +
+    '</div>' +
+    '<table style="width:100%;border-collapse:collapse">' +
+    '<thead><tr style="font-family:monospace;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">' + hdr + '</tr></thead>' +
+    '<tbody>' + body + '</tbody></table>';
 }
 
 // ============================================================
@@ -7136,14 +7484,17 @@ function saveBulkSkus() {
 // AUTO-SCRAPE SCHEDULER
 // ============================================================
 var _autoScrapeTimer = null;
+var _lastSellerSig = '';
 var _autoScrapeRun = 0; // tracks cycle count
 
 function initAutoScrape() {
   var sel = document.getElementById('autoScrapeInterval');
   var modeEl = document.getElementById('autoScrapeMode');
+  var sellerEl = document.getElementById('autoScrapeSeller');
   if (!sel) return;
   sel.value  = localStorage.getItem('auto_scrape_interval') || '60';
   if (modeEl) modeEl.value = localStorage.getItem('auto_scrape_mode') || 'smart';
+  if (sellerEl) sellerEl.value = localStorage.getItem('auto_scrape_seller') || 'Korvex';
   applyAutoScrape();
   sel.addEventListener('change', function() {
     localStorage.setItem('auto_scrape_interval', sel.value);
@@ -7159,9 +7510,17 @@ function buildAutoScrapeQueue() {
   var mode = (document.getElementById('autoScrapeMode') || {}).value
           || localStorage.getItem('auto_scrape_mode') || 'smart';
 
-  var losses  = state.products.filter(function(p){ return p.status === 'lose' && p.url; });
-  var wins    = state.products.filter(function(p){ return p.status === 'win'  && p.url; });
-  var unknown = state.products.filter(function(p){ return p.status !== 'lose' && p.status !== 'win' && p.url; });
+  // Korvex mode: only products where the competitor seller matches (case-insensitive)
+  var sellerName = (localStorage.getItem('auto_scrape_seller') || 'Korvex').toLowerCase().trim();
+  function isSeller(p) {
+    var s = (p.seller || '').toLowerCase();
+    return s && s !== 'unknown seller' && s.includes(sellerName);
+  }
+  var sellerOnly = mode === 'korvex';
+
+  var losses  = state.products.filter(function(p){ return p.status === 'lose' && p.url && (!sellerOnly || isSeller(p)); });
+  var wins    = state.products.filter(function(p){ return p.status === 'win'  && p.url && (!sellerOnly || isSeller(p)); });
+  var unknown = state.products.filter(function(p){ return p.status !== 'lose' && p.status !== 'win' && p.url && (!sellerOnly || isSeller(p)); });
 
   // Sort each group: oldest lastChecked first so stale data gets refreshed first
   function byAge(a, b) {
@@ -7172,7 +7531,16 @@ function buildAutoScrapeQueue() {
   unknown.sort(byAge);
 
   var urls;
-  if (mode === 'losses') {
+  if (mode === 'korvex') {
+    // Korvex only: losses first, then unknown, then wins — all Korvex products
+    urls = losses.concat(unknown).concat(wins).map(function(p){ return p.url; });
+    if (!urls.length) {
+      // No Korvex products matched by seller name — fall back to all products
+      // so the user sees the queue is empty rather than silently doing nothing
+      log('info', '⚠ Korvex mode: no products matched seller "' + sellerName + '" — scraping all products.');
+      urls = state.products.filter(function(p){ return p.url; }).sort(byAge).map(function(p){ return p.url; });
+    }
+  } else if (mode === 'losses') {
     urls = losses.map(function(p){ return p.url; });
     if (!urls.length) {
       // Nothing to lose — scrape everything to refresh
@@ -7203,7 +7571,7 @@ function applyAutoScrape() {
     var losses = state.products.filter(function(p){ return p.status === 'lose'; }).length;
     var wins   = state.products.filter(function(p){ return p.status === 'win';  }).length;
     var mode   = (document.getElementById('autoScrapeMode')||{}).value || 'smart';
-    var modeLabel = mode === 'losses' ? 'losses only' : mode === 'all' ? 'all products' : 'smart (losses first)';
+    var modeLabel = mode === 'losses' ? 'losses only' : mode === 'all' ? 'all products' : mode === 'korvex' ? 'Korvex only (auto-push)' : 'smart (losses first)';
     statusEl.innerHTML =
       '⏰ Next run: <strong>' + new Date(nextMs).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) + '</strong>' +
       ' &nbsp;·&nbsp; Mode: ' + modeLabel +
