@@ -1382,9 +1382,14 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
         <div id="intelFsnTable" style="overflow-x:auto;font-size:12px"></div>
       </div>
 
-      <div class="card">
+      <div class="card" style="margin-bottom:16px">
         <div class="card-title" style="margin-bottom:14px">📉 Price Movement Log — All Competitor Price Changes</div>
         <div id="intelPriceLog" style="overflow-x:auto;font-size:12px;max-height:400px;overflow-y:auto"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title" style="margin-bottom:14px">🎯 Korvex Price-Pattern Tracker — His Jump Habits</div>
+        <div id="korvexIntel" style="font-size:12px"></div>
       </div>
      </div><!-- /intelligence -->
 
@@ -2139,6 +2144,7 @@ window.addEventListener('message', function(ev) {
 
   if (d.type === 'QUEUE_ABORTED') {
     log('info', '⚠ Queue stopped. ' + (d.done||0) + '/' + (d.total||0) + ' done.');
+    clearQueueFinishWatchdog();
     finishScraping();
     return;
   }
@@ -2919,6 +2925,8 @@ function startScraping() {
   state.scraping = true;
   state.stopRequested = false;
   _autoPushFired = false; // new cycle → allow one auto-push at the end
+  _chaseFired = false;    // new cycle → allow one lost-buybox chase
+  _chaseRound = 0;
 
   document.getElementById('startBtn').style.display = 'none';
   document.getElementById('stopBtn').style.display  = 'flex';
@@ -2939,6 +2947,7 @@ function startScraping() {
 function stopScraping() {
   state.stopRequested = true;
   state.scraping = false;
+  clearQueueFinishWatchdog();
   window.postMessage({ type: 'STOP_QUEUE' }, '*');
   finishScraping();
   log('info', '⏹ Scraping stopped.');
@@ -3006,6 +3015,9 @@ function handleQueueProgress(d) {
       pending_price: prod.pending_price || null
     });
 
+    // ── KORVEX PATTERN TRACKER: record his price whenever we see it ──────
+    recordKorvexFromScrape(p);
+
     // ── Telegram alerts ──────────────────────────────────────────────────
     var myCurrentPrice = listingMatch ? listingMatch.myPrice : null;
     if (status === 'lose') {
@@ -3026,10 +3038,37 @@ function handleQueueProgress(d) {
     log('warn', '⚠ Scrape returned no data for URL: ' + (d && d.url || 'unknown'));
   }
 
-  if (scrapeIdx >= scrapeQueue.length) finishScraping();
+  // ── EARLY-FINISH GUARD ──────────────────────────────────────────────────
+  // The background can emit MORE than one scrape_done per URL (the 15s safety
+  // timeout fires a null result, then the real page_scraped arrives later), so
+  // scrapeIdx can reach scrapeQueue.length BEFORE the queue is truly done.
+  // Pushing on the counter alone fired the auto-push ~4.5 min early in the
+  // 132-URL run (23:28:56 push vs 23:33:17 queue-complete), missing the last
+  // batch of Korvex beat-by-R1 reprices. Only finish on the authoritative
+  // QUEUE_FINISHED signal; arm a fallback timer in case the bridge dies.
+  if (scrapeIdx >= scrapeQueue.length) armQueueFinishWatchdog();
+}
+
+// Fallback: if the counter is exhausted but QUEUE_FINISHED never arrives
+// (bridge/background died mid-queue), finish after a grace period so the
+// dashboard doesn't hang in "Scraping" forever.
+var _queueFinishWatchdog = null;
+function armQueueFinishWatchdog() {
+  if (_queueFinishWatchdog) return;
+  _queueFinishWatchdog = setTimeout(function() {
+    _queueFinishWatchdog = null;
+    if (state.scraping) {
+      log('warn', '⚠ Queue counter exhausted but no QUEUE_FINISHED received — finishing as fallback.');
+      finishScraping();
+    }
+  }, 30000); // 30s grace — long enough for the real finish signal to arrive
+}
+function clearQueueFinishWatchdog() {
+  if (_queueFinishWatchdog) { clearTimeout(_queueFinishWatchdog); _queueFinishWatchdog = null; }
 }
 
 function handleQueueFinished() {
+  clearQueueFinishWatchdog();
   finishScraping();
   log('ok', '✅ Queue complete — all products scraped.');
 }
@@ -3047,6 +3086,9 @@ function finishScraping() {
   // ── AUTO-PUSH CHAIN: after a scrape completes, if Korvex auto-push is on,
   // generate the price file and hand it to the portal extension for upload. ──
   maybeAutoPushPrices();
+
+  // ── LOST-BUYBOX CHASE: re-scrape products we lost so we win back now. ──
+  maybeChaseLostBuybox();
 }
 
 // Korvex full-auto: generate price file + auto-upload after each scrape cycle.
@@ -3092,6 +3134,78 @@ function maybeAutoPushPrices() {
 }
 
 function handleBulkResults(d) { /* legacy compat */ }
+
+// ============================================================
+// LOST-BUYBOX CHASE — after a scrape cycle, immediately re-scrape
+// the products we LOST so we can win the buybox back right away
+// instead of waiting for the next scheduled auto-scrape cycle.
+// ============================================================
+var _chaseFired = false;   // one chase per scrape cycle
+var _chaseRound = 0;       // how many chase rounds this cycle
+var _chaseMaxRounds = 3;   // safety cap — never chase forever
+
+function getChaseDelayMs() {
+  var v = parseInt(localStorage.getItem('bbp_chase_delay') || '45');
+  return (isNaN(v) || v < 0) ? 45000 : v * 1000;
+}
+
+// Called at the end of finishScraping() — after the auto-push has fired.
+function maybeChaseLostBuybox() {
+  try {
+    var mode = (document.getElementById('autoScrapeMode') || {}).value
+            || localStorage.getItem('auto_scrape_mode') || 'smart';
+    var forced = localStorage.getItem('bbp_auto_push_enabled') === '1';
+    if (mode !== 'korvex' && !forced) return; // chase only makes sense with auto-push on
+    if (_chaseFired) return;                  // one chase per cycle
+    if (_chaseRound >= _chaseMaxRounds) {
+      log('info', '🛑 Chase max rounds reached (' + _chaseMaxRounds + ') — stopping.');
+      return;
+    }
+
+    var lost = state.products.filter(function(p){ return p.status === 'lose' && p.url; });
+    if (!lost.length) {
+      log('info', '✅ No lost buyboxes to chase — all held.');
+      return;
+    }
+
+    _chaseFired = true;
+    _chaseRound++;
+    var urls = [];
+    lost.forEach(function(p){ if (urls.indexOf(p.url) === -1) urls.push(p.url); });
+
+    log('info', '🎯 Chase round ' + _chaseRound + ': re-scraping ' + urls.length +
+      ' lost product(s) to win back buybox in ' + Math.round(getChaseDelayMs()/1000) + 's...');
+
+    // Delay so the portal upload from this cycle can land first, then re-scrape
+    // ONLY the lost products. The re-scrape re-runs autoReprice (idempotent —
+    // if our price already beats the competitor, nothing changes; if they
+    // dropped again, we beat them again) and finishScraping fires another push.
+    setTimeout(function() { startChaseScrape(urls); }, getChaseDelayMs());
+  } catch(e) {
+    log('error', '🎯 Chase error: ' + e.message);
+  }
+}
+
+function startChaseScrape(urls) {
+  if (!state.extReady) { log('info', '🎯 Chase skipped — extension offline.'); return; }
+  if (state.scraping)  { log('info', '🎯 Chase skipped — a scrape is already running.'); return; }
+  if (!urls.length)    { log('info', '🎯 Chase skipped — no URLs.'); return; }
+
+  scrapeQueue = [...urls];
+  scrapeIdx   = 0;
+  state.scraping = true;
+  state.stopRequested = false;
+  _autoPushFired = false; // chase cycle → allow one auto-push at its end
+
+  document.getElementById('startBtn').style.display = 'none';
+  document.getElementById('stopBtn').style.display  = 'flex';
+  document.getElementById('progressSection').style.display = 'block';
+  log('info', '🎯 Chase queue started: ' + urls.length + ' URLs (round ' + _chaseRound + ')');
+
+  updateProgress(0, urls.length);
+  const concurrency = parseInt(localStorage.getItem('scrape_parallel') || '5');
+  window.postMessage({ type: 'START_QUEUE', urls: urls, concurrency: concurrency }, '*');
+}
 
 // ============================================================
 // PROGRESS + LOG
@@ -6595,6 +6709,222 @@ function addPriceLogEntry(entry) {
 safeSet(PRICE_LOG_KEY, JSON.stringify(log));
 }
 
+// ============================================================
+// KORVEX PRICE-PATTERN TRACKER
+// Records Korvex's price per FSN every time we see it (buybox
+// holder or in the sellers list), so we can study his jump
+// patterns: how big, how often, when, and on which products.
+// ============================================================
+var KORVEX_HISTORY_KEY = 'bbp_korvex_history'; // { fsn: [{ts, price}] }
+
+function getKorvexHistory() {
+  try { return JSON.parse(localStorage.getItem(KORVEX_HISTORY_KEY) || '{}'); } catch(e) { return {}; }
+}
+
+// Record one Korvex price observation for an FSN. Only appends when the
+// price actually changed (or it's the first observation) to keep the series
+// compact. Capped at 500 observations per FSN.
+function recordKorvexPrice(fsn, price) {
+  if (!fsn || !(price > 0)) return;
+  var hist = getKorvexHistory();
+  var arr  = hist[fsn] || (hist[fsn] = []);
+  var last = arr[arr.length - 1];
+  if (last && Math.abs(last.price - price) < 0.01) return; // unchanged
+  arr.push({ ts: Date.now(), price: price });
+  if (arr.length > 500) arr.splice(0, arr.length - 500);
+  safeSet(KORVEX_HISTORY_KEY, JSON.stringify(hist));
+}
+
+// Called from handleQueueProgress: record Korvex's price from the buybox
+// result and/or the full sellers list attached to the scrape.
+function recordKorvexFromScrape(p) {
+  if (!p) return;
+  var fsn = p.fsn || '';
+  if (!fsn) return;
+  // Buybox holder is Korvex
+  if (p.buyBoxSeller && /korvex/i.test(p.buyBoxSeller) && p.buyBoxPrice > 0) {
+    recordKorvexPrice(fsn, p.buyBoxPrice);
+  }
+  // Korvex appears in the sellers list (even when not holding the buybox)
+  if (p.sellers && p.sellers.length) {
+    p.sellers.forEach(function(s) {
+      if (s && s.seller && /korvex/i.test(s.seller) && s.price > 0) {
+        recordKorvexPrice(fsn, s.price);
+      }
+    });
+  }
+}
+
+// ── ANALYSIS ─────────────────────────────────────────────────────────────
+// Jump threshold: a price change counts as a "jump" if it's >= 3% of the
+// previous price (configurable via bbp_korvex_jump_pct, default 3).
+function getKorvexJumpPct() {
+  var v = parseFloat(localStorage.getItem('bbp_korvex_jump_pct'));
+  return (isNaN(v) || v <= 0) ? 0.03 : v / 100;
+}
+
+function buildKorvexIntel() {
+  var hist = getKorvexHistory();
+  var jumpPct = getKorvexJumpPct();
+  var perFsn = [];     // {fsn, title, observations, first, last, min, max, jumps:[{ts,from,to,diff}], jumpCount, avgJump, lastTs}
+  var allJumps = [];   // flattened, newest first
+  var hourBuckets = {}; // hour → count (jump timing patterns)
+
+  Object.keys(hist).forEach(function(fsn) {
+    var arr = hist[fsn];
+    if (!arr || arr.length < 2) return;
+    var prod = state.products.find(function(p){ return p.fsn === fsn; });
+    var jumps = [];
+    for (var i = 1; i < arr.length; i++) {
+      var prev = arr[i-1].price, cur = arr[i].price;
+      var diff = cur - prev;
+      if (Math.abs(diff) >= prev * jumpPct) {
+        jumps.push({ ts: arr[i].ts, from: prev, to: cur, diff: diff });
+        var h = new Date(arr[i].ts).getHours();
+        hourBuckets[h] = (hourBuckets[h] || 0) + 1;
+      }
+    }
+    var prices = arr.map(function(a){ return a.price; });
+    perFsn.push({
+      fsn: fsn,
+      title: (prod && prod.title) || fsn,
+      observations: arr.length,
+      first: prices[0],
+      last: prices[prices.length - 1],
+      min: Math.min.apply(null, prices),
+      max: Math.max.apply(null, prices),
+      jumps: jumps,
+      jumpCount: jumps.length,
+      avgJump: jumps.length ? Math.round(jumps.reduce(function(s,j){ return s + Math.abs(j.diff); }, 0) / jumps.length) : 0,
+      lastTs: arr[arr.length - 1].ts
+    });
+    allJumps = allJumps.concat(jumps.map(function(j){ return { fsn: fsn, title: perFsn[perFsn.length-1].title, ts: j.ts, from: j.from, to: j.to, diff: j.diff }; }));
+  });
+
+  allJumps.sort(function(a,b){ return b.ts - a.ts; });
+  perFsn.sort(function(a,b){ return b.jumpCount - a.jumpCount; });
+
+  // Aggregate stats
+  var totalJumps = allJumps.length;
+  var drops = allJumps.filter(function(j){ return j.diff < 0; }).length;
+  var rises = allJumps.filter(function(j){ return j.diff > 0; }).length;
+  var avgJumpSize = totalJumps ? Math.round(allJumps.reduce(function(s,j){ return s + Math.abs(j.diff); }, 0) / totalJumps) : 0;
+  var biggestDrop = allJumps.filter(function(j){ return j.diff < 0; }).sort(function(a,b){ return a.diff - b.diff; })[0] || null;
+  var biggestRise = allJumps.filter(function(j){ return j.diff > 0; }).sort(function(a,b){ return b.diff - a.diff; })[0] || null;
+  var peakHour = Object.keys(hourBuckets).sort(function(a,b){ return hourBuckets[b] - hourBuckets[a]; })[0];
+
+  return {
+    perFsn: perFsn,
+    allJumps: allJumps,
+    totalJumps: totalJumps,
+    drops: drops,
+    rises: rises,
+    avgJumpSize: avgJumpSize,
+    biggestDrop: biggestDrop,
+    biggestRise: biggestRise,
+    peakHour: peakHour != null ? peakHour : null,
+    hourBuckets: hourBuckets,
+    jumpPct: jumpPct
+  };
+}
+
+function renderKorvexIntel() {
+  var el = document.getElementById('korvexIntel');
+  if (!el) return;
+  var data = buildKorvexIntel();
+
+  if (!data.totalJumps && !data.perFsn.length) {
+    el.innerHTML = '<div style="color:var(--muted);padding:12px 0;font-size:12px">' +
+      'No Korvex price history yet. Korvex prices are recorded automatically every time he appears in a scrape ' +
+      '(buybox holder or sellers list). Run a few Korvex-mode cycles and his jump patterns will show up here.</div>';
+    return;
+  }
+
+  var html = '';
+
+  // ── Summary strip ──────────────────────────────────────────────────────
+  html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">' +
+    '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px">' +
+      '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Jumps Detected</div>' +
+      '<div style="font-size:22px;font-family:monospace;color:#ff4d6d">' + data.totalJumps + '</div>' +
+      '<div style="font-size:10px;color:var(--muted)">' + data.drops + ' drops · ' + data.rises + ' rises</div>' +
+    '</div>' +
+    '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px">' +
+      '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Avg Jump Size</div>' +
+      '<div style="font-size:22px;font-family:monospace;color:#ffd60a">R' + data.avgJumpSize.toLocaleString() + '</div>' +
+      '<div style="font-size:10px;color:var(--muted)">threshold ≥ ' + Math.round(data.jumpPct*100) + '% change</div>' +
+    '</div>' +
+    '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px">' +
+      '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Most Active Hour</div>' +
+      '<div style="font-size:22px;font-family:monospace;color:var(--accent)">' + (data.peakHour != null ? data.peakHour + ':00' : '—') + '</div>' +
+      '<div style="font-size:10px;color:var(--muted)">when he moves prices most</div>' +
+    '</div>' +
+    '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px">' +
+      '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Biggest Move</div>' +
+      '<div style="font-size:16px;font-family:monospace;color:#f472b6;line-height:1.3">' +
+        (data.biggestDrop ? '▼ R' + Math.abs(data.biggestDrop.diff).toLocaleString() + ' ' + String(data.biggestDrop.title||'').slice(0,14) : '—') +
+        (data.biggestRise ? '<br>▲ R' + data.biggestRise.diff.toLocaleString() + ' ' + String(data.biggestRise.title||'').slice(0,14) : '') +
+      '</div>' +
+    '</div>' +
+  '</div>';
+
+  // ── Jump log (newest first) ────────────────────────────────────────────
+  html += '<div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">📈 Recent Korvex Jumps</div>';
+  if (!data.allJumps.length) {
+    html += '<div style="color:var(--muted);font-size:12px;padding:6px 0">No jumps above the ' + Math.round(data.jumpPct*100) + '% threshold yet.</div>';
+  } else {
+    html += '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
+      '<thead><tr style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid var(--border)">' +
+      '<th style="text-align:left;padding:6px 8px">When</th>' +
+      '<th style="text-align:left;padding:6px 8px">Product</th>' +
+      '<th style="text-align:right;padding:6px 8px">From</th>' +
+      '<th style="text-align:right;padding:6px 8px">To</th>' +
+      '<th style="text-align:right;padding:6px 8px">Δ</th>' +
+      '</tr></thead><tbody>' +
+      data.allJumps.slice(0, 25).map(function(j) {
+        var d = new Date(j.ts);
+        var when = d.toLocaleDateString([], {month:'short',day:'numeric'}) + ' ' + d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+        var down = j.diff < 0;
+        return '<tr style="border-bottom:1px solid rgba(30,37,48,.5)">' +
+          '<td style="padding:6px 8px;color:var(--muted);font-family:monospace;font-size:11px">' + when + '</td>' +
+          '<td style="padding:6px 8px;color:var(--text)">' + escHtml(String(j.title||'').slice(0,32)) + '</td>' +
+          '<td style="padding:6px 8px;text-align:right;font-family:monospace">R' + j.from.toLocaleString() + '</td>' +
+          '<td style="padding:6px 8px;text-align:right;font-family:monospace">R' + j.to.toLocaleString() + '</td>' +
+          '<td style="padding:6px 8px;text-align:right;font-family:monospace;color:' + (down ? '#ff4d6d' : '#00e5a0') + '">' +
+            (down ? '▼' : '▲') + ' R' + Math.abs(j.diff).toLocaleString() + '</td>' +
+          '</tr>';
+      }).join('') + '</tbody></table>';
+  }
+
+  // ── Most volatile Korvex products ──────────────────────────────────────
+  html += '<div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin:16px 0 8px">🎯 Korvex\'s Most Volatile Products</div>';
+  if (!data.perFsn.length) {
+    html += '<div style="color:var(--muted);font-size:12px;padding:6px 0">No products with 2+ Korvex observations yet.</div>';
+  } else {
+    html += '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
+      '<thead><tr style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid var(--border)">' +
+      '<th style="text-align:left;padding:6px 8px">Product</th>' +
+      '<th style="text-align:right;padding:6px 8px">Obs</th>' +
+      '<th style="text-align:right;padding:6px 8px">Jumps</th>' +
+      '<th style="text-align:right;padding:6px 8px">Avg Jump</th>' +
+      '<th style="text-align:right;padding:6px 8px">Range</th>' +
+      '<th style="text-align:right;padding:6px 8px">Last</th>' +
+      '</tr></thead><tbody>' +
+      data.perFsn.slice(0, 12).map(function(f) {
+        return '<tr style="border-bottom:1px solid rgba(30,37,48,.5)">' +
+          '<td style="padding:6px 8px;color:var(--text)">' + escHtml(String(f.title||'').slice(0,30)) + '</td>' +
+          '<td style="padding:6px 8px;text-align:right;color:var(--muted);font-family:monospace">' + f.observations + '</td>' +
+          '<td style="padding:6px 8px;text-align:right;font-family:monospace;color:#ff4d6d">' + f.jumpCount + '</td>' +
+          '<td style="padding:6px 8px;text-align:right;font-family:monospace;color:#ffd60a">R' + f.avgJump.toLocaleString() + '</td>' +
+          '<td style="padding:6px 8px;text-align:right;font-family:monospace;color:var(--muted)">R' + f.min.toLocaleString() + '–R' + f.max.toLocaleString() + '</td>' +
+          '<td style="padding:6px 8px;text-align:right;font-family:monospace;color:var(--accent)">R' + f.last.toLocaleString() + '</td>' +
+          '</tr>';
+      }).join('') + '</tbody></table>';
+  }
+
+  el.innerHTML = html;
+}
+
 function addTestLogEntry() {
   addPriceLogEntry({
     ts: new Date().toISOString(),
@@ -7684,6 +8014,8 @@ function applyAutoScrape() {
     window.postMessage({ type: 'START_QUEUE', urls: urls, concurrency: concurrency }, '*');
     scrapeQueue = urls; scrapeIdx = 0; state.scraping = true;
     _autoPushFired = false; // new auto-scrape cycle → allow one auto-push at the end
+    _chaseFired = false;    // new auto-scrape cycle → allow one lost-buybox chase
+    _chaseRound = 0;
     document.getElementById('progressSection').style.display = 'block';
     updateProgress(0, urls.length);
 
@@ -7992,6 +8324,9 @@ function renderIntelligence() {
         }).join('') + '</tbody></table>';
     }
   }
+
+  // ── KORVEX PATTERN TRACKER ─────────────────────────────────────────────
+  renderKorvexIntel();
 }
 
 // ── DAILY TELEGRAM SUMMARY ─────────────────────────────────────────────────
