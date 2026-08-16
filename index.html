@@ -2892,6 +2892,7 @@ function startScraping() {
   scrapeIdx   = 0;
   state.scraping = true;
   state.stopRequested = false;
+  _autoPushFired = false; // new cycle → allow one auto-push at the end
 
   document.getElementById('startBtn').style.display = 'none';
   document.getElementById('stopBtn').style.display  = 'flex';
@@ -3031,6 +3032,11 @@ function maybeAutoPushPrices() {
     var forced = localStorage.getItem('bbp_auto_push_enabled') === '1';
     if (mode !== 'korvex' && !forced) return;
 
+    // Guard: finishScraping() fires from several paths (per-URL completion,
+    // QUEUE_FINISHED, QUEUE_ABORTED, error handler) — only push once per cycle.
+    if (_autoPushFired) return;
+    _autoPushFired = true;
+
     var pending = state.products.filter(function(p){ return p.pending_price != null; });
     if (!pending.length) {
       addAutoPushLogEntry({ level: 'skip', msg: 'No pending price changes after scrape — nothing to push.' });
@@ -3049,7 +3055,8 @@ function maybeAutoPushPrices() {
       level: sent ? 'push' : 'error',
       msg: (sent ? '🚀 Auto-pushed ' : '❌ Push failed: ') + result.changed + ' price(s) → ' + result.filename +
            (result.skippedNoCost ? ' | ' + result.skippedNoCost + ' skipped (no cost/min)' : '') +
-           (result.skippedClamped ? ' | ' + result.skippedClamped + ' skipped (guard)' : '')
+           (result.skippedClamped ? ' | ' + result.skippedClamped + ' skipped (guard)' : ''),
+      details: result.changeLog || []
     });
     log(sent ? 'ok' : 'error', '🤖 Auto-push: ' + (sent ? 'file sent to portal — auto-upload armed.' : 'FAILED to send file.'));
   } catch(e) {
@@ -6666,7 +6673,8 @@ function addAutoPushLogEntry(entry) {
   log.unshift({
     ts: new Date().toISOString(),
     level: entry.level || 'info',
-    msg: entry.msg || ''
+    msg: entry.msg || '',
+    details: entry.details || []
   });
   if (log.length > 2000) log.length = 2000;
   safeSet(AUTO_PUSH_LOG_KEY, JSON.stringify(log));
@@ -6687,9 +6695,34 @@ function renderAutoPushLog() {
     var d = new Date(e.ts).toLocaleString();
     var col = e.level === 'push' ? 'var(--accent)' : e.level === 'error' ? '#ff4444' : e.level === 'skip' ? '#ff9500' : 'var(--muted)';
     var icon = e.level === 'push' ? '🚀' : e.level === 'error' ? '❌' : e.level === 'skip' ? '⏭' : 'ℹ️';
-    return '<tr><td style="padding:7px 10px;color:var(--muted);white-space:nowrap;font-size:11px">' + d + '</td>' +
-      '<td style="padding:7px 10px;color:' + col + ';font-weight:700;white-space:nowrap">' + icon + ' ' + e.level.toUpperCase() + '</td>' +
-      '<td style="padding:7px 10px;color:var(--text)">' + escHtml(e.msg||'') + '</td></tr>';
+    var detailHtml = '';
+    if (e.details && e.details.length) {
+      var dRows = e.details.slice(0, 100).map(function(c) {
+        return '<tr>' +
+          '<td style="padding:4px 8px;font-family:monospace;font-size:11px;color:#818cf8;white-space:nowrap">' + escHtml(c.fsn || '—') + '</td>' +
+          '<td style="padding:4px 8px;font-family:monospace;font-size:11px;color:var(--muted);white-space:nowrap">' + escHtml(c.sku || '—') + '</td>' +
+          '<td style="padding:4px 8px;font-size:11px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml(c.title || '') + '">' + escHtml((c.title || '').slice(0, 60)) + '</td>' +
+          '<td style="padding:4px 8px;font-family:monospace;font-size:11px;color:#ff9500;white-space:nowrap">R' + Number(c.oldPrice).toFixed(2) + '</td>' +
+          '<td style="padding:4px 8px;font-family:monospace;font-size:11px;color:var(--accent);white-space:nowrap">→ R' + Number(c.newPrice).toFixed(2) + '</td></tr>';
+      }).join('');
+      detailHtml = '<tr><td colspan="3" style="padding:2px 10px 10px 10px">' +
+        '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;margin-top:4px">' +
+        '<div style="font-family:\'Space Mono\',monospace;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">' +
+        '📦 ' + e.details.length + ' product(s) changed — FSN / SKU / Product / Old → New</div>' +
+        '<table style="width:100%;border-collapse:collapse">' +
+        '<thead><tr style="font-family:monospace;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">' +
+        '<th style="padding:4px 8px;text-align:left;border-bottom:1px solid var(--border)">FSN</th>' +
+        '<th style="padding:4px 8px;text-align:left;border-bottom:1px solid var(--border)">SKU</th>' +
+        '<th style="padding:4px 8px;text-align:left;border-bottom:1px solid var(--border)">Product</th>' +
+        '<th style="padding:4px 8px;text-align:left;border-bottom:1px solid var(--border)">Old</th>' +
+        '<th style="padding:4px 8px;text-align:left;border-bottom:1px solid var(--border)">New</th></tr></thead>' +
+        '<tbody>' + dRows + '</tbody></table>' +
+        (e.details.length > 100 ? '<div style="font-size:10px;color:var(--muted);margin-top:6px">… and ' + (e.details.length - 100) + ' more</div>' : '') +
+        '</div></td></tr>';
+    }
+    return '<tr><td style="padding:7px 10px;color:var(--muted);white-space:nowrap;font-size:11px;vertical-align:top">' + d + '</td>' +
+      '<td style="padding:7px 10px;color:' + col + ';font-weight:700;white-space:nowrap;vertical-align:top">' + icon + ' ' + e.level.toUpperCase() + '</td>' +
+      '<td style="padding:7px 10px;color:var(--text);vertical-align:top">' + escHtml(e.msg||'') + '</td></tr>' + detailHtml;
   }).join('');
   var hdr = ['Time','Level','Message'].map(function(h) {
     return '<th style="padding:7px 10px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap">' + h + '</th>';
@@ -6702,10 +6735,17 @@ function renderAutoPushLog() {
 function exportAutoPushLog() {
   var log = getAutoPushLog();
   if (!log.length) { alert('No auto-push log entries yet.'); return; }
-  var csv = 'Time,Level,Message\n' +
+  var csv = 'Time,Level,Message,FSN,SKU,Product,Old Price,New Price\n' +
     log.map(function(e) {
-      return [new Date(e.ts).toLocaleString(), e.level||'', e.msg||'']
+      var base = [new Date(e.ts).toLocaleString(), e.level||'', e.msg||'']
         .map(function(v){ return '"' + String(v).replace(/"/g,'""') + '"'; }).join(',');
+      if (!e.details || !e.details.length) return base + ',,,,,,';
+      return e.details.map(function(c) {
+        return base + ',' + ['"' + String(c.fsn||'').replace(/"/g,'""') + '"',
+          '"' + String(c.sku||'').replace(/"/g,'""') + '"',
+          '"' + String(c.title||'').replace(/"/g,'""') + '"',
+          c.oldPrice, c.newPrice].join(',');
+      }).join('\n');
     }).join('\n');
   var a = document.createElement('a');
   a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
@@ -7485,6 +7525,7 @@ function saveBulkSkus() {
 // ============================================================
 var _autoScrapeTimer = null;
 var _lastSellerSig = '';
+var _autoPushFired = false; // one auto-push per scrape cycle (finishScraping fires from multiple paths)
 var _autoScrapeRun = 0; // tracks cycle count
 
 function initAutoScrape() {
@@ -7616,6 +7657,7 @@ function applyAutoScrape() {
     var concurrency = parseInt(localStorage.getItem('scrape_parallel') || (document.getElementById('scrapeParallel')||{}).value || '5');
     window.postMessage({ type: 'START_QUEUE', urls: urls, concurrency: concurrency }, '*');
     scrapeQueue = urls; scrapeIdx = 0; state.scraping = true;
+    _autoPushFired = false; // new auto-scrape cycle → allow one auto-push at the end
     document.getElementById('progressSection').style.display = 'block';
     updateProgress(0, urls.length);
 
