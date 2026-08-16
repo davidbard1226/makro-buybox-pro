@@ -116,8 +116,28 @@
 
   // ── MAIN UPLOAD FLOW ───────────────────────────────────────────────────
 
+  // One-shot auto-upload: a single bbp_auto_upload flag triggers exactly ONE
+  // upload attempt chain. The flag is cleared on every terminal outcome so the
+  // same file can never be re-uploaded by SPA-navigation loops.
+  let uploadRunning = false;
+  function autoUploadOnce() {
+    if (uploadRunning) return;
+    uploadRunning = true;
+    runUpload().catch(function(e) {
+      setStatus('❌ ' + e.message, '#ff4444');
+    }).finally(function() {
+      uploadRunning = false;
+    });
+  }
+
   async function runUpload() {
     setStatus('🔄 Starting upload...', '#ffd60a');
+
+    // Consume the auto-upload flag IMMEDIATELY — one flag = one upload chain.
+    // Without this, every SPA navigation re-triggers the same file upload
+    // over and over (the loop the user hit). The navigation hop below is the
+    // only place that re-arms it, and only for the hop itself.
+    chrome.storage.local.remove('bbp_auto_upload');
 
     // Step 1: Get the file from storage
     const stored = await new Promise(function(resolve) {
@@ -319,7 +339,7 @@
       });
       addBtn(buttons, '🗑 Clear File', '#6b7280', function() {
         if (!confirm('Clear the saved price file?')) return;
-        chrome.storage.local.remove([FILE_KEY, NAME_KEY, STATUS_KEY], renderOverlay);
+        chrome.storage.local.remove([FILE_KEY, NAME_KEY, STATUS_KEY, 'bbp_auto_upload'], renderOverlay);
       });
     });
   }
@@ -343,9 +363,7 @@
           // Auto-trigger upload if flagged
           chrome.storage.local.get(['bbp_auto_upload'], function(r) {
             if (r.bbp_auto_upload) {
-              setTimeout(function() {
-                runUpload().catch(function(e) { setStatus('❌ ' + e.message, '#ff4444'); });
-              }, 2000);
+              setTimeout(autoUploadOnce, 2000);
             }
           });
         }, 1800);
@@ -355,9 +373,7 @@
     // Check if we should auto-trigger on page load
     chrome.storage.local.get(['bbp_auto_upload'], function(r) {
       if (r.bbp_auto_upload) {
-        setTimeout(function() {
-          runUpload().catch(function(e) { setStatus('❌ ' + e.message, '#ff4444'); });
-        }, 3000);
+        setTimeout(autoUploadOnce, 3000);
       }
     });
   }
