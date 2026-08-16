@@ -184,6 +184,12 @@
         var concurrency = parseInt(ev.data.concurrency) || 5;
         console.log('[Bridge] Starting queue — ' + (ev.data.urls || []).length + ' URLs, concurrency: ' + concurrency);
         chrome.runtime.sendMessage({ action: 'queue_scrape', urls: ev.data.urls, concurrency: concurrency }, function(resp) {
+          // Report the result back to the dashboard — it must not assume the
+          // queue started. Background can refuse ("Already running") or the
+          // bridge context can be invalidated after an extension reload.
+          var err = chrome.runtime.lastError ? chrome.runtime.lastError.message
+                   : (resp && resp.error) || null;
+          window.postMessage({ type: 'QUEUE_STARTED', ok: !!(resp && resp.started), error: err }, '*');
           if (chrome.runtime.lastError) return;
           console.log('[Bridge] Queue started:', resp);
         });

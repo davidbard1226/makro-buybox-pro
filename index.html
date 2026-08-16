@@ -2143,6 +2143,32 @@ window.addEventListener('message', function(ev) {
     return;
   }
 
+  if (d.type === 'QUEUE_STARTED') {
+    // Bridge reports whether the background actually accepted the queue.
+    // The dashboard must NOT keep showing "Scraping 0/N" if the extension
+    // refused (stale queue still active, bridge dead after reload, etc.).
+    if (d.ok) return; // started fine — progress events will follow
+    log('err', '⚠ Extension refused to start queue: ' + (d.error || 'unknown error'));
+    state.scraping = false;
+    state.stopRequested = false;
+    document.getElementById('startBtn').style.display = 'flex';
+    document.getElementById('stopBtn').style.display  = 'none';
+    document.getElementById('progressSection').style.display = 'none';
+    if (d.error && /already running/i.test(d.error)) {
+      // Stale queue stuck in the background — stop it, then retry once
+      log('info', '🔄 Stale queue detected — sending Stop, retrying in 1s…');
+      window.postMessage({ type: 'STOP_QUEUE' }, '*');
+      setTimeout(function() {
+        if (scrapeQueue.length) {
+          var conc = parseInt(localStorage.getItem('scrape_parallel') || '5');
+          window.postMessage({ type: 'START_QUEUE', urls: scrapeQueue, concurrency: conc }, '*');
+          log('info', '🔄 Retrying queue: ' + scrapeQueue.length + ' URLs');
+        }
+      }, 1000);
+    }
+    return;
+  }
+
   if (d.type === 'CHALLENGE_DETECTED') {
     // Makro bot challenge detected — pause scraping and show alert
     log('err', '🤖 BOT CHALLENGE DETECTED — Makro asked "Are you human?". Solve it in the scraper window, then click Resume.');
