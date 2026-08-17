@@ -1163,6 +1163,10 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
                   <input type="checkbox" id="pricerAllowBelowFloor" onchange="buildPricerPreview()" style="width:14px;height:14px;accent-color:#ff9500">
                   ⚠ Allow prices below <b>R150</b> (override absolute floor + min floor + no-cost skip)
                 </label>
+                <label style="font-size:11px;display:flex;align-items:center;gap:6px;color:var(--muted);cursor:pointer;margin-top:8px;padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px">
+                  <input type="checkbox" id="pricerRaiseWins" onchange="localStorage.setItem('bbp_raise_wins', this.checked ? '1' : '0')" style="width:14px;height:14px">
+                  ⬆ Raise winning prices up to the min-profit floor (OFF = keep winning, never raise)
+                </label>
               </div>
 
               <label style="font-size:13px;display:flex;align-items:center;gap:8px;color:var(--muted);cursor:pointer">
@@ -1960,7 +1964,12 @@ function saveRecon(r)   { state.recon = r; safeSet(RECON_KEY, JSON.stringify(r))
 // STORAGE
 // ============================================================
 function saveProducts() {
-  safeSet(STORAGE_KEY, JSON.stringify(state.products));
+  var ok = safeSet(STORAGE_KEY, JSON.stringify(state.products));
+  if (!ok) {
+    // Storage is full — prune the big consumers, then retry once.
+    pruneStorage();
+    safeSet(STORAGE_KEY, JSON.stringify(state.products));
+  }
 }
 
 function loadProducts() {
@@ -2981,13 +2990,19 @@ function handleQueueProgress(d) {
       existing.lastChecked  = new Date().toISOString();
       existing.title        = p.title || existing.title;
       existing.fsn          = p.fsn || existing.fsn || '';
+      // Backfill SKU from the scrape result or the saved listings — never let
+      // a scrape-created product wipe out a real SKU with an empty one.
+      if (!existing.sku || /^itm/i.test(existing.sku)) {
+        var skuBackfill = p.sku || (listingsMap[p.fsn] || {}).sku || '';
+        if (skuBackfill && !/^itm/i.test(skuBackfill)) existing.sku = skuBackfill;
+      }
       if (p.sellers && p.sellers.length) existing.sellers = p.sellers;
       existing.history      = existing.history || [];
       existing.history.push({ price, seller, status, myPrice: (listingsMap[p.fsn]||{}).myPrice || 0, ts: new Date().toISOString() });
       if (existing.history.length > 30) existing.history.shift();
     } else {
       state.products.push({
-        url: p.url, fsn: p.fsn || '', sku: p.sku || '',
+        url: p.url, fsn: p.fsn || '', sku: p.sku || (listingsMap[p.fsn] || {}).sku || '',
         title: p.title || p.url, buybox_price: price,
         seller, status, lastChecked: new Date().toISOString(),
         sellers: p.sellers || [],
@@ -3312,8 +3327,10 @@ function autoReprice(prod) {
   if (!buybox || buybox <= 0) return;         // no buybox data yet
   if (prod.status === 'win') {
     // Even when winning, check if we're selling below min price (at a loss)
-    // If so, flag it as pending so generatePriceUpdate raises it to the floor
-    if (prod.cost_price > 0) {
+    // If so, flag it as pending so generatePriceUpdate raises it to the floor.
+    // OPT-OUT: raising a winning price can flip us WIN→LOSE (we go above the
+    // competitor). Default OFF — "just scrape every hour, beat by R1" keeps the box.
+    if (localStorage.getItem('bbp_raise_wins') === '1' && prod.cost_price > 0) {
       var winMin = prod.min_price || calcMinViablePrice(prod.cost_price, getProductProfitPct(prod));
       var listings = getListings();
       var winListing = listings.find(function(l) { return l.fsn === prod.fsn; });
@@ -5955,6 +5972,10 @@ document.addEventListener('scroll', function() {
   loadProducts();
   renderNewOrders();
 
+  // Storage watchdog: trim logs/history if we're near the 5MB ceiling so
+  // SKU/cost data keeps persisting across scrape runs.
+  pruneStorage();
+
   // Re-stamp SKUs from saved listings so matched SKUs survive hard refreshes
   restampSkusFromListings();
 
@@ -5984,6 +6005,10 @@ document.addEventListener('scroll', function() {
     apEl.checked = localStorage.getItem('bbp_auto_push_enabled') === '1';
     updateAutoPushStatus();
   }
+
+  // Load saved "raise winning prices" toggle (default OFF — keep the buybox)
+  var rwEl = document.getElementById('pricerRaiseWins');
+  if (rwEl) rwEl.checked = localStorage.getItem('bbp_raise_wins') === '1';
 
   // Load saved seller name
   const savedSeller = localStorage.getItem(SELLER_KEY);
@@ -6364,8 +6389,9 @@ function generatePriceUpdate(autoMode) {
     }
 
     // Priority 2: WIN but selling below floor (at a loss) — raise to floor regardless of winsOnly
-    // e.g. winning at R356 but min viable price is R390 — must raise even though we're winning
-    if (scraped.status === 'win' && l.myPrice > 0 && l.myPrice < hardFloor) {
+    // e.g. winning at R356 but min viable price is R390 — must raise even though we're winning.
+    // OPT-OUT: raising a winning price flips us WIN→LOSE. Default OFF (bbp_raise_wins).
+    if (localStorage.getItem('bbp_raise_wins') === '1' && scraped.status === 'win' && l.myPrice > 0 && l.myPrice < hardFloor) {
       var raisedPrice = applyGuards(hardFloor);
       priceMap[l.fsn] = { newPrice: raisedPrice, sku: l.sku, title: l.title, oldPrice: l.myPrice,
         hitFloor: true, hitCeiling: effectiveCeiling && raisedPrice === effectiveCeiling, raisedFromLoss: true };
@@ -6524,6 +6550,10 @@ function sendFileToPortal(autoUpload) {
   }
   // Send to bridge → chrome.storage.local so portal.js can read it
   window.postMessage({ type: 'SAVE_PORTAL_FILE', base64, filename, autoUpload: !!autoUpload }, '*');
+  // The bridge now has its own copy in chrome.storage.local — drop the
+  // dashboard's localStorage copy to free space (biggest storage consumer).
+  localStorage.removeItem('portal_upload_file');
+  localStorage.removeItem('portal_upload_filename');
   setTimeout(function() {
     document.getElementById('pricerResult').innerHTML =
       (document.getElementById('pricerResult').innerHTML || '') +
@@ -6705,7 +6735,7 @@ function getPriceLog() {
 function addPriceLogEntry(entry) {
   var log = getPriceLog();
   log.unshift(entry);
-  if (log.length > 2000) log.length = 2000;
+  if (log.length > 500) log.length = 500;
 safeSet(PRICE_LOG_KEY, JSON.stringify(log));
 }
 
@@ -6731,7 +6761,7 @@ function recordKorvexPrice(fsn, price) {
   var last = arr[arr.length - 1];
   if (last && Math.abs(last.price - price) < 0.01) return; // unchanged
   arr.push({ ts: Date.now(), price: price });
-  if (arr.length > 500) arr.splice(0, arr.length - 500);
+  if (arr.length > 200) arr.splice(0, arr.length - 200);
   safeSet(KORVEX_HISTORY_KEY, JSON.stringify(hist));
 }
 
@@ -7032,7 +7062,7 @@ function addAutoPushLogEntry(entry) {
     msg: entry.msg || '',
     details: entry.details || []
   });
-  if (log.length > 2000) log.length = 2000;
+  if (log.length > 100) log.length = 100;
   safeSet(AUTO_PUSH_LOG_KEY, JSON.stringify(log));
   renderAutoPushLog();
 }
@@ -8633,6 +8663,41 @@ function safeSet(key, value) {
     console.error('STORAGE WRITE FAILED for key "' + key + '":', e);
     showStorageFullBanner();
     return false;
+  }
+}
+
+// ── STORAGE WATCHDOG ───────────────────────────────────────────────────────
+// localStorage caps at ~5MB. When we're near the limit, writes fail silently
+// and SKU/cost data stops persisting (dashboard "loses" data on next run).
+// pruneStorage() trims the biggest consumers so saves succeed again.
+// Called on load and automatically when a save fails.
+function pruneStorage() {
+  // 1. Price log → 500 entries (was 2000)
+  var pl = getPriceLog();
+  if (pl.length > 500) { pl.length = 500; safeSet(PRICE_LOG_KEY, JSON.stringify(pl)); }
+  // 2. Auto-push log → 100 entries (was 2000)
+  var al = getAutoPushLog();
+  if (al.length > 100) { al.length = 100; safeSet(AUTO_PUSH_LOG_KEY, JSON.stringify(al)); }
+  // 3. Korvex history → 200 observations per FSN (was 500)
+  var kh = getKorvexHistory();
+  var khChanged = false;
+  Object.keys(kh).forEach(function(fsn) {
+    if (kh[fsn].length > 200) { kh[fsn].splice(0, kh[fsn].length - 200); khChanged = true; }
+  });
+  if (khChanged) safeSet(KORVEX_HISTORY_KEY, JSON.stringify(kh));
+  // 4. Product history → 15 entries per product (was 30)
+  var changed = false;
+  state.products.forEach(function(p) {
+    if (p.history && p.history.length > 15) { p.history = p.history.slice(-15); changed = true; }
+  });
+  if (changed) safeSet(STORAGE_KEY, JSON.stringify(state.products));
+  // 5. Stale portal upload blob — the bridge keeps its own copy in
+  //    chrome.storage.local, so the dashboard copy is safe to drop once sent.
+  //    Only force-drop here when storage is critical (sendFileToPortal also
+  //    clears it right after a successful send).
+  if (storageUsage() > 4 * 1048576 && localStorage.getItem('portal_upload_file')) {
+    localStorage.removeItem('portal_upload_file');
+    localStorage.removeItem('portal_upload_filename');
   }
 }
 
