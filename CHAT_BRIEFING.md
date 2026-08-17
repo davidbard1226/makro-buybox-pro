@@ -40,19 +40,28 @@ A Chrome extension + dashboard that monitors and automatically wins the BuyBox o
 - tg_token, tg_chat_id, tg_enabled — Telegram settings
 - scrape_parallel, min_profit_pct, auto_scrape_interval, auto_scrape_mode
 
-## Current Status (March 2026)
+## Current Status (August 2026)
 - 1000+ products tracked, ~450 wins, ~550 losses
 - Auto-scrape hourly, 5 tabs, losses-first order
-- Price file generation and portal upload working
+- Price file generation and portal upload working (auto-push in Korvex mode)
 - Telegram alerts set up
 - FSN deduplication and deleted product blocklist active
 - autoReprice recalculates min price fresh from cost on every run
+- Lost-buybox chase: re-scrapes lost URLs after each cycle (max 3 rounds, 45s delay)
+- Korvex price-pattern tracker (bbp_korvex_history, 200 obs/FSN cap)
+- WIN-at-LOSS price raise is now OPT-IN (bbp_raise_wins, default OFF) — raising a
+  winning price flipped us WIN→LOSE, so by default we keep the box and beat by R1
+- Storage watchdog (pruneStorage) trims logs/history near the 5MB ceiling so
+  SKU/cost data persists across scrape runs; portal file cleared after send
 
 ## Known Watch Points
 - Blank dashboard = JS syntax error, revert with: git checkout <last_good_commit> -- index.html
 - Deleted products stay deleted via makro_deleted blocklist in localStorage + chrome.storage
 - itm... SKUs auto-stripped on load (old scraper bug)
 - Min price always recalculated from cost before repricing
+- localStorage caps at ~5MB — if the red "Storage full" banner appears, download a
+  backup (💾 Backup tab) and free space; pruneStorage runs automatically on load
+- bbp_raise_wins toggle lives in Price Updater settings ("Raise winning prices")
 
 ## Development Workflow
 1. Edit C:\Users\David\makro-buybox-pro\index.html
