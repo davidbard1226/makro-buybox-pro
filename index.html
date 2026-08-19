@@ -1055,6 +1055,20 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
             </div>
 
             <div class="config-field">
+              <label>⭐ 10-Min Watchlist</label>
+              <div style="display:flex;gap:4px;margin-bottom:6px">
+                <input class="config-input" id="watchlistUrlInput" placeholder="Paste a makro.co.za product URL" style="flex:1">
+                <button class="action-btn" onclick="addWatchlistFromInput()" style="white-space:nowrap">+ Add</button>
+              </div>
+              <div id="watchlistList" style="font-size:10px;color:var(--muted);line-height:1.6"></div>
+              <div style="font-size:10px;color:var(--muted);line-height:1.5;margin-top:4px">
+                Each product in the list is scraped &amp; updated <b style="color:var(--text)">individually every 10 min</b>.
+                Add by pasting a URL above or click <b style="color:var(--text)">⭐</b> on any product row. Remove anytime with ✕.
+                While the list has items, auto-scrape, auto-push and repricing are limited to these products only.
+              </div>
+            </div>
+
+            <div class="config-field">
               <label>✈️ Telegram Alerts</label>
               <input class="config-input" id="tgBotToken" placeholder="Bot Token — from @BotFather" style="margin-bottom:6px"
                 oninput="saveTgSettings()" onchange="saveTgSettings()">
@@ -2938,9 +2952,12 @@ function generateUrlsFromListings() {
 
 function startScraping() {
   if (!state.extReady) { alert('Extension not connected. Please install the Makro Pro Scraper extension.'); return; }
-  // Test mode: force the pinned URL — ignore whatever is pasted in the box
+  // Watchlist mode: force the watchlist URLs — ignore whatever is pasted in the box
   var urls;
-  if (getTestMode() && getTestUrl()) {
+  if (watchlistActive()) {
+    urls = watchlistUrls();
+    log('info', '⭐ Watchlist mode: scraping ' + urls.length + ' watchlist product(s).');
+  } else if (getTestMode() && getTestUrl()) {
     urls = [getTestUrl()];
     log('info', '🧪 Test mode: forcing single-product scrape.');
   } else {
@@ -3139,7 +3156,7 @@ function maybeAutoPushPrices() {
   try {
     var mode = (document.getElementById('autoScrapeMode') || {}).value
             || localStorage.getItem('auto_scrape_mode') || 'smart';
-    var forced = localStorage.getItem('bbp_auto_push_enabled') === '1' || getTestMode();
+    var forced = localStorage.getItem('bbp_auto_push_enabled') === '1' || getTestMode() || watchlistActive();
     if (mode !== 'korvex' && !forced) return;
 
     // Guard: finishScraping() fires from several paths (per-URL completion,
@@ -3147,7 +3164,7 @@ function maybeAutoPushPrices() {
     if (_autoPushFired) return;
     _autoPushFired = true;
 
-    var pending = state.products.filter(function(p){ return p.pending_price != null && (!getTestMode() || isTestProduct(p)); });
+    var pending = state.products.filter(function(p){ return p.pending_price != null && isScopedProduct(p); });
     if (!pending.length) {
       addAutoPushLogEntry({ level: 'skip', msg: 'No pending price changes after scrape — nothing to push.' });
       return;
@@ -3197,7 +3214,7 @@ function maybeChaseLostBuybox() {
     var mode = (document.getElementById('autoScrapeMode') || {}).value
             || localStorage.getItem('auto_scrape_mode') || 'smart';
     var forced = localStorage.getItem('bbp_auto_push_enabled') === '1';
-    if (getTestMode()) return; // test mode: no bulk chase — single product only
+    if (getTestMode() || watchlistActive()) return; // scoped mode: no bulk chase — watchlist/test products only
     if (mode !== 'korvex' && !forced) return; // chase only makes sense with auto-push on
     if (_chaseFired) return;                  // one chase per cycle
     if (_chaseRound >= _chaseMaxRounds) {
@@ -4012,6 +4029,7 @@ function renderProducts() {
       <td><span class="status-pill ${statusClass}">${statusLabel}</span></td>
       <td style="font-size:10px;color:var(--muted);white-space:nowrap">${t}</td>
       <td style="display:flex;gap:2px;white-space:nowrap">
+        <button class="action-btn" style="font-size:10px;padding:1px 3px;${inWatchlist(p) ? 'color:#ffd60a;border-color:#ffd60a66' : ''}" onclick="toggleWatchlistFromProduct(${realIdx})" title="${inWatchlist(p) ? 'Remove from 10-min watchlist' : 'Add to 10-min watchlist'}">⭐</button>
         <button class="action-btn" style="font-size:10px;padding:1px 3px" onclick="openPushModal(${realIdx})" title="Push new price to seller portal">🚀</button>
         <button class="action-btn" style="font-size:10px;padding:1px 3px" onclick="syncCostForProduct(${realIdx})" title="Sync cost price from supplier sheets (by SKU)">💲</button>
         <button class="action-btn" style="font-size:10px;padding:1px 3px" onclick="showHistory(${realIdx})" title="Price history">📈</button>
@@ -6043,6 +6061,9 @@ document.addEventListener('scroll', function() {
   if (tuEl) tuEl.value = getTestUrl();
   updateTestModeStatus();
 
+  // Load 10-min watchlist
+  renderWatchlist();
+
   // Load saved seller name
   const savedSeller = localStorage.getItem(SELLER_KEY);
   if (savedSeller) document.getElementById('sellerNameInput').value = savedSeller;
@@ -6378,9 +6399,9 @@ function generatePriceUpdate(autoMode) {
     return null;
   }
 
-  // Build FSN → new price map (test mode: only the pinned product)
+  // Build FSN → new price map (watchlist/test mode: only scoped products)
   const scrapedMap = {};
-  state.products.forEach(function(p) { if (p.fsn && (!getTestMode() || isTestProduct(p))) scrapedMap[p.fsn] = p; });
+  state.products.forEach(function(p) { if (p.fsn && isScopedProduct(p)) scrapedMap[p.fsn] = p; });
 
   const priceMap = {};  // fsn → { newPrice, sku, title, oldPrice }
   let updateCount = 0;
@@ -8014,6 +8035,119 @@ function updateTestModeStatus() {
     escHtml(getTestUrl() || '(none set — paste a URL above)') + '</span>';
 }
 
+// ── 10-MIN WATCHLIST ─────────────────────────────────────────────────────
+// A user-chosen list of products, each scraped + updated individually every
+// 10 minutes. bbp_watchlist = JSON array of { url, fsn, name }. When the
+// watchlist has ≥1 item it takes precedence over test mode and bulk modes:
+//   • auto-scrape queue = watchlist URLs only, forced to every 10 min
+//   • auto-push limited to watchlist products (generatePriceUpdate filtered)
+//   • lost-buybox chase and bulk queue building disabled
+function getWatchlist() {
+  try { return JSON.parse(localStorage.getItem('bbp_watchlist') || '[]'); } catch(e) { return []; }
+}
+function saveWatchlist(list) {
+  localStorage.setItem('bbp_watchlist', JSON.stringify(list));
+}
+function watchlistActive() {
+  return getWatchlist().length > 0;
+}
+function watchlistUrls() {
+  var seen = {};
+  return getWatchlist().map(function(w){ return (w.url || '').trim(); })
+    .filter(function(u){ return u && !seen[u] && (seen[u] = 1); });
+}
+function inWatchlist(p) {
+  var list = getWatchlist();
+  if (!list.length) return false;
+  return list.some(function(w) {
+    if (p.fsn && w.fsn && (p.fsn === w.fsn || p.fsn.indexOf(w.fsn) === 0 || w.fsn.indexOf(p.fsn) === 0)) return true;
+    if (p.url && w.url && (p.url === w.url || p.url.indexOf(w.url) === 0 || w.url.indexOf(p.url) === 0)) return true;
+    return false;
+  });
+}
+function isWatchlistProduct(p) {
+  if (!watchlistActive()) return true; // no watchlist — no filtering
+  return inWatchlist(p);
+}
+// Unified scope predicate: watchlist > test mode > no filtering
+function isScopedProduct(p) {
+  if (watchlistActive()) return isWatchlistProduct(p);
+  if (getTestMode()) return isTestProduct(p);
+  return true;
+}
+function addToWatchlist(url, fsn, name) {
+  var clean = (url || '').trim();
+  if (!clean) return false;
+  var list = getWatchlist();
+  var dup = list.some(function(w) {
+    return (clean && w.url && (w.url === clean || w.url.indexOf(clean) === 0 || clean.indexOf(w.url) === 0)) ||
+           (fsn && w.fsn && (w.fsn === fsn || w.fsn.indexOf(fsn) === 0 || fsn.indexOf(w.fsn) === 0));
+  });
+  if (dup) return false;
+  list.push({ url: clean, fsn: (fsn || '').trim(), name: (name || '').trim() });
+  saveWatchlist(list);
+  renderWatchlist();
+  applyAutoScrape();
+  return true;
+}
+function removeFromWatchlist(idx) {
+  var list = getWatchlist();
+  if (idx >= 0 && idx < list.length) list.splice(idx, 1);
+  saveWatchlist(list);
+  renderWatchlist();
+  applyAutoScrape();
+}
+function renderWatchlist() {
+  var el = document.getElementById('watchlistList');
+  if (!el) return;
+  var list = getWatchlist();
+  if (!list.length) {
+    el.innerHTML = '<div style="font-size:10px;color:var(--muted)">Watchlist empty — paste a product URL above or click ⭐ on any product row.</div>';
+    return;
+  }
+  el.innerHTML = list.map(function(w, i) {
+    var label = w.name || w.fsn || w.url;
+    return '<div style="display:flex;align-items:center;gap:6px;padding:4px 6px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;margin-bottom:4px">' +
+      '<span style="font-size:10px;color:var(--accent)" title="' + escHtml(w.url) + '">⭐</span>' +
+      '<span style="flex:1;font-size:10px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml(w.url) + '">' + escHtml(label) + '</span>' +
+      '<button class="action-btn danger" style="font-size:9px;padding:1px 5px" onclick="removeFromWatchlist(' + i + ')" title="Remove from 10-min list">✕</button>' +
+      '</div>';
+  }).join('');
+}
+function addWatchlistFromInput() {
+  var inp = document.getElementById('watchlistUrlInput');
+  var url = (inp ? inp.value : '').trim();
+  if (!url) { alert('Paste a makro.co.za product URL first.'); return; }
+  var pid = (url.match(/[?&]pid=([A-Za-z0-9]+)/) || [])[1] || '';
+  var name = '';
+  var prod = state.products.find(function(p) {
+    return p.url === url || (pid && p.fsn === pid) || (pid && p.url && p.url.indexOf('pid=' + pid) !== -1);
+  });
+  if (prod) { name = prod.title || ''; if (!pid) pid = prod.fsn || ''; }
+  if (addToWatchlist(url, pid, name)) {
+    if (inp) inp.value = '';
+    log('info', '⭐ Added to 10-min watchlist: ' + (name || url));
+  } else {
+    alert('Already in the watchlist.');
+  }
+}
+function toggleWatchlistFromProduct(idx) {
+  var p = state.products[idx];
+  if (!p) return;
+  if (inWatchlist(p)) {
+    var list = getWatchlist();
+    var i = list.findIndex(function(w) {
+      return (p.fsn && w.fsn && (p.fsn === w.fsn || p.fsn.indexOf(w.fsn) === 0 || w.fsn.indexOf(p.fsn) === 0)) ||
+             (p.url && w.url && (p.url === w.url || p.url.indexOf(w.url) === 0 || w.url.indexOf(p.url) === 0));
+    });
+    removeFromWatchlist(i);
+    log('info', '⭐ Removed from 10-min watchlist: ' + (p.title || p.fsn || p.url));
+  } else {
+    addToWatchlist(p.url, p.fsn, p.title);
+    log('info', '⭐ Added to 10-min watchlist: ' + (p.title || p.fsn || p.url));
+  }
+}
+
 function initAutoScrape() {
   var sel = document.getElementById('autoScrapeInterval');
   var modeEl = document.getElementById('autoScrapeMode');
@@ -8036,6 +8170,17 @@ function initAutoScrape() {
 function buildAutoScrapeQueue() {
   var mode = (document.getElementById('autoScrapeMode') || {}).value
           || localStorage.getItem('auto_scrape_mode') || 'smart';
+
+  // Watchlist mode: ONLY the watchlist URLs — no bulk queue building
+  if (watchlistActive()) {
+    var wUrls = watchlistUrls();
+    if (!wUrls.length) {
+      log('info', '⭐ Watchlist: no URLs — add products in the Scraper tab.');
+      return [];
+    }
+    log('info', '⭐ Watchlist mode: scraping ' + wUrls.length + ' watchlist product(s).');
+    return wUrls;
+  }
 
   // Test mode: ONLY the pinned URL — no bulk queue building
   if (getTestMode()) {
@@ -8099,7 +8244,7 @@ function applyAutoScrape() {
   var sel = document.getElementById('autoScrapeInterval');
   var statusEl = document.getElementById('autoScrapeStatus');
   var mins = sel ? parseInt(sel.value) : 0;
-  if (getTestMode()) mins = 10; // test mode: pin to every 10 minutes
+  if (getTestMode() || watchlistActive()) mins = 10; // scoped mode: pin to every 10 minutes
   if (!mins) {
     if (statusEl) statusEl.textContent = 'Auto-scrape off.';
     return;
@@ -8110,9 +8255,13 @@ function applyAutoScrape() {
     var losses = state.products.filter(function(p){ return p.status === 'lose'; }).length;
     var wins   = state.products.filter(function(p){ return p.status === 'win';  }).length;
     var mode   = (document.getElementById('autoScrapeMode')||{}).value || 'smart';
-    var modeLabel = getTestMode() ? '🧪 TEST MODE — single product (10 min)'
+    var wlCount = getWatchlist().length;
+    var modeLabel = wlCount ? '⭐ WATCHLIST — ' + wlCount + ' product(s) (10 min)'
+      : getTestMode() ? '🧪 TEST MODE — single product (10 min)'
       : mode === 'losses' ? 'losses only' : mode === 'all' ? 'all products' : mode === 'korvex' ? 'Korvex only (auto-push)' : 'smart (losses first)';
-    var queueDesc = getTestMode()
+    var queueDesc = wlCount
+      ? wlCount + ' watchlist product(s) — each updated individually'
+      : getTestMode()
       ? '1 test product (pinned URL)'
       : 'Queue will have <span style="color:#ff4d6d">' + losses + ' losses</span> + <span style="color:var(--accent)">' + wins + ' wins</span>';
     statusEl.innerHTML =
