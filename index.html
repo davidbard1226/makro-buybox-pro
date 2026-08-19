@@ -1040,6 +1040,21 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
             </div>
 
             <div class="config-field">
+              <label>🧪 Single-Product Test Mode</label>
+              <label style="font-size:11px;display:flex;align-items:center;gap:6px;color:var(--muted);cursor:pointer;margin-bottom:6px">
+                <input type="checkbox" id="testModeToggle" onchange="toggleTestMode(this.checked)" style="width:14px;height:14px;accent-color:#00e5a0">
+                Test ONLY one product — no bulk updates, scrape every 10 min
+              </label>
+              <input class="config-input" id="testUrlInput" placeholder="Paste ONE makro.co.za product URL" value=""
+                oninput="localStorage.setItem('bbp_test_url', this.value.trim())" style="margin-bottom:6px">
+              <div id="testModeStatus" style="display:none;font-size:10px;color:#00e5a0;line-height:1.6"></div>
+              <div style="font-size:10px;color:var(--muted);line-height:1.5;margin-top:4px">
+                When ON: auto-scrape runs every 10 min on this URL only; auto-push, repricing and chase are
+                limited to this product; bulk queue building is disabled. Lets you watch one product update end-to-end.
+              </div>
+            </div>
+
+            <div class="config-field">
               <label>✈️ Telegram Alerts</label>
               <input class="config-input" id="tgBotToken" placeholder="Bot Token — from @BotFather" style="margin-bottom:6px"
                 oninput="saveTgSettings()" onchange="saveTgSettings()">
@@ -2923,7 +2938,14 @@ function generateUrlsFromListings() {
 
 function startScraping() {
   if (!state.extReady) { alert('Extension not connected. Please install the Makro Pro Scraper extension.'); return; }
-  const urls = parseUrls();
+  // Test mode: force the pinned URL — ignore whatever is pasted in the box
+  var urls;
+  if (getTestMode() && getTestUrl()) {
+    urls = [getTestUrl()];
+    log('info', '🧪 Test mode: forcing single-product scrape.');
+  } else {
+    urls = parseUrls();
+  }
   if (urls.length === 0) { alert('No valid Makro URLs found. Paste at least one makro.co.za product URL.'); return; }
 
   const configSeller = document.getElementById('sellerNameConfig').value.trim();
@@ -3112,7 +3134,7 @@ function maybeAutoPushPrices() {
   try {
     var mode = (document.getElementById('autoScrapeMode') || {}).value
             || localStorage.getItem('auto_scrape_mode') || 'smart';
-    var forced = localStorage.getItem('bbp_auto_push_enabled') === '1';
+    var forced = localStorage.getItem('bbp_auto_push_enabled') === '1' || getTestMode();
     if (mode !== 'korvex' && !forced) return;
 
     // Guard: finishScraping() fires from several paths (per-URL completion,
@@ -3120,7 +3142,7 @@ function maybeAutoPushPrices() {
     if (_autoPushFired) return;
     _autoPushFired = true;
 
-    var pending = state.products.filter(function(p){ return p.pending_price != null; });
+    var pending = state.products.filter(function(p){ return p.pending_price != null && (!getTestMode() || isTestProduct(p)); });
     if (!pending.length) {
       addAutoPushLogEntry({ level: 'skip', msg: 'No pending price changes after scrape — nothing to push.' });
       return;
@@ -3170,6 +3192,7 @@ function maybeChaseLostBuybox() {
     var mode = (document.getElementById('autoScrapeMode') || {}).value
             || localStorage.getItem('auto_scrape_mode') || 'smart';
     var forced = localStorage.getItem('bbp_auto_push_enabled') === '1';
+    if (getTestMode()) return; // test mode: no bulk chase — single product only
     if (mode !== 'korvex' && !forced) return; // chase only makes sense with auto-push on
     if (_chaseFired) return;                  // one chase per cycle
     if (_chaseRound >= _chaseMaxRounds) {
@@ -6010,6 +6033,13 @@ document.addEventListener('scroll', function() {
   var rwEl = document.getElementById('pricerRaiseWins');
   if (rwEl) rwEl.checked = localStorage.getItem('bbp_raise_wins') === '1';
 
+  // Load single-product test mode (toggle + pinned URL)
+  var tmEl = document.getElementById('testModeToggle');
+  var tuEl = document.getElementById('testUrlInput');
+  if (tmEl) tmEl.checked = localStorage.getItem('bbp_test_mode') === '1';
+  if (tuEl) tuEl.value = getTestUrl();
+  updateTestModeStatus();
+
   // Load saved seller name
   const savedSeller = localStorage.getItem(SELLER_KEY);
   if (savedSeller) document.getElementById('sellerNameInput').value = savedSeller;
@@ -6329,9 +6359,9 @@ function generatePriceUpdate(autoMode) {
     return null;
   }
 
-  // Build FSN → new price map
+  // Build FSN → new price map (test mode: only the pinned product)
   const scrapedMap = {};
-  state.products.forEach(function(p) { if (p.fsn) scrapedMap[p.fsn] = p; });
+  state.products.forEach(function(p) { if (p.fsn && (!getTestMode() || isTestProduct(p))) scrapedMap[p.fsn] = p; });
 
   const priceMap = {};  // fsn → { newPrice, sku, title, oldPrice }
   let updateCount = 0;
@@ -7914,6 +7944,57 @@ var _lastSellerSig = '';
 var _autoPushFired = false; // one auto-push per scrape cycle (finishScraping fires from multiple paths)
 var _autoScrapeRun = 0; // tracks cycle count
 
+// ── SINGLE-PRODUCT TEST MODE ──────────────────────────────────────────────
+// Test ONE product end-to-end (scrape → reprice → push to portal) without
+// bulk updates. bbp_test_mode='1' + bbp_test_url=<URL>. When on:
+//   • auto-scrape queue = [test URL] only, forced to every 10 min
+//   • auto-push limited to the test product (generatePriceUpdate filtered)
+//   • lost-buybox chase and bulk queue building disabled
+function getTestMode() {
+  return localStorage.getItem('bbp_test_mode') === '1';
+}
+function getTestUrl() {
+  return (localStorage.getItem('bbp_test_url') || '').trim();
+}
+function testUrlPid() {
+  var tUrl = getTestUrl();
+  if (!tUrl) return '';
+  var m = tUrl.match(/[?&]pid=([A-Za-z0-9]+)/);
+  return m ? m[1] : '';
+}
+function isTestProduct(p) {
+  if (!getTestMode()) return true; // not in test mode — no filtering
+  var tUrl = getTestUrl();
+  if (!tUrl) return false;         // test mode but no URL — block everything
+  var pid = testUrlPid();
+  if (pid && p.fsn === pid) return true;                                  // FSN == pid
+  if (p.url && (p.url === tUrl || (pid && p.url.indexOf('pid=' + pid) !== -1))) return true; // same URL / same pid
+  return false;
+}
+function toggleTestMode(on) {
+  localStorage.setItem('bbp_test_mode', on ? '1' : '0');
+  if (on) {
+    // If no URL saved yet, grab the single URL from the URL box
+    if (!getTestUrl()) {
+      var urls = parseUrls();
+      if (urls.length === 1) localStorage.setItem('bbp_test_url', urls[0]);
+    }
+  }
+  var urlEl = document.getElementById('testUrlInput');
+  if (urlEl) urlEl.value = getTestUrl();
+  updateTestModeStatus();
+  applyAutoScrape();
+  log('info', '🧪 Test mode ' + (on ? 'ON — single product: ' + (getTestUrl() || '(no URL set — paste one)') : 'OFF'));
+}
+function updateTestModeStatus() {
+  var el = document.getElementById('testModeStatus');
+  if (!el) return;
+  if (!getTestMode()) { el.style.display = 'none'; return; }
+  el.style.display = '';
+  el.innerHTML = '🧪 Test mode ON — scrape every 10 min · only this product pushes · bulk + chase disabled.<br>URL: <span style="font-family:monospace">' +
+    escHtml(getTestUrl() || '(none set — paste a URL above)') + '</span>';
+}
+
 function initAutoScrape() {
   var sel = document.getElementById('autoScrapeInterval');
   var modeEl = document.getElementById('autoScrapeMode');
@@ -7936,6 +8017,17 @@ function initAutoScrape() {
 function buildAutoScrapeQueue() {
   var mode = (document.getElementById('autoScrapeMode') || {}).value
           || localStorage.getItem('auto_scrape_mode') || 'smart';
+
+  // Test mode: ONLY the pinned URL — no bulk queue building
+  if (getTestMode()) {
+    var tUrl = getTestUrl();
+    if (!tUrl) {
+      log('info', '🧪 Test mode: no test URL set — paste one in the Scraper tab.');
+      return [];
+    }
+    log('info', '🧪 Test mode: scraping ONLY the pinned product.');
+    return [tUrl];
+  }
 
   // Korvex mode: only products where the competitor seller matches (case-insensitive)
   var sellerName = (localStorage.getItem('auto_scrape_seller') || 'Korvex').toLowerCase().trim();
@@ -7988,6 +8080,7 @@ function applyAutoScrape() {
   var sel = document.getElementById('autoScrapeInterval');
   var statusEl = document.getElementById('autoScrapeStatus');
   var mins = sel ? parseInt(sel.value) : 0;
+  if (getTestMode()) mins = 10; // test mode: pin to every 10 minutes
   if (!mins) {
     if (statusEl) statusEl.textContent = 'Auto-scrape off.';
     return;
@@ -7998,11 +8091,15 @@ function applyAutoScrape() {
     var losses = state.products.filter(function(p){ return p.status === 'lose'; }).length;
     var wins   = state.products.filter(function(p){ return p.status === 'win';  }).length;
     var mode   = (document.getElementById('autoScrapeMode')||{}).value || 'smart';
-    var modeLabel = mode === 'losses' ? 'losses only' : mode === 'all' ? 'all products' : mode === 'korvex' ? 'Korvex only (auto-push)' : 'smart (losses first)';
+    var modeLabel = getTestMode() ? '🧪 TEST MODE — single product (10 min)'
+      : mode === 'losses' ? 'losses only' : mode === 'all' ? 'all products' : mode === 'korvex' ? 'Korvex only (auto-push)' : 'smart (losses first)';
+    var queueDesc = getTestMode()
+      ? '1 test product (pinned URL)'
+      : 'Queue will have <span style="color:#ff4d6d">' + losses + ' losses</span> + <span style="color:var(--accent)">' + wins + ' wins</span>';
     statusEl.innerHTML =
       '⏰ Next run: <strong>' + new Date(nextMs).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) + '</strong>' +
       ' &nbsp;·&nbsp; Mode: ' + modeLabel +
-      '<br>Queue will have <span style="color:#ff4d6d">' + losses + ' losses</span> + <span style="color:var(--accent)">' + wins + ' wins</span>';
+      '<br>' + queueDesc;
   }
 
   var nextRun = Date.now() + mins * 60000;
