@@ -3026,7 +3026,12 @@ function handleQueueProgress(d) {
     const status = seller === 'Unknown Seller' ? 'unknown' : (isWin ? 'win' : 'lose');
 
     const existing = state.products.find(function(x) {
-      return x.url === p.url || (p.fsn && x.fsn === p.fsn);
+      if (x.url === p.url) return true;
+      if (!p.fsn || !x.fsn) return false;
+      if (x.fsn === p.fsn) return true;
+      // Prefix-aware: 15-char pid vs full 22-char FSN (either direction) —
+      // prevents scrape-created duplicate entries that lose their SKU/cost.
+      return x.fsn.slice(0, 15) === p.fsn.slice(0, 15);
     });
     if (existing) {
       existing.buybox_price = price;
@@ -3038,7 +3043,7 @@ function handleQueueProgress(d) {
       // Backfill SKU from the scrape result or the saved listings — never let
       // a scrape-created product wipe out a real SKU with an empty one.
       if (!existing.sku || /^itm/i.test(existing.sku)) {
-        var skuBackfill = p.sku || (listingsMap[p.fsn] || {}).sku || '';
+        var skuBackfill = p.sku || (listingsMap[p.fsn] || listingsMap[p.fsn && p.fsn.slice(0, 15)] || {}).sku || '';
         if (skuBackfill && !/^itm/i.test(skuBackfill)) existing.sku = skuBackfill;
       }
       if (p.sellers && p.sellers.length) existing.sellers = p.sellers;
@@ -3047,7 +3052,11 @@ function handleQueueProgress(d) {
       if (existing.history.length > 30) existing.history.shift();
     } else {
       state.products.push({
-        url: p.url, fsn: p.fsn || '', sku: p.sku || (listingsMap[p.fsn] || {}).sku || '',
+        url: p.url, fsn: p.fsn || '',
+        // Never store the itm... URL slug as a SKU — it gets cleared later and
+        // leaves the product without a SKU (no cost → can't update). Prefer a
+        // real SKU from the scrape or the saved listings (exact or 15-char prefix).
+        sku: (p.sku && !/^itm/i.test(p.sku)) ? p.sku : (listingsMap[p.fsn] || listingsMap[p.fsn && p.fsn.slice(0, 15)] || {}).sku || '',
         title: p.title || p.url, buybox_price: price,
         seller, status, lastChecked: new Date().toISOString(),
         sellers: p.sellers || [],
@@ -3423,6 +3432,15 @@ function autoReprice(prod) {
   // Update the listing's myPrice
   var listings = getListings();
   var listing = findListingByFsn(prod.fsn, listings);
+
+  // ── NEVER RAISE IN THE LOSE BRANCH ──────────────────────────────────────
+  // If the buybox is above our current price, we're already winning — the
+  // scrape's buybox data is stale or wrong (Makro API lag). Raising to "beat"
+  // it would push us above the competitor and lose the box (e.g. R33979 → R34151).
+  if (listing && listing.myPrice > 0 && targetPrice > listing.myPrice) {
+    log('info', '⏭ Skipped reprice: buybox R' + roundPrice(buybox) + ' > our R' + listing.myPrice + ' — already winning');
+    return;
+  }
   var changed = false;
   if (listing) {
     if (listing.myPrice !== targetPrice) {
@@ -6241,9 +6259,21 @@ function buildPricerPreview() {
   const scrapedMap = {};
   state.products.forEach(function(p) { if (p.fsn) scrapedMap[p.fsn] = p; });
 
+  // Prefix-aware product lookup (15-char pid vs 22-char full FSN)
+  function findScrapedPreview(fsn) {
+    if (!fsn) return null;
+    if (scrapedMap[fsn]) return scrapedMap[fsn];
+    var short = fsn.slice(0, 15);
+    if (scrapedMap[short]) return scrapedMap[short];
+    for (var k in scrapedMap) {
+      if (k.indexOf(fsn) === 0 || fsn.indexOf(k) === 0) return scrapedMap[k];
+    }
+    return null;
+  }
+
   const rows = [];
   listings.forEach(function(l) {
-    const scraped = scrapedMap[l.fsn];
+    const scraped = findScrapedPreview(l.fsn);
     if (!scraped) return;
     // Safety guard — skip products with no cost or no min price (unless overridden)
     if (!allowBelow && (!(scraped.cost_price > 0) || !(scraped.min_price > 0))) return;
@@ -6403,12 +6433,26 @@ function generatePriceUpdate(autoMode) {
   const scrapedMap = {};
   state.products.forEach(function(p) { if (p.fsn && isScopedProduct(p)) scrapedMap[p.fsn] = p; });
 
+  // Prefix-aware product lookup: the scraped FSN and the listing FSN can differ
+  // in format (15-char pid vs 22-char full FSN) — match exact first, then prefix
+  // in either direction so repriced products are never dropped from the file.
+  function findScraped(fsn) {
+    if (!fsn) return null;
+    if (scrapedMap[fsn]) return scrapedMap[fsn];
+    var short = fsn.slice(0, 15);
+    if (scrapedMap[short]) return scrapedMap[short];
+    for (var k in scrapedMap) {
+      if (k.indexOf(fsn) === 0 || fsn.indexOf(k) === 0) return scrapedMap[k];
+    }
+    return null;
+  }
+
   const priceMap = {};  // fsn → { newPrice, sku, title, oldPrice }
   let updateCount = 0;
   let skippedNoCost = 0;
   let skippedClamped = 0;
   listings.forEach(function(l) {
-    const scraped = scrapedMap[l.fsn];
+    const scraped = findScraped(l.fsn);
     if (!scraped) return;
 
     // ── SAFETY GUARD: never reprice without cost + min price set ────────────
@@ -6451,6 +6495,13 @@ function generatePriceUpdate(autoMode) {
 
     // Priority 1: auto-repriced price (set by autoReprice after scrape)
     if (scraped.pending_price != null) {
+      // Defense-in-depth: never write a raise for a winning product unless the
+      // opt-in "raise wins" flag is on. autoReprice's win branch is the only
+      // legit raiser; a stale buybox must never push us above our own price.
+      if (scraped.status === 'win' && l.myPrice > 0 && scraped.pending_price > l.myPrice &&
+          localStorage.getItem('bbp_raise_wins') !== '1') {
+        return;
+      }
       var safePrice1 = applyGuards(scraped.pending_price);
       priceMap[l.fsn] = { newPrice: safePrice1, sku: l.sku, title: l.title, oldPrice: l.myPrice,
         hitFloor: safePrice1 === hardFloor, hitCeiling: effectiveCeiling && safePrice1 === effectiveCeiling };
