@@ -3443,7 +3443,8 @@ function autoReprice(prod) {
 
   var maxPrice = prod.max_price || null;
 
-  var targetPrice = roundPrice(buybox - 1);   // beat by R1, rounded to whole number
+  var rawTarget = roundPrice(buybox - 1);   // beat by R1, rounded to whole number
+  var targetPrice = rawTarget;
   if (targetPrice < ABSOLUTE_PRICE_FLOOR) targetPrice = ABSOLUTE_PRICE_FLOOR; // never below R150 absolute floor
   if (targetPrice < minPrice) targetPrice = minPrice;   // never below floor
   if (maxPrice && targetPrice > maxPrice) targetPrice = maxPrice; // never above ceiling
@@ -3481,6 +3482,10 @@ function autoReprice(prod) {
     );
     // Update pending upload badge
     updatePendingBadge();
+  } else if (listing && listing.myPrice > 0 && listing.myPrice === targetPrice && rawTarget < minPrice) {
+    // Can't beat the buybox without going below the min floor — explain the skip
+    // instead of staying silent (was confusing: product loses but never repriced).
+    log('info', '⏭ Skipped reprice: beat price R' + rawTarget + ' below min R' + minPrice + ' — staying at floor R' + targetPrice);
   }
 }
 
