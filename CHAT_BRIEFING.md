@@ -66,12 +66,26 @@ A Chrome extension + dashboard that monitors and automatically wins the BuyBox o
   template (Listings Management → Request Download) is still recommended for current
   data. getTemplateAgeDays() parses the stamp and warns when >30 days old.
 - In-place XLS patcher (patchXlsPrices/patchBiffStream/decodeRK) binary-patches only
-  the price cells inside the ORIGINAL exported file (NUMBER/RK/MULRK BIFF records via
-  CFB) so every other byte stays identical to the export Makro gave us. Verified by
-  re-parsing; falls back to the old SheetJS rebuild if the patch can't be verified
-  (failReason is logged, e.g. "REBUILT via SheetJS (in-place patch failed: ...)").
-  debugPatchXls() in the console reports file magic/CFB/record counts for diagnosis.
-  Filename stamp fixed to YYMM-HHMMSS (matches original _2008-164406_default pattern).
+  the price cells inside the ORIGINAL exported file (NUMBER/RK/MULRK/LABELSST/BLANK
+  BIFF records via CFB) so every other byte stays identical to the export Makro gave
+  us. Verified by re-parsing; falls back to the old SheetJS rebuild if the patch can't
+  be verified (failReason is logged, e.g. "REBUILT via SheetJS (in-place patch failed:
+  ...)"). debugPatchXls() in the console reports file magic/CFB/record counts for
+  diagnosis. Filename stamp fixed to YYMM-HHMMSS (matches original _2008-164406_default
+  pattern).
+- PATCHER FIXED (commit 64de06f): two root causes found on the real template
+  (S_listing ..._2108-001113_default.xls, stream 819849B):
+  1) BOF dt offset — BIFF8 BOF layout is version(2) dt(2) build(2); the patcher read
+     dt from data[0..1] (the version 0x0600), so sheetIdx never advanced past -1 and
+     the sheet0 guard blocked ALL patching ("0 cells patched"). dt now read from
+     data[2..3] (0x0010 = worksheet).
+  2) Prices are shared strings — Base Price (col 8) and Your Selling Price (col 9)
+     cells are LABELSST (0xFD) refs to text like "3529.00", not NUMBER/RK/MULRK
+     (the 1073 RK records are cols 12-20: stock counts, package dims). LABELSST and
+     BLANK (0x0201) cells are now converted to NUMBER records keeping the original
+     xf — the same t='n' representation the SheetJS rebuild produces, which Makro
+     accepts. Verified on the real file: 25534/25536 records byte-identical, only
+     the target cells converted, values re-parse correctly. Smoke suite 136/136.
 
 ## Known Watch Points
 - Blank dashboard = JS syntax error, revert with: git checkout <last_good_commit> -- index.html
