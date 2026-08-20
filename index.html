@@ -2033,11 +2033,14 @@ function loadProducts() {
 
 // Merge duplicate FSN entries — keep the one with the most useful data,
 // then copy any non-null fields from the other into it.
+// Keyed by 15-char FSN prefix so a scrape pid (15 chars) merges with the
+// full 22-char FSN entry instead of creating a SKU-less duplicate.
 function deduplicateProducts(products) {
-  var seen = {}; // fsn → index in result
+  var seen = {}; // fsnPrefix → index in result
   var result = [];
   products.forEach(function(p) {
-    var key = (p.fsn || '').trim().toUpperCase();
+    var full = (p.fsn || '').trim().toUpperCase();
+    var key = full ? full.slice(0, 15) : '';
     if (!key) {
       // No FSN — keep as-is, can't dedupe without a key
       result.push(p);
@@ -2046,6 +2049,8 @@ function deduplicateProducts(products) {
     if (key in seen) {
       // Merge: copy non-empty fields from p into the existing entry
       var existing = result[seen[key]];
+      // Keep the longer FSN (full 22-char beats scrape pid)
+      if (full.length > (existing.fsn || '').length) existing.fsn = full;
       var fields = ['sku','title','url','seller','status','buybox_price','cost_price',
                     'min_price','max_price','cost_supplier','lastChecked','pending_price',
                     'pending_updated','min_profit_pct','history'];
@@ -2138,15 +2143,23 @@ window.addEventListener('message', function(ev) {
   if (d.type === 'PRODUCTS_UPDATED') {
     // ── Preserve manually-set fields before reloading from localStorage ──
     // Bridge writes scraped data which won't have SKU/cost/min/max the user set manually.
+    // Key by 15-char FSN prefix so a scrape pid (15 chars) still matches the
+    // full 22-char FSN product — otherwise the SKU restore silently misses and
+    // every scrape wipes the SKU (no cost → autoReprice skips → stale prices).
+    function prodKey(p) {
+      var f = (p.fsn || '').toUpperCase();
+      if (f) return f.slice(0, 15);
+      return p.url;
+    }
     var memMap = {};
     state.products.forEach(function(p) {
-      var key = (p.fsn||'').toUpperCase() || p.url;
+      var key = prodKey(p);
       if (key) memMap[key] = p;
     });
     loadProducts();
     // Merge manual fields back in — never let a bridge write wipe them
     state.products.forEach(function(p) {
-      var key = (p.fsn||'').toUpperCase() || p.url;
+      var key = prodKey(p);
       var mem = memMap[key];
       if (!mem) return;
       if (mem.sku && !/^itm/i.test(mem.sku) && (!p.sku || /^itm/i.test(p.sku))) p.sku = mem.sku;
@@ -3039,7 +3052,11 @@ function handleQueueProgress(d) {
       existing.status       = status;
       existing.lastChecked  = new Date().toISOString();
       existing.title        = p.title || existing.title;
-      existing.fsn          = p.fsn || existing.fsn || '';
+      // Prefer the LONGER FSN — a scrape pid (15 chars) must never overwrite
+      // the full 22-char FSN we already have (exact listings match depends on it).
+      if (p.fsn && (!existing.fsn || p.fsn.length > existing.fsn.length)) {
+        existing.fsn = p.fsn;
+      }
       // Backfill SKU from the scrape result or the saved listings — never let
       // a scrape-created product wipe out a real SKU with an empty one.
       if (!existing.sku || /^itm/i.test(existing.sku)) {

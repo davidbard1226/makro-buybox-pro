@@ -193,9 +193,12 @@
         sellersUrl: null
       };
 
-      // SKU from URL path (itm... part)
+      // SKU from URL path (itm... part) — but NEVER store the itm... slug as a
+      // SKU: it gets stripped by the dashboard later and leaves the product
+      // without a SKU (no cost → autoReprice skips → prices go stale). Real
+      // SKUs are stamped from the imported S_listing by FSN match instead.
       const skuMatch = window.location.pathname.match(/\/p\/([^/?#]+)/);
-      if (skuMatch) data.sku = skuMatch[1];
+      if (skuMatch && !/^itm/i.test(skuMatch[1])) data.sku = skuMatch[1];
 
       // FSN — try multiple sources in priority order
       // 1. pid= query param (present when clicking from Google ads)

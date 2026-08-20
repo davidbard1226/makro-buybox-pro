@@ -107,6 +107,14 @@
                 if (entry.history.length > 30) entry.history.shift();
               }
               if (!entry.fsn && prev.fsn) entry.fsn = prev.fsn;
+              // ── SKU PERSISTENCE GUARD ─────────────────────────────────────
+              // The scraper stores the itm... URL slug as sku. Never let that
+              // overwrite a real SKU we already have (stamped from listings) —
+              // otherwise every scrape wipes the SKU and the product loses its
+              // cost match (no cost → autoReprice skips → prices go stale).
+              if (prev.sku && !/^itm/i.test(prev.sku) && (!entry.sku || /^itm/i.test(entry.sku))) {
+                entry.sku = prev.sku;
+              }
               // Don't let a scrape with no fresh sellers data blank out sellers we already have
               if (entry.sellers === undefined) {
                 entry.sellers = prev.sellers;
