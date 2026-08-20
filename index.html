@@ -6549,8 +6549,10 @@ function patchBiffStream(stream, updates) {
   var pos = 0, len = stream.length, patched = 0, notes = [];
   var sheetIdx = -1; // -1 = workbook globals; 0+ = worksheets in order
   var counts = { number: 0, rk: 0, mulrk: 0 };
+  var hist = {};     // record type → count, ALL sheets (diagnostic)
   while (pos + 4 <= len) {
     var type = stream[pos] | (stream[pos + 1] << 8);
+    hist[type] = (hist[type] || 0) + 1;
     var rlen = stream[pos + 2] | (stream[pos + 3] << 8);
     var dataStart = pos + 4;
     var dataEnd = dataStart + rlen;
@@ -6626,7 +6628,7 @@ function patchBiffStream(stream, updates) {
   var rebuilt = new Uint8Array(total);
   var off = 0;
   out.forEach(function(r) { rebuilt.set(r, off); off += r.length; });
-  return { stream: rebuilt, patched: patched, notes: notes, counts: counts };
+  return { stream: rebuilt, patched: patched, notes: notes, counts: counts, hist: hist };
 }
 
 // Patch price cells inside the raw exported XLS (OLE2/CFB container).
@@ -6649,9 +6651,17 @@ function patchXlsPrices(rawBase64, updates) {
   if (wbIdx < 0 || !cfb.FileIndex[wbIdx] || !cfb.FileIndex[wbIdx].content)
     return { base64: null, failReason: 'no Workbook/Book stream (paths: ' + (cfb.FullPaths || []).join(',') + ')' };
   var res = patchBiffStream(cfb.FileIndex[wbIdx].content, updates);
-  if (res.patched === 0)
-    return { base64: null, failReason: '0 cells patched — stream ' + cfb.FileIndex[wbIdx].content.length + 'B, sheet0 records: ' +
-      res.counts.number + ' NUMBER / ' + res.counts.rk + ' RK / ' + res.counts.mulrk + ' MULRK, updates: ' + updates.length };
+  if (res.patched === 0) {
+    // Self-diagnosing failure: show the record-type histogram so the next push
+    // log reveals how the price cells are actually stored (NUMBER/RK/MULRK vs
+    // FORMULA/LABELSST vs a later worksheet).
+    var top = Object.keys(res.hist).sort(function(a, b) { return res.hist[b] - res.hist[a]; })
+      .slice(0, 6)
+      .map(function(t) { return '0x' + (+t).toString(16).toUpperCase() + '=' + res.hist[t]; })
+      .join(' ');
+    return { base64: null, failReason: '0 cells patched — stream ' + cfb.FileIndex[wbIdx].content.length + 'B, sheet0: ' +
+      res.counts.number + 'N/' + res.counts.rk + 'RK/' + res.counts.mulrk + 'MULRK, top records: ' + top + ', updates: ' + updates.length };
+  }
   cfb.FileIndex[wbIdx].content = res.stream;
   var out;
   try { out = XLSX.CFB.write(cfb, { type: 'array' }); }
