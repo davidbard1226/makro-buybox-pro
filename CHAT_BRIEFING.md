@@ -86,6 +86,12 @@ A Chrome extension + dashboard that monitors and automatically wins the BuyBox o
      xf — the same t='n' representation the SheetJS rebuild produces, which Makro
      accepts. Verified on the real file: 25534/25536 records byte-identical, only
      the target cells converted, values re-parse correctly. Smoke suite 136/136.
+- PATCHER CONFIRMED IN PRODUCTION (2026-08-20 23:27 push): log shows
+  "patched 547 cell(s) in-place (840192→844288 bytes)" — the in-place patcher
+  now lands on real exports instead of falling back to REBUILT. If a push log
+  ever shows "REBUILT via SheetJS (in-place patch failed: 0 cells patched —
+  ... 0N/0RK/0MULRK ...)" WITHOUT the LABELSST/BLANK counts, the dashboard is
+  running cached pre-fix code — hard-refresh (Ctrl+Shift+R) to load the fix.
 
 ## Known Watch Points
 - Blank dashboard = JS syntax error, revert with: git checkout <last_good_commit> -- index.html
