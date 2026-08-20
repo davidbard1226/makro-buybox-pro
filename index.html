@@ -5360,22 +5360,27 @@ function pushProductToPortal() {
     // fall back to the SheetJS rebuild if the patch can't be verified.
     var base64 = null;
     var buildNote = '';
+    var patchFail = '';
     try {
       var patched = patchXlsPrices(rawBase64, [update]);
-      if (patched) {
+      if (patched && patched.base64) {
         var ok = true;
+        var badCells = [];
         try {
           var wb2 = XLSX.read(base64ToBytes(patched.base64), { type: 'array' });
           var sh2 = wb2.Sheets[wb2.SheetNames[0]];
           var cell2 = sh2[XLSX.utils.encode_cell({ r: update.r, c: update.c })];
-          if (!cell2 || Math.abs(cell2.v - update.value) > 0.005) ok = false;
-        } catch (e) { ok = false; }
-        if (ok) {
+          if (!cell2 || Math.abs(cell2.v - update.value) > 0.005) badCells.push(update.r + ':' + update.c + '=' + (cell2 ? cell2.v : 'missing'));
+        } catch (e) { badCells.push('reparse threw: ' + e.message); }
+        if (badCells.length) patchFail = 'verify failed: ' + badCells.join(', ');
+        else {
           base64 = patched.base64;
           buildNote = 'patched in-place (' + patched.rawSize + '→' + patched.patchedSize + ' bytes)';
         }
+      } else {
+        patchFail = patched ? patched.failReason : 'patch returned null';
       }
-    } catch (e) { base64 = null; }
+    } catch (e) { patchFail = 'patch threw: ' + e.message; }
 
     if (!base64) {
       var wbout = XLSX.write(wb, { bookType: 'xls', type: 'array' });
@@ -5386,7 +5391,7 @@ function pushProductToPortal() {
         b64 += String.fromCharCode.apply(null, wbBytes.subarray(j, j + CHUNK));
       }
       base64 = btoa(b64);
-      buildNote = 'REBUILT via SheetJS (in-place patch failed)';
+      buildNote = 'REBUILT via SheetJS (in-place patch failed' + (patchFail ? ': ' + patchFail : '') + ')';
     }
 
     // Save for portal auto-upload + send via bridge to chrome.storage.local
@@ -6507,6 +6512,7 @@ function patchBiffStream(stream, updates) {
   var out = [];
   var pos = 0, len = stream.length, patched = 0, notes = [];
   var sheetIdx = -1; // -1 = workbook globals; 0+ = worksheets in order
+  var counts = { number: 0, rk: 0, mulrk: 0 };
   while (pos + 4 <= len) {
     var type = stream[pos] | (stream[pos + 1] << 8);
     var rlen = stream[pos + 2] | (stream[pos + 3] << 8);
@@ -6523,6 +6529,7 @@ function patchBiffStream(stream, updates) {
     var emit = null;
     if (sheetIdx === 0) {
       if (type === 0x0203 && data.length >= 14) { // NUMBER
+        counts.number++;
         var r = data[0] | (data[1] << 8), c = data[2] | (data[3] << 8);
         var key = r + ':' + c;
         if (byKey[key] !== undefined) {
@@ -6531,6 +6538,7 @@ function patchBiffStream(stream, updates) {
           patched++;
         }
       } else if (type === 0x027E && data.length >= 10) { // RK
+        counts.rk++;
         var r = data[0] | (data[1] << 8), c = data[2] | (data[3] << 8);
         var key = r + ':' + c;
         if (byKey[key] !== undefined) {
@@ -6542,6 +6550,7 @@ function patchBiffStream(stream, updates) {
           patched++;
         }
       } else if (type === 0x00BD && data.length >= 6) { // MULRK
+        counts.mulrk++;
         var r = data[0] | (data[1] << 8);
         var colFirst = data[2] | (data[3] << 8);
         var colLast = data[data.length - 2] | (data[data.length - 1] << 8);
@@ -6581,26 +6590,36 @@ function patchBiffStream(stream, updates) {
   var rebuilt = new Uint8Array(total);
   var off = 0;
   out.forEach(function(r) { rebuilt.set(r, off); off += r.length; });
-  return { stream: rebuilt, patched: patched, notes: notes };
+  return { stream: rebuilt, patched: patched, notes: notes, counts: counts };
 }
 
 // Patch price cells inside the raw exported XLS (OLE2/CFB container).
 // updates: [{ r, c, value }] — 0-based row/col in the FIRST sheet.
-// Returns { base64, patched, notes, rawSize, patchedSize } or null on failure.
+// Returns { base64, patched, notes, rawSize, patchedSize } on success, or
+// { base64: null, failReason: '...' } on failure (caller falls back to rebuild).
 function patchXlsPrices(rawBase64, updates) {
-  if (!updates || !updates.length) return null;
-  if (!XLSX.CFB) return null; // need the full build for OLE2/CFB container access
-  var bytes = base64ToBytes(rawBase64);
-  var cfb = XLSX.CFB.read(bytes, { type: 'array' });
+  if (!updates || !updates.length) return { base64: null, failReason: 'no updates' };
+  if (!XLSX.CFB) return { base64: null, failReason: 'XLSX.CFB missing (need xlsx.full.min.js)' };
+  var bytes;
+  try { bytes = base64ToBytes(rawBase64); }
+  catch (e) { return { base64: null, failReason: 'base64 decode: ' + e.message }; }
+  var cfb;
+  try { cfb = XLSX.CFB.read(bytes, { type: 'array' }); }
+  catch (e) { return { base64: null, failReason: 'CFB.read: ' + e.message }; }
   var wbIdx = -1;
   for (var i = 0; i < cfb.FullPaths.length; i++) {
     if (/(Workbook|Book)$/i.test(cfb.FullPaths[i])) { wbIdx = i; break; }
   }
-  if (wbIdx < 0 || !cfb.FileIndex[wbIdx] || !cfb.FileIndex[wbIdx].content) return null;
+  if (wbIdx < 0 || !cfb.FileIndex[wbIdx] || !cfb.FileIndex[wbIdx].content)
+    return { base64: null, failReason: 'no Workbook/Book stream (paths: ' + (cfb.FullPaths || []).join(',') + ')' };
   var res = patchBiffStream(cfb.FileIndex[wbIdx].content, updates);
-  if (res.patched === 0) return null;
+  if (res.patched === 0)
+    return { base64: null, failReason: '0 cells patched — stream ' + cfb.FileIndex[wbIdx].content.length + 'B, sheet0 records: ' +
+      res.counts.number + ' NUMBER / ' + res.counts.rk + ' RK / ' + res.counts.mulrk + ' MULRK, updates: ' + updates.length };
   cfb.FileIndex[wbIdx].content = res.stream;
-  var out = XLSX.CFB.write(cfb, { type: 'array' });
+  var out;
+  try { out = XLSX.CFB.write(cfb, { type: 'array' }); }
+  catch (e) { return { base64: null, failReason: 'CFB.write: ' + e.message }; }
   var outBytes = (out instanceof Uint8Array) ? out : new Uint8Array(out);
   return {
     base64: bytesToBase64(outBytes),
@@ -6609,6 +6628,53 @@ function patchXlsPrices(rawBase64, updates) {
     rawSize: bytes.length,
     patchedSize: outBytes.length
   };
+}
+
+// Console diagnostic — run from the dashboard (F12 → console → debugPatchXls())
+// to see exactly why the in-place patch fails on the current raw listing file.
+function debugPatchXls() {
+  var raw = localStorage.getItem('makro_listings_raw');
+  var report = {
+    hasRaw: !!raw,
+    rawSize: raw ? Math.floor(raw.length * 3 / 4) : 0,
+    hasCFB: !!(window.XLSX && XLSX.CFB),
+    xlsxVersion: window.XLSX ? XLSX.version : null
+  };
+  if (raw && window.XLSX && XLSX.CFB) {
+    try {
+      var bytes = base64ToBytes(raw);
+      report.magic = Array.prototype.slice.call(bytes.slice(0, 8)).map(function(b) {
+        return ('0' + b.toString(16)).slice(-2);
+      }).join(' ');
+      var cfb = XLSX.CFB.read(bytes, { type: 'array' });
+      report.fullPaths = cfb.FullPaths;
+      var wbIdx = -1;
+      for (var i = 0; i < cfb.FullPaths.length; i++) {
+        if (/(Workbook|Book)$/i.test(cfb.FullPaths[i])) { wbIdx = i; break; }
+      }
+      report.wbIdx = wbIdx;
+      if (wbIdx >= 0) {
+        var content = cfb.FileIndex[wbIdx].content;
+        report.wbStreamSize = content.length;
+        var counts = { number: 0, rk: 0, mulrk: 0, bof: 0, eof: 0, other: 0 };
+        var pos = 0;
+        while (pos + 4 <= content.length) {
+          var type = content[pos] | (content[pos + 1] << 8);
+          var rlen = content[pos + 2] | (content[pos + 3] << 8);
+          if (type === 0x0203) counts.number++;
+          else if (type === 0x027E) counts.rk++;
+          else if (type === 0x00BD) counts.mulrk++;
+          else if (type === 0x0809) counts.bof++;
+          else if (type === 0x000A) counts.eof++;
+          else counts.other++;
+          pos += 4 + rlen;
+        }
+        report.recordCounts = counts;
+      }
+    } catch (e) { report.error = e.message; }
+  }
+  console.log('[BBP patch debug]', report);
+  return report;
 }
 
 function generatePriceUpdate(autoMode) {
@@ -6813,25 +6879,29 @@ function generatePriceUpdate(autoMode) {
     // rebuild if the patch can't be verified.
     let base64 = null;
     let buildNote = '';
+    let patchFail = '';
     try {
       const patched = patchXlsPrices(rawBase64, updates);
-      if (patched) {
+      if (patched && patched.base64) {
         // Verify every target cell landed with the right value
-        let ok = true;
+        const badCells = [];
         try {
           const wb2 = XLSX.read(base64ToBytes(patched.base64), { type: 'array' });
           const sh2 = wb2.Sheets[wb2.SheetNames[0]];
           updates.forEach(function(u) {
             const cell = sh2[XLSX.utils.encode_cell({ r: u.r, c: u.c })];
-            if (!cell || Math.abs(cell.v - u.value) > 0.005) ok = false;
+            if (!cell || Math.abs(cell.v - u.value) > 0.005) badCells.push(u.r + ':' + u.c + '=' + (cell ? cell.v : 'missing'));
           });
-        } catch (e) { ok = false; }
-        if (ok) {
+        } catch (e) { badCells.push('reparse threw: ' + e.message); }
+        if (badCells.length) patchFail = 'verify failed: ' + badCells.join(', ');
+        else {
           base64 = patched.base64;
           buildNote = 'patched ' + patched.patched + ' cell(s) in-place (' + patched.rawSize + '→' + patched.patchedSize + ' bytes)';
         }
+      } else {
+        patchFail = patched ? patched.failReason : 'patch returned null';
       }
-    } catch (e) { base64 = null; }
+    } catch (e) { patchFail = 'patch threw: ' + e.message; }
 
     if (!base64) {
       // Fallback: rebuild via SheetJS (old behavior — Makro may reject it)
@@ -6843,7 +6913,7 @@ function generatePriceUpdate(autoMode) {
         b64 += String.fromCharCode.apply(null, wbBytes.subarray(i, i + CHUNK));
       }
       base64 = btoa(b64);
-      buildNote = 'REBUILT via SheetJS (in-place patch failed)';
+      buildNote = 'REBUILT via SheetJS (in-place patch failed' + (patchFail ? ': ' + patchFail : '') + ')';
     }
 
     // Save to localStorage for portal auto-upload
