@@ -3207,6 +3207,7 @@ function maybeAutoPushPrices() {
     addAutoPushLogEntry({
       level: sent ? 'push' : 'error',
       msg: (sent ? '🚀 Auto-pushed ' : '❌ Push failed: ') + result.changed + ' price(s) → ' + result.filename +
+           (result.buildNote ? ' [' + result.buildNote + ']' : '') +
            (result.skippedNoCost ? ' | ' + result.skippedNoCost + ' skipped (no cost/min)' : '') +
            (result.skippedClamped ? ' | ' + result.skippedClamped + ' skipped (guard)' : ''),
       details: result.changeLog || []
@@ -5326,6 +5327,7 @@ function pushProductToPortal() {
 
     // Find the row for this FSN (col 4) and write Selling Price (col 9)
     var changed = false;
+    var update = null;
     for (var r = 2; r < rows.length; r++) {
       var fsn = String(rows[r][4] || '').trim();
       if (fsn !== p.fsn) continue;
@@ -5334,6 +5336,7 @@ function pushProductToPortal() {
       sh[cellAddr].t = 'n';
       sh[cellAddr].v = newPrice;
       sh[cellAddr].w = String(newPrice);
+      update = { r: r, c: 9, value: newPrice };
       changed = true;
       break;
     }
@@ -5344,18 +5347,47 @@ function pushProductToPortal() {
     }
 
     var rawFilename = localStorage.getItem('makro_listings_filename') || 'S_listing_price_update.xls';
-    var dateStr = new Date().toISOString().slice(0,10).replace(/-/g,'');
-    var timeStr = new Date().toTimeString().slice(0,5).replace(':','');
-    var filename = rawFilename.replace(/(_\d{4}-\d{6}_default)/, '_' + dateStr.slice(4) + '-' + timeStr + '00_default');
+    // Original exports use YYMM-HHMMSS (e.g. _2008-164406_default = 2020-08, 16:44:06)
+    var d = new Date();
+    var yy = String(d.getFullYear() % 100).padStart(2, '0');
+    var mm = String(d.getMonth() + 1).padStart(2, '0');
+    var hh = String(d.getHours()).padStart(2, '0');
+    var mi = String(d.getMinutes()).padStart(2, '0');
+    var ss = String(d.getSeconds()).padStart(2, '0');
+    var filename = rawFilename.replace(/(_\d{4}-\d{6}_default)/, '_' + yy + mm + '-' + hh + mi + ss + '_default');
 
-    var wbout = XLSX.write(wb, { bookType: 'xls', type: 'array' });
-    var wbBytes = new Uint8Array(wbout);
-    var base64 = '';
-    var CHUNK = 8192;
-    for (var j = 0; j < wbBytes.length; j += CHUNK) {
-      base64 += String.fromCharCode.apply(null, wbBytes.subarray(j, j + CHUNK));
+    // Patch the ORIGINAL file in place (Makro rejects rebuilt files);
+    // fall back to the SheetJS rebuild if the patch can't be verified.
+    var base64 = null;
+    var buildNote = '';
+    try {
+      var patched = patchXlsPrices(rawBase64, [update]);
+      if (patched) {
+        var ok = true;
+        try {
+          var wb2 = XLSX.read(base64ToBytes(patched.base64), { type: 'array' });
+          var sh2 = wb2.Sheets[wb2.SheetNames[0]];
+          var cell2 = sh2[XLSX.utils.encode_cell({ r: update.r, c: update.c })];
+          if (!cell2 || Math.abs(cell2.v - update.value) > 0.005) ok = false;
+        } catch (e) { ok = false; }
+        if (ok) {
+          base64 = patched.base64;
+          buildNote = 'patched in-place (' + patched.rawSize + '→' + patched.patchedSize + ' bytes)';
+        }
+      }
+    } catch (e) { base64 = null; }
+
+    if (!base64) {
+      var wbout = XLSX.write(wb, { bookType: 'xls', type: 'array' });
+      var wbBytes = new Uint8Array(wbout);
+      var b64 = '';
+      var CHUNK = 8192;
+      for (var j = 0; j < wbBytes.length; j += CHUNK) {
+        b64 += String.fromCharCode.apply(null, wbBytes.subarray(j, j + CHUNK));
+      }
+      base64 = btoa(b64);
+      buildNote = 'REBUILT via SheetJS (in-place patch failed)';
     }
-    base64 = btoa(base64);
 
     // Save for portal auto-upload + send via bridge to chrome.storage.local
     localStorage.setItem('portal_upload_file', base64);
@@ -5369,7 +5401,8 @@ function pushProductToPortal() {
     saveProducts();
 
     document.getElementById('pushResult').innerHTML =
-      '<span style="color:var(--accent)">✅ <b>R' + newPrice + '</b> queued for <b>' + escHtml(filename) + '</b> — sent to portal extension.</span><br>' +
+      '<span style="color:var(--accent)">✅ <b>R' + newPrice + '</b> queued for <b>' + escHtml(filename) + '</b> — sent to portal extension.' +
+      (buildNote ? ' <span style="color:#00e5a0;font-size:11px">(' + buildNote + ')</span>' : '') + '</span><br>' +
       '<span style="color:var(--muted)">Open <b style="color:#00e5a0">seller.makro.co.za</b> → click <b style="color:#00e5a0">🚀 Auto Upload Now</b> in the green overlay to push it live.</span>';
 
     // Offer to open the portal
@@ -6421,6 +6454,163 @@ function buildPricerPreview() {
   });
 });
 
+// ── In-place XLS patcher ────────────────────────────────────────────────
+// Makro's PRICING_STOCK feed requires the EXACT exported S_listing file —
+// only price/stock cells may change. Rebuilding the file through
+// XLSX.write() re-serializes it and Makro rejects it ("Error in N/N rows").
+// Instead we binary-patch the price cells inside the ORIGINAL file so every
+// other byte stays identical to the export Makro gave us.
+function base64ToBytes(b64) {
+  var bin = atob(b64);
+  var out = new Uint8Array(bin.length);
+  for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+function bytesToBase64(bytes) {
+  var CHUNK = 8192, bin = '';
+  for (var i = 0; i < bytes.length; i += CHUNK) {
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(bin);
+}
+
+// Decode a BIFF RK value (4-byte little-endian int) to a JS number.
+// Bit 0 = divide by 100, bit 1 = 30-bit signed integer, else top 30 bits of an IEEE double.
+function decodeRK(rk) {
+  var div100 = (rk & 0x01) ? 100 : 1;
+  if (rk & 0x02) {
+    return (rk >> 2) / div100; // arithmetic shift preserves the 30-bit sign
+  }
+  var dv = new DataView(new ArrayBuffer(8));
+  dv.setUint32(0, (rk & 0xFFFFFFFC) >>> 0, false); // big-endian high word
+  dv.setUint32(4, 0, false);
+  return dv.getFloat64(0, false) / div100;
+}
+
+function makeBiffRecord(type, data) {
+  var out = new Uint8Array(4 + data.length);
+  out[0] = type & 0xFF; out[1] = (type >> 8) & 0xFF;
+  out[2] = data.length & 0xFF; out[3] = (data.length >> 8) & 0xFF;
+  out.set(data, 4);
+  return out;
+}
+
+// Walk a BIFF8 workbook stream and patch numeric cells in place.
+// updates: [{ r, c, value }] — 0-based row/col in the FIRST worksheet.
+// Handles NUMBER (0x0203), RK (0x027E) and MULRK (0x00BD) cell records;
+// RK/MULRK cells are converted to NUMBER records (values preserved).
+// Returns { stream, patched, notes } — stream is a rebuilt Uint8Array.
+function patchBiffStream(stream, updates) {
+  var byKey = {};
+  updates.forEach(function(u) { byKey[u.r + ':' + u.c] = u.value; });
+  var out = [];
+  var pos = 0, len = stream.length, patched = 0, notes = [];
+  var sheetIdx = -1; // -1 = workbook globals; 0+ = worksheets in order
+  while (pos + 4 <= len) {
+    var type = stream[pos] | (stream[pos + 1] << 8);
+    var rlen = stream[pos + 2] | (stream[pos + 3] << 8);
+    var dataStart = pos + 4;
+    var dataEnd = dataStart + rlen;
+    if (dataEnd > len) { notes.push('truncated record @' + pos); break; }
+    var data = stream.subarray(dataStart, dataEnd);
+
+    if (type === 0x0809 && data.length >= 2) {
+      var dt = data[0] | (data[1] << 8);
+      if (dt === 0x0010) sheetIdx++; // worksheet BOF
+    }
+
+    var emit = null;
+    if (sheetIdx === 0) {
+      if (type === 0x0203 && data.length >= 14) { // NUMBER
+        var r = data[0] | (data[1] << 8), c = data[2] | (data[3] << 8);
+        var key = r + ':' + c;
+        if (byKey[key] !== undefined) {
+          var dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
+          dv.setFloat64(6, byKey[key], true); // little-endian double
+          patched++;
+        }
+      } else if (type === 0x027E && data.length >= 10) { // RK
+        var r = data[0] | (data[1] << 8), c = data[2] | (data[3] << 8);
+        var key = r + ':' + c;
+        if (byKey[key] !== undefined) {
+          var nr = new Uint8Array(14); // row(2) col(2) xf(2) value(8)
+          nr[0] = data[0]; nr[1] = data[1]; nr[2] = data[2]; nr[3] = data[3];
+          nr[4] = data[4]; nr[5] = data[5]; // keep original xf (number format)
+          new DataView(nr.buffer).setFloat64(6, byKey[key], true);
+          emit = makeBiffRecord(0x0203, nr);
+          patched++;
+        }
+      } else if (type === 0x00BD && data.length >= 6) { // MULRK
+        var r = data[0] | (data[1] << 8);
+        var colFirst = data[2] | (data[3] << 8);
+        var colLast = data[data.length - 2] | (data[data.length - 1] << 8);
+        var n = colLast - colFirst + 1;
+        if (n > 0 && data.length >= 6 + n * 6) {
+          var parts = [], anyHit = false;
+          for (var k = 0; k < n; k++) {
+            var col = colFirst + k;
+            var xf = data[4 + k * 6] | (data[5 + k * 6] << 8);
+            var rk = data[6 + k * 6] | (data[7 + k * 6] << 8) | (data[8 + k * 6] << 16) | (data[9 + k * 6] << 24);
+            var key = r + ':' + col;
+            var val = (byKey[key] !== undefined) ? byKey[key] : decodeRK(rk);
+            if (byKey[key] !== undefined) { patched++; anyHit = true; }
+            var nr = new Uint8Array(14);
+            nr[0] = r & 0xFF; nr[1] = (r >> 8) & 0xFF;
+            nr[2] = col & 0xFF; nr[3] = (col >> 8) & 0xFF;
+            nr[4] = xf & 0xFF; nr[5] = (xf >> 8) & 0xFF;
+            new DataView(nr.buffer).setFloat64(6, val, true);
+            parts.push(makeBiffRecord(0x0203, nr));
+          }
+          if (anyHit) {
+            for (var p = 0; p < parts.length; p++) out.push(parts[p]);
+            pos = dataEnd;
+            continue;
+          }
+        }
+      }
+    }
+
+    if (emit) out.push(emit);
+    else out.push(makeBiffRecord(type, data));
+    pos = dataEnd;
+  }
+
+  var total = 0;
+  out.forEach(function(r) { total += r.length; });
+  var rebuilt = new Uint8Array(total);
+  var off = 0;
+  out.forEach(function(r) { rebuilt.set(r, off); off += r.length; });
+  return { stream: rebuilt, patched: patched, notes: notes };
+}
+
+// Patch price cells inside the raw exported XLS (OLE2/CFB container).
+// updates: [{ r, c, value }] — 0-based row/col in the FIRST sheet.
+// Returns { base64, patched, notes, rawSize, patchedSize } or null on failure.
+function patchXlsPrices(rawBase64, updates) {
+  if (!updates || !updates.length) return null;
+  if (!XLSX.CFB) return null; // need the full build for OLE2/CFB container access
+  var bytes = base64ToBytes(rawBase64);
+  var cfb = XLSX.CFB.read(bytes, { type: 'array' });
+  var wbIdx = -1;
+  for (var i = 0; i < cfb.FullPaths.length; i++) {
+    if (/(Workbook|Book)$/i.test(cfb.FullPaths[i])) { wbIdx = i; break; }
+  }
+  if (wbIdx < 0 || !cfb.FileIndex[wbIdx] || !cfb.FileIndex[wbIdx].content) return null;
+  var res = patchBiffStream(cfb.FileIndex[wbIdx].content, updates);
+  if (res.patched === 0) return null;
+  cfb.FileIndex[wbIdx].content = res.stream;
+  var out = XLSX.CFB.write(cfb, { type: 'array' });
+  var outBytes = (out instanceof Uint8Array) ? out : new Uint8Array(out);
+  return {
+    base64: bytesToBase64(outBytes),
+    patched: res.patched,
+    notes: res.notes,
+    rawSize: bytes.length,
+    patchedSize: outBytes.length
+  };
+}
+
 function generatePriceUpdate(autoMode) {
   const listings    = getListings();
   const strategy    = document.getElementById('pricerStrategy').value;
@@ -6577,6 +6767,7 @@ function generatePriceUpdate(autoMode) {
     // Col index 4 = FSN, Col index 9 = Your Selling Price
     let changed = 0;
     const changeLog = [];
+    const updates = [];   // {r, c, value} for the in-place binary patcher
     for (let r = 2; r < rows.length; r++) {
       const fsn = String(rows[r][4] || '').trim();
       if (!fsn) continue;
@@ -6588,6 +6779,7 @@ function generatePriceUpdate(autoMode) {
         sh[bpAddr].t = 'n';
         sh[bpAddr].v = basePriceMap[fsn];
         sh[bpAddr].w = String(basePriceMap[fsn]);
+        updates.push({ r: r, c: 8, value: basePriceMap[fsn] });
       }
 
       // Write Selling Price (col 9)
@@ -6598,33 +6790,77 @@ function generatePriceUpdate(autoMode) {
         sh[cellAddr].t = 'n';
         sh[cellAddr].v = entry.newPrice;
         sh[cellAddr].w = String(entry.newPrice);
+        updates.push({ r: r, c: 9, value: entry.newPrice });
         changeLog.push({ fsn, sku: entry.sku, title: entry.title, oldPrice: entry.oldPrice, newPrice: entry.newPrice });
         changed++;
       }
     }
 
-    // Use the original filename structure but with today's date
-    const dateStr = new Date().toISOString().slice(0,10).replace(/-/g,'');
-    const timeStr = new Date().toTimeString().slice(0,5).replace(':','');
-    // Match original naming: S_listing--ui--group_XXXX_DDMM-HHMMSS_default.xls
-    const filename = rawFilename.replace(/(_\d{4}-\d{6}_default)/, '_' + dateStr.slice(4) + '-' + timeStr + '00_default');
+    // Use the original filename structure but with today's date.
+    // Original exports use YYMM-HHMMSS (e.g. _2008-164406_default = 2020-08, 16:44:06).
+    const d = new Date();
+    const yy = String(d.getFullYear() % 100).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mi = String(d.getMinutes()).padStart(2, '0');
+    const ss = String(d.getSeconds()).padStart(2, '0');
+    const filename = rawFilename.replace(/(_\d{4}-\d{6}_default)/, '_' + yy + mm + '-' + hh + mi + ss + '_default');
 
-    // Write back as XLS (same format as original)
-    const wbout = XLSX.write(wb, { bookType: 'xls', type: 'array' });
-    const wbBytes = new Uint8Array(wbout);
-    let base64 = '';
-    const CHUNK = 8192;
-    for (let i = 0; i < wbBytes.length; i += CHUNK) {
-      base64 += String.fromCharCode.apply(null, wbBytes.subarray(i, i + CHUNK));
+    // ── Build the file: patch the ORIGINAL bytes in place ────────────────
+    // Makro's PRICING_STOCK feed rejects rebuilt files ("Error in N/N rows").
+    // We binary-patch only the price cells so every other byte is identical
+    // to the exact export Makro gave us. Fall back to the old SheetJS
+    // rebuild if the patch can't be verified.
+    let base64 = null;
+    let buildNote = '';
+    try {
+      const patched = patchXlsPrices(rawBase64, updates);
+      if (patched) {
+        // Verify every target cell landed with the right value
+        let ok = true;
+        try {
+          const wb2 = XLSX.read(base64ToBytes(patched.base64), { type: 'array' });
+          const sh2 = wb2.Sheets[wb2.SheetNames[0]];
+          updates.forEach(function(u) {
+            const cell = sh2[XLSX.utils.encode_cell({ r: u.r, c: u.c })];
+            if (!cell || Math.abs(cell.v - u.value) > 0.005) ok = false;
+          });
+        } catch (e) { ok = false; }
+        if (ok) {
+          base64 = patched.base64;
+          buildNote = 'patched ' + patched.patched + ' cell(s) in-place (' + patched.rawSize + '→' + patched.patchedSize + ' bytes)';
+        }
+      }
+    } catch (e) { base64 = null; }
+
+    if (!base64) {
+      // Fallback: rebuild via SheetJS (old behavior — Makro may reject it)
+      const wbout = XLSX.write(wb, { bookType: 'xls', type: 'array' });
+      const wbBytes = new Uint8Array(wbout);
+      let b64 = '';
+      const CHUNK = 8192;
+      for (let i = 0; i < wbBytes.length; i += CHUNK) {
+        b64 += String.fromCharCode.apply(null, wbBytes.subarray(i, i + CHUNK));
+      }
+      base64 = btoa(b64);
+      buildNote = 'REBUILT via SheetJS (in-place patch failed)';
     }
-    base64 = btoa(base64);
 
     // Save to localStorage for portal auto-upload
     localStorage.setItem('portal_upload_file', base64);
     localStorage.setItem('portal_upload_filename', filename);
 
     // Also trigger download for manual fallback (skip in auto mode — no popups)
-    if (!autoMode) XLSX.writeFile(wb, filename);
+    if (!autoMode) {
+      const blob = new Blob([base64ToBytes(base64)], { type: 'application/vnd.ms-excel' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(a.href);
+    }
 
     // Clear pending flags now that prices are in the file
     state.products.forEach(function(p) {
@@ -6634,12 +6870,13 @@ function generatePriceUpdate(autoMode) {
     updatePendingBadge();
 
     if (autoMode) {
-      return { filename: filename, changed: changed, changeLog: changeLog, skippedNoCost: skippedNoCost, skippedClamped: skippedClamped };
+      return { filename: filename, changed: changed, changeLog: changeLog, skippedNoCost: skippedNoCost, skippedClamped: skippedClamped, buildNote: buildNote };
     }
 
     document.getElementById('pricerResult').innerHTML =
       '✅ <span style="color:var(--accent)">Downloaded <b>' + filename + '</b> — ' +
       changed + ' prices updated.' +
+      (buildNote ? ' <span style="color:#00e5a0;font-size:11px">(' + buildNote + ')</span>' : '') +
       (skippedNoCost ? ' <span style="color:#818cf8">⚠ ' + skippedNoCost + ' skipped — no cost/min price set (safety guard).</span>' : '') +
       (skippedClamped ? ' <span style="color:#ff9500">' + skippedClamped + ' skipped (price guard).</span>' : '') +
       '</span><br>' +
