@@ -55,12 +55,15 @@ A Chrome extension + dashboard that monitors and automatically wins the BuyBox o
   SKU/cost data persists across scrape runs; portal file cleared after send
 - SKU persistence FIXED (commit 05e8ad6): real SKUs survive scrape cycles; itm-slug
   SKUs are rejected and real SKUs backfilled from listings by FSN prefix
-- PUSH REJECTION FIXED (root cause = STALE TEMPLATE): Makro rejects old S_listing
-  exports with "Error in 480/480 rows". The 2020 template (filename _2008-235913_default
-  = Aug 2020) failed even when uploaded UNMODIFIED. Fix: Listings Management →
-  Request Download → import the FRESH file → pushes work (verified live 2026-08-20).
-  Dashboard now warns on import and at push time if the template is >30 days old
-  (getTemplateAgeDays parses the YYMM stamp in the filename).
+- PUSH REJECTION ROOT CAUSE = FILENAME STAMP, not template content: Makro validates
+  the YYMM-HHMMSS stamp in the S_listing filename. Old stamps (original 2020 file
+  _2008-235913_default) and the old MMDD format (_0820-142600_default) were rejected
+  ("Error in 480/480 rows"); files re-stamped to today's YYMM (_2608-...) are accepted
+  — proven live 2026-08-20: a single push built from the OLD 2020 template content
+  landed (R30777→R30776) once the filename carried a fresh stamp. The dashboard
+  re-stamps every generated file, so pushes work regardless of template age; a fresh
+  template (Listings Management → Request Download) is still recommended for current
+  data. getTemplateAgeDays() parses the stamp and warns when >30 days old.
 - In-place XLS patcher (patchXlsPrices/patchBiffStream/decodeRK) binary-patches only
   the price cells inside the ORIGINAL exported file (NUMBER/RK/MULRK BIFF records via
   CFB) so every other byte stays identical to the export Makro gave us. Verified by
@@ -82,9 +85,10 @@ A Chrome extension + dashboard that monitors and automatically wins the BuyBox o
   S_listing XLS from the Products tab and retry
 - The dashboard's stored myPrice can drift ~R2 from Makro's actual price (import
   rounding) — the portal listing is the source of truth for what actually landed
-- STALE TEMPLATE = 480/480 rejection: if the template filename stamp is old (e.g.
-  _2008-... = 2020), Makro rejects every row. Always Request Download a fresh
-  S_listing from the portal before importing. The dashboard warns when >30 days old.
+- STALE FILENAME STAMP = 480/480 rejection: Makro rejects S_listing files whose
+  YYMM stamp is old or malformed. The dashboard re-stamps every generated file to
+  today's date, so pushes work even with an old template — but re-download a fresh
+  S_listing (Request Download) for current data. The dashboard warns when >30 days old.
 
 ## Development Workflow
 1. Edit C:\Users\David\makro-buybox-pro\index.html

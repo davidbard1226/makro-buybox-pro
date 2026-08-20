@@ -4196,7 +4196,7 @@ function importListings(input) {
           sBanner.style.cssText = 'position:fixed;bottom:24px;right:24px;background:#111418;border:1px solid #ff9500;color:#ff9500;font-family:Space Mono,monospace;font-size:12px;padding:12px 20px;border-radius:8px;z-index:999;box-shadow:0 4px 20px rgba(255,149,0,.2)';
           document.body.appendChild(sBanner);
         }
-        sBanner.textContent = '⚠ This S_listing template is ' + Math.round(ageDays) + ' days old — Makro rejects old exports (480/480 error). Download a fresh one: Listings Management → Request Download.';
+        sBanner.textContent = '⚠ This S_listing template stamp is ' + Math.round(ageDays) + ' days old. Pushes still work (the dashboard re-stamps the filename), but re-download a fresh S_listing for current data: Listings Management → Request Download.';
         sBanner.style.display = 'block';
         setTimeout(function(){ sBanner.style.display = 'none'; }, 8000);
       }
@@ -6976,7 +6976,7 @@ function generatePriceUpdate(autoMode) {
       '✅ <span style="color:var(--accent)">Downloaded <b>' + filename + '</b> — ' +
       changed + ' prices updated.' +
       (buildNote ? ' <span style="color:#00e5a0;font-size:11px">(' + buildNote + ')</span>' : '') +
-      (staleDays > 30 ? ' <span style="color:#ff9500">⚠ Template is ' + Math.round(staleDays) + ' days old — Makro may reject it. Re-download: Listings Management → Request Download.</span>' : '') +
+      (staleDays > 30 ? ' <span style="color:#ff9500">⚠ Template stamp is ' + Math.round(staleDays) + ' days old — re-download a fresh S_listing for current data (Request Download).</span>' : '') +
       (skippedNoCost ? ' <span style="color:#818cf8">⚠ ' + skippedNoCost + ' skipped — no cost/min price set (safety guard).</span>' : '') +
       (skippedClamped ? ' <span style="color:#ff9500">' + skippedClamped + ' skipped (price guard).</span>' : '') +
       '</span><br>' +
