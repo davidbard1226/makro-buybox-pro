@@ -378,6 +378,24 @@
     });
   }
 
+  // ── STORAGE CHANGE LISTENER ─────────────────────────────────────────────
+  // The dashboard can send a price file while this page is idle (no reload,
+  // no SPA navigation). The old code only checked the flag on page load or
+  // URL change, so the upload "slept" until the user refreshed or navigated.
+  // Listen for the flag being set and fire the upload chain immediately.
+  chrome.storage.onChanged.addListener(function(changes, area) {
+    if (area !== 'local') return;
+    if (changes.bbp_auto_upload && changes.bbp_auto_upload.newValue === true) {
+      // Only fire when already on the listings/upload page — otherwise
+      // runUpload navigates there itself and init() picks up the flag after
+      // load (firing here mid-navigation would re-set the flag and loop).
+      const url = window.location.href;
+      if (url.includes('listings-management') || url.includes('bulk-upload')) {
+        setTimeout(autoUploadOnce, 1500);
+      }
+    }
+  });
+
   init();
   log('Ready on ' + window.location.hostname);
 })();
