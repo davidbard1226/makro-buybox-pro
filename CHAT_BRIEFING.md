@@ -60,7 +60,8 @@ A Chrome extension + dashboard that monitors and automatically wins the BuyBox o
   _2008-235913_default) and the old MMDD format (_0820-142600_default) were rejected
   ("Error in 480/480 rows"); files re-stamped to today's YYMM (_2608-...) are accepted
   — proven live 2026-08-20: a single push built from the OLD 2020 template content
-  landed (R30777→R30776) once the filename carried a fresh stamp. The dashboard
+  landed (R30777→R30776) once the filename carried a fresh stamp, and a follow-up
+  scrape confirmed ✓ WIN at R30776 (Bonolo Online holds the buybox). The dashboard
   re-stamps every generated file, so pushes work regardless of template age; a fresh
   template (Listings Management → Request Download) is still recommended for current
   data. getTemplateAgeDays() parses the stamp and warns when >30 days old.
