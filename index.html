@@ -6536,8 +6536,11 @@ function makeBiffRecord(type, data) {
 
 // Walk a BIFF8 workbook stream and patch numeric cells in place.
 // updates: [{ r, c, value }] — 0-based row/col in the FIRST worksheet.
-// Handles NUMBER (0x0203), RK (0x027E) and MULRK (0x00BD) cell records;
-// RK/MULRK cells are converted to NUMBER records (values preserved).
+// Handles NUMBER (0x0203), RK (0x027E), MULRK (0x00BD), LABELSST (0x00FD)
+// and BLANK (0x0201) cell records; RK/MULRK/LABELSST/BLANK cells are
+// converted to NUMBER records (values preserved). LABELSST cells are
+// shared-string references — converting them to NUMBER is what the SheetJS
+// rebuild does too, and Makro accepts numeric price cells.
 // Returns { stream, patched, notes } — stream is a rebuilt Uint8Array.
 function patchBiffStream(stream, updates) {
   // The xlsx CFB library stores file content as a plain Array (no .subarray),
@@ -6548,7 +6551,7 @@ function patchBiffStream(stream, updates) {
   var out = [];
   var pos = 0, len = stream.length, patched = 0, notes = [];
   var sheetIdx = -1; // -1 = workbook globals; 0+ = worksheets in order
-  var counts = { number: 0, rk: 0, mulrk: 0 };
+  var counts = { number: 0, rk: 0, mulrk: 0, labelsst: 0, blank: 0 };
   var hist = {};     // record type → count, ALL sheets (diagnostic)
   while (pos + 4 <= len) {
     var type = stream[pos] | (stream[pos + 1] << 8);
@@ -6559,8 +6562,11 @@ function patchBiffStream(stream, updates) {
     if (dataEnd > len) { notes.push('truncated record @' + pos); break; }
     var data = stream.subarray(dataStart, dataEnd);
 
-    if (type === 0x0809 && data.length >= 2) {
-      var dt = data[0] | (data[1] << 8);
+    if (type === 0x0809 && data.length >= 4) {
+      // BOF record layout: version(2) dt(2) build(2) year(2) ...
+      // dt = 0x0010 for a worksheet. (Reading dt from data[0..1] grabbed the
+      // version 0x0600 instead — sheetIdx never advanced and NOTHING patched.)
+      var dt = data[2] | (data[3] << 8);
       if (dt === 0x0010) sheetIdx++; // worksheet BOF
     }
 
@@ -6615,6 +6621,33 @@ function patchBiffStream(stream, updates) {
             continue;
           }
         }
+      } else if (type === 0x00FD && data.length >= 10) { // LABELSST → NUMBER
+        // Real Makro exports store prices as shared strings ("3529.00").
+        // Convert the cell to a NUMBER record — same as the SheetJS rebuild
+        // does (t='n'), which Makro accepts.
+        counts.labelsst++;
+        var r = data[0] | (data[1] << 8), c = data[2] | (data[3] << 8);
+        var key = r + ':' + c;
+        if (byKey[key] !== undefined) {
+          var nr = new Uint8Array(14);
+          nr[0] = data[0]; nr[1] = data[1]; nr[2] = data[2]; nr[3] = data[3];
+          nr[4] = data[4]; nr[5] = data[5]; // keep original xf (number format)
+          new DataView(nr.buffer).setFloat64(6, byKey[key], true);
+          emit = makeBiffRecord(0x0203, nr);
+          patched++;
+        }
+      } else if (type === 0x0201 && data.length >= 6) { // BLANK → NUMBER
+        counts.blank++;
+        var r = data[0] | (data[1] << 8), c = data[2] | (data[3] << 8);
+        var key = r + ':' + c;
+        if (byKey[key] !== undefined) {
+          var nr = new Uint8Array(14);
+          nr[0] = data[0]; nr[1] = data[1]; nr[2] = data[2]; nr[3] = data[3];
+          nr[4] = data[4]; nr[5] = data[5];
+          new DataView(nr.buffer).setFloat64(6, byKey[key], true);
+          emit = makeBiffRecord(0x0203, nr);
+          patched++;
+        }
       }
     }
 
@@ -6660,7 +6693,7 @@ function patchXlsPrices(rawBase64, updates) {
       .map(function(t) { return '0x' + (+t).toString(16).toUpperCase() + '=' + res.hist[t]; })
       .join(' ');
     return { base64: null, failReason: '0 cells patched — stream ' + cfb.FileIndex[wbIdx].content.length + 'B, sheet0: ' +
-      res.counts.number + 'N/' + res.counts.rk + 'RK/' + res.counts.mulrk + 'MULRK, top records: ' + top + ', updates: ' + updates.length };
+      res.counts.number + 'N/' + res.counts.rk + 'RK/' + res.counts.mulrk + 'MULRK/' + res.counts.labelsst + 'LABELSST/' + res.counts.blank + 'BLANK, top records: ' + top + ', updates: ' + updates.length };
   }
   cfb.FileIndex[wbIdx].content = res.stream;
   var out;
