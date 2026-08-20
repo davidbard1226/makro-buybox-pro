@@ -3210,7 +3210,7 @@ function maybeAutoPushPrices() {
            (result.buildNote ? ' [' + result.buildNote + ']' : '') +
            (result.skippedNoCost ? ' | ' + result.skippedNoCost + ' skipped (no cost/min)' : '') +
            (result.skippedClamped ? ' | ' + result.skippedClamped + ' skipped (guard)' : '') +
-           (result.staleDays > 30 ? ' ⚠ TEMPLATE ' + Math.round(result.staleDays) + ' DAYS OLD — re-download from portal (Request Download)' : ''),
+           (result.staleDays > 30 ? ' ⚠ TEMPLATE STAMP ' + Math.round(result.staleDays) + ' DAYS OLD — pushes still work (stamp refreshed), re-download only for fresh data' : ''),
       details: result.changeLog || []
     });
     log(sent ? 'ok' : 'error', '🤖 Auto-push: ' + (sent ? 'file sent to portal — auto-upload armed.' : 'FAILED to send file.'));
@@ -6535,6 +6535,9 @@ function makeBiffRecord(type, data) {
 // RK/MULRK cells are converted to NUMBER records (values preserved).
 // Returns { stream, patched, notes } — stream is a rebuilt Uint8Array.
 function patchBiffStream(stream, updates) {
+  // The xlsx CFB library stores file content as a plain Array (no .subarray),
+  // while our smoke-test stub used a Uint8Array — normalize so both work.
+  if (!(stream instanceof Uint8Array)) stream = new Uint8Array(stream);
   var byKey = {};
   updates.forEach(function(u) { byKey[u.r + ':' + u.c] = u.value; });
   var out = [];
