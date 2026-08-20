@@ -3209,7 +3209,8 @@ function maybeAutoPushPrices() {
       msg: (sent ? '🚀 Auto-pushed ' : '❌ Push failed: ') + result.changed + ' price(s) → ' + result.filename +
            (result.buildNote ? ' [' + result.buildNote + ']' : '') +
            (result.skippedNoCost ? ' | ' + result.skippedNoCost + ' skipped (no cost/min)' : '') +
-           (result.skippedClamped ? ' | ' + result.skippedClamped + ' skipped (guard)' : ''),
+           (result.skippedClamped ? ' | ' + result.skippedClamped + ' skipped (guard)' : '') +
+           (result.staleDays > 30 ? ' ⚠ TEMPLATE ' + Math.round(result.staleDays) + ' DAYS OLD — re-download from portal (Request Download)' : ''),
       details: result.changeLog || []
     });
     log(sent ? 'ok' : 'error', '🤖 Auto-push: ' + (sent ? 'file sent to portal — auto-upload armed.' : 'FAILED to send file.'));
@@ -4158,6 +4159,18 @@ function ensureXLSX(cb) {
   }, 100);
 }
 
+// Parse the YYMM-HHMMSS stamp in Makro's S_listing filename (e.g. _2008-235913_default
+// = 2020-08) and return the template age in days. Returns -1 if unparseable.
+function getTemplateAgeDays(filename) {
+  var m = /_(\d{2})(\d{2})-(\d{6})_default/.exec(filename || '');
+  if (!m) return -1;
+  var year = 2000 + parseInt(m[1], 10);
+  var month = parseInt(m[2], 10);
+  if (month < 1 || month > 12) return -1;
+  var stamp = new Date(year, month - 1, 1);
+  return (Date.now() - stamp.getTime()) / 86400000;
+}
+
 function importListings(input) {
   if (!window.XLSX) { ensureXLSX(function(){ importListings(input); }); return; }
   const file = input.files[0];
@@ -4172,6 +4185,21 @@ function importListings(input) {
     try {
       localStorage.setItem('makro_listings_raw',      base64);
       localStorage.setItem('makro_listings_filename', file.name);
+      // Warn if the template is stale — Makro rejects old S_listing exports
+      // with "Error in N/N rows" (a 2020 template failed 480/480 in testing).
+      var ageDays = getTemplateAgeDays(file.name);
+      if (ageDays > 30) {
+        var sBanner = document.getElementById('importBanner');
+        if (!sBanner) {
+          sBanner = document.createElement('div');
+          sBanner.id = 'importBanner';
+          sBanner.style.cssText = 'position:fixed;bottom:24px;right:24px;background:#111418;border:1px solid #ff9500;color:#ff9500;font-family:Space Mono,monospace;font-size:12px;padding:12px 20px;border-radius:8px;z-index:999;box-shadow:0 4px 20px rgba(255,149,0,.2)';
+          document.body.appendChild(sBanner);
+        }
+        sBanner.textContent = '⚠ This S_listing template is ' + Math.round(ageDays) + ' days old — Makro rejects old exports (480/480 error). Download a fresh one: Listings Management → Request Download.';
+        sBanner.style.display = 'block';
+        setTimeout(function(){ sBanner.style.display = 'none'; }, 8000);
+      }
     } catch(qErr) {
       // Quota exceeded — the raw template is too big for localStorage.
       // The parsed listings still import fine; only the raw template (needed
@@ -6871,6 +6899,7 @@ function generatePriceUpdate(autoMode) {
     const mi = String(d.getMinutes()).padStart(2, '0');
     const ss = String(d.getSeconds()).padStart(2, '0');
     const filename = rawFilename.replace(/(_\d{4}-\d{6}_default)/, '_' + yy + mm + '-' + hh + mi + ss + '_default');
+    const staleDays = getTemplateAgeDays(rawFilename);
 
     // ── Build the file: patch the ORIGINAL bytes in place ────────────────
     // Makro's PRICING_STOCK feed rejects rebuilt files ("Error in N/N rows").
@@ -6940,13 +6969,14 @@ function generatePriceUpdate(autoMode) {
     updatePendingBadge();
 
     if (autoMode) {
-      return { filename: filename, changed: changed, changeLog: changeLog, skippedNoCost: skippedNoCost, skippedClamped: skippedClamped, buildNote: buildNote };
+      return { filename: filename, changed: changed, changeLog: changeLog, skippedNoCost: skippedNoCost, skippedClamped: skippedClamped, buildNote: buildNote, staleDays: staleDays };
     }
 
     document.getElementById('pricerResult').innerHTML =
       '✅ <span style="color:var(--accent)">Downloaded <b>' + filename + '</b> — ' +
       changed + ' prices updated.' +
       (buildNote ? ' <span style="color:#00e5a0;font-size:11px">(' + buildNote + ')</span>' : '') +
+      (staleDays > 30 ? ' <span style="color:#ff9500">⚠ Template is ' + Math.round(staleDays) + ' days old — Makro may reject it. Re-download: Listings Management → Request Download.</span>' : '') +
       (skippedNoCost ? ' <span style="color:#818cf8">⚠ ' + skippedNoCost + ' skipped — no cost/min price set (safety guard).</span>' : '') +
       (skippedClamped ? ' <span style="color:#ff9500">' + skippedClamped + ' skipped (price guard).</span>' : '') +
       '</span><br>' +
