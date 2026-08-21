@@ -8698,24 +8698,36 @@ function initAutoScrape() {
   var modeEl = document.getElementById('autoScrapeMode');
   var sellerEl = document.getElementById('autoScrapeSeller');
   if (!sel) return;
-  sel.value  = localStorage.getItem('auto_scrape_interval') || '60';
-      // Handle custom interval
-      if (localStorage.getItem('auto_scrape_interval_custom') === 'true') {
-        sel.value = 'custom';
-        var customWrap = document.getElementById('customIntervalWrap');
-        var customInput = document.getElementById('customIntervalInput');
-        if (customWrap) customWrap.style.display = 'block';
-        if (customInput) {
-          customInput.value = localStorage.getItem('auto_scrape_interval') || '30';
-          var display = document.getElementById('customIntervalDisplay');
-          if (display) display.textContent = customInput.value;
-        }
-      }
+  var savedInterval = localStorage.getItem('auto_scrape_interval') || '60';
+  var isCustom = localStorage.getItem('auto_scrape_interval_custom') === 'true';
+  
+  if (isCustom) {
+    sel.value = 'custom';
+    var customWrap = document.getElementById('customIntervalWrap');
+    var customInput = document.getElementById('customIntervalInput');
+    if (customWrap) customWrap.style.display = 'block';
+    if (customInput) {
+      customInput.value = savedInterval;
+      var display = document.getElementById('customIntervalDisplay');
+      if (display) display.textContent = savedInterval;
+    }
+  } else {
+    sel.value = savedInterval;
+  }
   if (modeEl) modeEl.value = localStorage.getItem('auto_scrape_mode') || 'smart';
   if (sellerEl) sellerEl.value = localStorage.getItem('auto_scrape_seller') || 'Korvex';
   applyAutoScrape();
   sel.addEventListener('change', function() {
-    localStorage.setItem('auto_scrape_interval', sel.value);
+    if (sel.value === 'custom') {
+      // For custom, save the custom input value instead of "custom"
+      var customInput = document.getElementById('customIntervalInput');
+      var minutes = parseInt(customInput ? customInput.value : 30);
+      localStorage.setItem('auto_scrape_interval', minutes.toString());
+      localStorage.setItem('auto_scrape_interval_custom', 'true');
+    } else {
+      localStorage.setItem('auto_scrape_interval', sel.value);
+      localStorage.removeItem('auto_scrape_interval_custom');
+    }
     applyAutoScrape();
   });
   if (modeEl) modeEl.addEventListener('change', function() {
