@@ -3146,6 +3146,16 @@ function handleQueueProgress(d) {
       existing.history      = existing.history || [];
       existing.history.push({ price, seller, status, myPrice: (listingsMap[p.fsn]||{}).myPrice || 0, ts: new Date().toISOString() });
       if (existing.history.length > 30) existing.history.shift();
+      // ── SYNC LISTING PRICE: when we're winning, update listing.myPrice to the actual Makro price ──
+      if (status === 'win' && price > 0) {
+        var listingToUpdate = listingsMap[p.fsn] || listingsMap[p.fsn && p.fsn.slice(0, 15)];
+        if (listingToUpdate && listingToUpdate.myPrice !== price) {
+          var oldListingPrice = listingToUpdate.myPrice;
+          listingToUpdate.myPrice = price;
+          safeSet('makro_listings', JSON.stringify(listings));
+          log('info', '🔄 Synced listing price: ' + (p.sku || p.fsn || '').slice(0,15) + ' R' + oldListingPrice + ' → R' + price);
+        }
+      }
     } else {
       state.products.push({
         url: p.url, fsn: p.fsn || '',
@@ -3158,6 +3168,16 @@ function handleQueueProgress(d) {
         sellers: p.sellers || [],
         history: [{ price, seller, status, myPrice: (listingsMap[p.fsn]||{}).myPrice || 0, ts: new Date().toISOString() }]
       });
+      // ── SYNC LISTING PRICE for new products: when winning, update listing.myPrice ──
+      if (status === 'win' && price > 0) {
+        var newListing = listingsMap[p.fsn] || listingsMap[p.fsn && p.fsn.slice(0, 15)];
+        if (newListing && newListing.myPrice !== price) {
+          var oldLP = newListing.myPrice;
+          newListing.myPrice = price;
+          safeSet('makro_listings', JSON.stringify(listings));
+          log('info', '🔄 Synced listing price (new): ' + (p.sku || p.fsn || '').slice(0,15) + ' R' + oldLP + ' → R' + price);
+        }
+      }
     }
     saveProducts();
 
