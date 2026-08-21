@@ -3972,6 +3972,9 @@ function renderProducts() {
   tbody.innerHTML = pageProds.map((p, i) => {
     const statusClass = p.status === 'win' ? 'win' : p.status === 'lose' ? 'lose' : 'unknown';
     const statusLabel = p.status === 'win' ? '✓ WIN' : p.status === 'lose' ? '✗ LOSE' : '? UNKNOWN';
+    const cooldownActive = p._cooldown_until && Date.now() < p._cooldown_until;
+    const cooldownRemaining = cooldownActive ? getCooldownRemaining(p) : 0;
+    const cooldownLabel = cooldownActive ? ` <span style="cursor:help" title="Cooldown: ${cooldownRemaining} min remaining (${p._cooldown_reason || 'unknown'})">⏳${cooldownRemaining}m</span>` : '';
     const t = p.lastChecked ? new Date(p.lastChecked).toLocaleDateString('en-ZA') + ' ' + new Date(p.lastChecked).toLocaleTimeString('en-ZA', {hour:'2-digit',minute:'2-digit'}) : '—';
     const realIdx = findRealIdx(p);
     const myName = getMySellerName().toLowerCase().trim();
@@ -4154,7 +4157,7 @@ function renderProducts() {
           </div>
         </div>
        </td>
-      <td><span class="status-pill ${statusClass}">${statusLabel}</span></td>
+       <td><span class="status-pill ${statusClass}">${statusLabel}${cooldownLabel}</span></td>
       <td style="font-size:10px;color:var(--muted);white-space:nowrap">${t}</td>
       <td style="display:flex;gap:2px;white-space:nowrap">
         <button class="action-btn" style="font-size:10px;padding:1px 3px;${inWatchlist(p) ? 'color:#ffd60a;border-color:#ffd60a66' : ''}" onclick="toggleWatchlistFromProduct(${realIdx})" title="${inWatchlist(p) ? 'Remove from 10-min watchlist' : 'Add to 10-min watchlist'}">⭐</button>
