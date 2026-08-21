@@ -10244,25 +10244,6 @@ function clearAllCooldowns() {
   renderDashboard();
 }
 
-function setCooldown(prod, minutes, reason) {
-  prod._cooldown_until = Date.now() + (minutes * 60 * 1000);
-  prod._cooldown_reason = reason;
-  saveProducts();
-  log('info', '⏳ Cooldown set: ' + (prod.title || prod.fsn || '').slice(0,30) + ' — ' + reason + ' (' + minutes + ' min)');
-}
-
-function clearCooldown(prod) {
-  delete prod._cooldown_until;
-  delete prod._cooldown_reason;
-  saveProducts();
-  log('info', '✅ Cooldown cleared: ' + (prod.title || prod.fsn || '').slice(0,30));
-}
-
-function getCooldownRemaining(prod) {
-  if (!prod._cooldown_until) return 0;
-  return Math.max(0, Math.ceil((prod._cooldown_until - Date.now()) / 60000));
-}
-
 // ====================================================================
 // MULTI-CHANNEL PRODUCT IMPORT (Takealot / Amazon / Makro CSV)
 // ====================================================================
