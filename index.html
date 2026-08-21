@@ -8863,7 +8863,9 @@ function applyAutoScrape() {
   var sel = document.getElementById('autoScrapeInterval');
   var statusEl = document.getElementById('autoScrapeStatus');
   var mins = getAutoScrapeInterval();
-  if (getTestMode() || watchlistActive()) mins = 10; // scoped mode: pin to every 10 minutes
+  // In test/watchlist mode, use user's configured interval (minimum 1 minute)
+  // Previously hardcoded to 10 min, now respects the schedule dropdown
+  if ((getTestMode() || watchlistActive()) && mins < 1) mins = 1;
   if (!mins) {
     if (statusEl) statusEl.textContent = 'Auto-scrape off.';
     return;
@@ -8875,7 +8877,7 @@ function applyAutoScrape() {
     var wins   = state.products.filter(function(p){ return p.status === 'win';  }).length;
     var mode   = (document.getElementById('autoScrapeMode')||{}).value || 'smart';
     var wlCount = getWatchlist().length;
-    var modeLabel = wlCount ? '⭐ WATCHLIST — ' + wlCount + ' product(s) (10 min)'
+    var modeLabel = wlCount ? '⭐ WATCHLIST — ' + wlCount + ' product(s) (' + mins + ' min)'
       : getTestMode() ? '🧪 TEST MODE — single product (10 min)'
       : mode === 'losses' ? 'losses only' : mode === 'all' ? 'all products' : mode === 'korvex' ? 'Korvex only (auto-push)' : 'smart (losses first)';
     var queueDesc = wlCount
