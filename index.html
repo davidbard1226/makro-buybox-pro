@@ -762,6 +762,11 @@
             <div class="stat-value" id="w-losing" style="font-size:28px;color:#ff4d6d">0</div>
             <div class="stat-sub">click to filter losses</div>
           </div>
+          <div class="stat-card" style="padding:14px 18px;cursor:pointer;border-color:rgba(107,114,128,0.3)" onclick="switchTab('products');document.getElementById('prodFilter').value='cooldown';renderProducts()">
+            <div class="stat-label" style="color:#6b7280">⏳ Cooldown Active</div>
+            <div class="stat-value" id="w-cooldown" style="font-size:28px;color:#6b7280">0</div>
+            <div class="stat-sub">products in cooldown period</div>
+          </div>
         </div>
 
         <!-- NEW INCOMING ORDERS ALERT -->
@@ -856,6 +861,7 @@
           <option value="no-sku">⚠ No SKU matched</option>
           <option value="no-cost">⚠ No Cost price</option>
           <option value="pending">🔄 Pending reprice</option>
+          <option value="cooldown">⏳ Cooldown Active</option>
           <option value="base-below-max">⚠ Base Price below Max Price</option>
           <option value="win-at-loss">⚠ Winning at a Loss</option>
         </select>
@@ -1376,6 +1382,21 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
             <input type="checkbox" id="autoPushEnabled" onchange="toggleAutoPush()" style="width:14px;height:14px"> Enable auto-push after every scrape (Korvex mode)
           </label>
           <div id="autoPushStatus" style="font-size:11px;color:var(--accent);font-family:'Space Mono',monospace"></div>
+          <div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.1)">
+            <div style="font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">⏳ Cooldown Settings</div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:6px">After pushing a price, wait before reprice to avoid flip-flopping</div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <label style="font-size:12px;color:var(--text)">Cooldown duration:</label>
+              <select id="cooldownDuration" onchange="saveCooldownDuration()" style="background:var(--card);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:12px">
+                <option value="15">15 min</option>
+                <option value="30" selected>30 min</option>
+                <option value="45">45 min</option>
+                <option value="60">60 min</option>
+                <option value="90">90 min</option>
+              </select>
+              <button class="btn-secondary" style="width:auto;padding:4px 10px;font-size:11px" onclick="clearAllCooldowns()">Clear All Cooldowns</button>
+            </div>
+          </div>
         </div>
         <div style="font-size:10px;color:var(--muted);margin-top:8px;line-height:1.6">
           Chain: scrape (10 min) → beat Korvex by configured amount → generate XLS → send to portal → auto-upload. Guards: never below Min Price, skip no-cost / no-SKU products.
@@ -2133,12 +2154,21 @@ function getMySellerName() {
 function reEvaluateStatuses() {
   const myName = getMySellerName().toLowerCase().trim();
   state.products.forEach(function(p) {
+    var oldStatus = p.status;
     if (!p.seller || p.seller === 'Unknown Seller') {
       p.status = 'unknown';
     } else {
       const s = p.seller.toLowerCase();
       p.status = (s.includes(myName) || myName.includes(s.substring(0,6))) ? 'win' : 'lose';
     }
+    // Set cooldown when status changes from win to lose
+    if (oldStatus === 'win' && p.status === 'lose' && !p._cooldown_until) {
+      var cooldownMinutes = getCooldownDuration();
+      p._cooldown_until = Date.now() + (cooldownMinutes * 60 * 1000);
+      p._cooldown_reason = 'lost_buybox';
+      log('info', '⏳ Cooldown set: ' + (p.title || p.fsn || '').slice(0,30) + ' — lost buybox, waiting ' + cooldownMinutes + ' min before reprice');
+    }
+    p._last_status = p.status;
     // ── MIGRATE FSN from URL if missing ─────────────────────────────────────
     // Products scraped before FSN fix: try to extract FSN from stored URL now
     if (!p.fsn && p.url) {
@@ -3429,6 +3459,20 @@ function roundPrice(p) {
 // SAFETY: will NOT reprice if cost_price is missing — can't know the floor without it.
 function autoReprice(prod) {
   if (!prod) return;
+  
+  // ── COOLDOWN CHECK: skip if recently pushed price ──────────────────────
+  if (prod._cooldown_until && Date.now() < prod._cooldown_until) {
+    var remaining = Math.ceil((prod._cooldown_until - Date.now()) / 60000);
+    log('info', '⏳ Cooldown active: ' + (prod.title || prod.fsn || '').slice(0,30) + ' — ' + remaining + ' min remaining');
+    return;
+  }
+  
+  // Clear cooldown if expired
+  if (prod._cooldown_until && Date.now() >= prod._cooldown_until) {
+    delete prod._cooldown_until;
+    delete prod._cooldown_reason;
+  }
+  
   var buybox = prod.buybox_price;
   if (!buybox || buybox <= 0) return;         // no buybox data yet
   if (prod.status === 'win') {
@@ -3506,12 +3550,17 @@ function autoReprice(prod) {
     // Mark product as pending price upload
     prod.pending_price    = targetPrice;
     prod.pending_updated  = new Date().toISOString();
+    // Set cooldown to prevent flip-flopping
+    var cooldownMinutes = getCooldownDuration();
+    prod._cooldown_until = Date.now() + (cooldownMinutes * 60 * 1000);
+    prod._cooldown_reason = 'price_pushed';
     saveProducts();
     // Show in scrape log
     var atFloor = targetPrice === minPrice;
     log('info',
       '💰 Auto-repriced: R' + roundPrice(buybox) + ' → R' + targetPrice +
-      (atFloor ? ' ⚠ AT FLOOR (min R' + minPrice + ')' : ' (beat by R' + getAutoBeatAmount() + ')')
+      (atFloor ? ' ⚠ AT FLOOR (min R' + minPrice + ')' : ' (beat by R' + getAutoBeatAmount() + ')') +
+      ' ⏳ cooldown ' + cooldownMinutes + ' min'
     );
     // Update pending upload badge
     updatePendingBadge();
@@ -3755,10 +3804,13 @@ function renderDashboard() {
   var wNoCost   = document.getElementById('w-nocost');
   var wPending  = document.getElementById('w-pending');
   var wLosing   = document.getElementById('w-losing');
+  var wCooldown = document.getElementById('w-cooldown');
+  var cooldownCount = prods.filter(function(p){ return p._cooldown_until && Date.now() < p._cooldown_until; }).length;
   if (wNoSku)   { wNoSku.textContent   = noSku;  wNoSku.closest('.stat-card').style.display   = noSku   > 0 ? '' : 'none'; }
   if (wNoCost)  { wNoCost.textContent  = noCost; wNoCost.closest('.stat-card').style.display  = noCost  > 0 ? '' : 'none'; }
   if (wPending) { wPending.textContent = pending; wPending.closest('.stat-card').style.display = pending > 0 ? '' : 'none'; }
   if (wLosing)  { wLosing.textContent  = loses;  wLosing.closest('.stat-card').style.display  = loses   > 0 ? '' : 'none'; }
+  if (wCooldown) { wCooldown.textContent = cooldownCount; wCooldown.closest('.stat-card').style.display = cooldownCount > 0 ? '' : 'none'; }
 }
 
 function drawDonut(wins, loses, unk) {
@@ -3858,6 +3910,7 @@ function renderProducts() {
     if (filter === 'no-sku' && p.sku) return false;
     if (filter === 'no-cost' && p.cost_price > 0) return false;
     if (filter === 'pending' && p.pending_price == null) return false;
+    if (filter === 'cooldown' && (!p._cooldown_until || Date.now() >= p._cooldown_until)) return false;
     if (filter === 'base-below-max') {
       var lBP = listingsMap[p.fsn];
       var bp = lBP && lBP.basePrice > 0 ? lBP.basePrice : 0;
@@ -6177,6 +6230,7 @@ document.addEventListener('scroll', function() {
 
   loadTgSettings();
   loadMinProfitSetting();
+  loadCooldownDuration();
   var savedParallel = localStorage.getItem('scrape_parallel') || '5';
   var pEl = document.getElementById('scrapeParallel');
   if (pEl) pEl.value = savedParallel;
@@ -7723,6 +7777,27 @@ function updateAutoPushStatus() {
   }
 }
 
+// ── COOLDOWN DURATION SETTINGS ───────────────────────────────────────────────
+function saveCooldownDuration() {
+  var el = document.getElementById('cooldownDuration');
+  if (el) {
+    localStorage.setItem('bbp_cooldown_duration', el.value);
+    log('info', '⚙️ Cooldown duration set to ' + el.value + ' minutes');
+  }
+}
+
+function loadCooldownDuration() {
+  var el = document.getElementById('cooldownDuration');
+  if (el) {
+    var duration = localStorage.getItem('bbp_cooldown_duration') || '30';
+    el.value = duration;
+  }
+}
+
+function getCooldownDuration() {
+  return parseInt(localStorage.getItem('bbp_cooldown_duration') || '30');
+}
+
 // Korvex price-change tracking: scan each product's scrape history for entries
 // where the competitor seller matches, and count how often their price changed.
 function renderKorvexTrack() {
@@ -8692,6 +8767,28 @@ function initBeatAmount() {
   }
 }
 
+
+// ── COOLDOWN MANAGEMENT ──────────────────────────────────────────────────────
+function setCooldown(prod, minutes, reason) {
+  prod._cooldown_until = Date.now() + (minutes * 60 * 1000);
+  prod._cooldown_reason = reason;
+  saveProducts();
+  log('info', '⏳ Cooldown set: ' + (prod.title || prod.fsn || '').slice(0,30) + ' — ' + reason + ' (' + minutes + ' min)');
+}
+
+function clearCooldown(prod) {
+  delete prod._cooldown_until;
+  delete prod._cooldown_reason;
+  saveProducts();
+  log('info', '✅ Cooldown cleared: ' + (prod.title || prod.fsn || '').slice(0,30));
+}
+
+function getCooldownRemaining(prod) {
+  if (!prod._cooldown_until) return 0;
+  return Math.max(0, Math.ceil((prod._cooldown_until - Date.now()) / 60000));
+}
+
+// Find where initAutoScrape is defined and add this before it
 function initAutoScrape() {
   initBeatAmount();
   var sel = document.getElementById('autoScrapeInterval');
@@ -10110,6 +10207,41 @@ function clearNewPortalOrders() {
   renderNewOrders();
   var badge = document.getElementById('newOrdersNavBadge');
   if (badge) badge.style.display = 'none';
+}
+
+// ── COOLDOWN MANAGEMENT ──────────────────────────────────────────────────────
+function clearAllCooldowns() {
+  var count = 0;
+  state.products.forEach(function(p) {
+    if (p._cooldown_until) {
+      delete p._cooldown_until;
+      delete p._cooldown_reason;
+      count++;
+    }
+  });
+  saveProducts();
+  log('info', '✅ Cleared cooldowns for ' + count + ' product(s)');
+  renderProducts();
+  renderDashboard();
+}
+
+function setCooldown(prod, minutes, reason) {
+  prod._cooldown_until = Date.now() + (minutes * 60 * 1000);
+  prod._cooldown_reason = reason;
+  saveProducts();
+  log('info', '⏳ Cooldown set: ' + (prod.title || prod.fsn || '').slice(0,30) + ' — ' + reason + ' (' + minutes + ' min)');
+}
+
+function clearCooldown(prod) {
+  delete prod._cooldown_until;
+  delete prod._cooldown_reason;
+  saveProducts();
+  log('info', '✅ Cooldown cleared: ' + (prod.title || prod.fsn || '').slice(0,30));
+}
+
+function getCooldownRemaining(prod) {
+  if (!prod._cooldown_until) return 0;
+  return Math.max(0, Math.ceil((prod._cooldown_until - Date.now()) / 60000));
 }
 
 // ====================================================================
