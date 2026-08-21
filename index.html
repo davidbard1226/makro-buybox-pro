@@ -995,6 +995,27 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
                 5 tabs ≈ <strong style="color:var(--accent)">~750 products/hour</strong>. Each tab uses a 2-4s human delay. Increase if Makro never blocks you.
               </div>
             </div>
+            <div class="config-field">
+              <label>🎯 Auto-Reprice: Beat BuyBox by</label>
+              <div style="display:flex;align-items:center;gap:8px">
+                <select id="autoBeatAmount" onchange="saveAutoBeatAmount()" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:6px;font-size:13px">
+                  <option value="1">R1 (default)</option>
+                  <option value="2">R2</option>
+                  <option value="3">R3</option>
+                  <option value="5">R5</option>
+                  <option value="10">R10</option>
+                  <option value="custom">Custom...</option>
+                </select>
+                <div id="customBeatWrap" style="display:none;flex:1">
+                  <input type="number" id="customBeatInput" value="2" min="0.5" step="0.5" 
+                    style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:6px;font-size:13px"
+                    oninput="saveAutoBeatAmount()">
+                </div>
+              </div>
+              <div style="font-size:10px;color:var(--muted);margin-top:4px;line-height:1.5">
+                How much below the current BuyBox price to set your price during auto-reprice. Higher amounts are more aggressive but reduce margin.
+              </div>
+            </div>
 
             <div class="config-field">
               <label>Min Profit % (after Makro fees)</label>
@@ -1011,14 +1032,26 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
 
             <div class="config-field">
               <label>🕐 Auto-Scrape Schedule</label>
-              <select class="config-input" id="autoScrapeInterval">
+              <select class="config-input" id="autoScrapeInterval" onchange="toggleCustomInterval(this.value)">
                 <option value="0">Off (manual only)</option>
+                <option value="5">Every 5 minutes</option>
                 <option value="10">Every 10 minutes</option>
+                <option value="15">Every 15 minutes</option>
+                <option value="30">Every 30 minutes</option>
                 <option value="60" selected>Every 1 hour</option>
                 <option value="240">Every 4 hours</option>
                 <option value="480">Every 8 hours</option>
                 <option value="720">Every 12 hours</option>
+                <option value="custom">Custom interval...</option>
               </select>
+              <div id="customIntervalWrap" style="display:none;margin-top:6px">
+                <input type="number" class="config-input" id="customIntervalInput" 
+                  placeholder="Minutes (min: 1)" min="1" max="1440" value="30"
+                  oninput="applyCustomInterval(this.value)">
+                <div style="font-size:10px;color:var(--muted);margin-top:4px">
+                  Enter interval in minutes (1–1440). Current: <span id="customIntervalDisplay">30</span> min
+                </div>
+              </div>
 
               <div style="margin-top:8px">
                 <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:1px">Scrape Order</label>
@@ -1026,7 +1059,7 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
                   <option value="smart">🧠 Smart — losses first, then wins</option>
                   <option value="losses">🔴 Losses only (fastest)</option>
                   <option value="all">🔄 All products</option>
-                  <option value="korvex">🎯 Korvex only — beat Korvex by R1, auto-push</option>
+                  <option value="korvex">🎯 Korvex only — beat Korvex by configured amount, auto-push</option>
                 </select>
               </div>
 
@@ -1345,7 +1378,7 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
           <div id="autoPushStatus" style="font-size:11px;color:var(--accent);font-family:'Space Mono',monospace"></div>
         </div>
         <div style="font-size:10px;color:var(--muted);margin-top:8px;line-height:1.6">
-          Chain: scrape (10 min) → beat Korvex by R1 → generate XLS → send to portal → auto-upload. Guards: never below Min Price, skip no-cost / no-SKU products.
+          Chain: scrape (10 min) → beat Korvex by configured amount → generate XLS → send to portal → auto-upload. Guards: never below Min Price, skip no-cost / no-SKU products.
         </div>
       </div>
 
@@ -3082,7 +3115,7 @@ function handleQueueProgress(d) {
     }
     saveProducts();
 
-    // ── AUTO REPRICE: beat competitor by R1, never below min_price ──────────
+    // ── AUTO REPRICE: beat competitor by configured amount, never below min_price ──────────
     var prod = existing || state.products[state.products.length - 1];
     autoReprice(prod);
 
@@ -3129,7 +3162,7 @@ function handleQueueProgress(d) {
   // scrapeIdx can reach scrapeQueue.length BEFORE the queue is truly done.
   // Pushing on the counter alone fired the auto-push ~4.5 min early in the
   // 132-URL run (23:28:56 push vs 23:33:17 queue-complete), missing the last
-  // batch of Korvex beat-by-R1 reprices. Only finish on the authoritative
+  // batch of Korvex beat-by-amount reprices. Only finish on the authoritative
   // QUEUE_FINISHED signal; arm a fallback timer in case the bridge dies.
   if (scrapeIdx >= scrapeQueue.length) armQueueFinishWatchdog();
 }
@@ -3391,7 +3424,7 @@ function roundPrice(p) {
 }
 
 // ── AUTO REPRICE ──────────────────────────────────────────────────────────
-// Called after every scrape. Beats competitor by R1, never below min_price.
+// Called after every scrape. Beats competitor by configured amount, never below min_price.
 // Updates the listing's myPrice and flags product as pending upload.
 // SAFETY: will NOT reprice if cost_price is missing — can't know the floor without it.
 function autoReprice(prod) {
@@ -3402,7 +3435,7 @@ function autoReprice(prod) {
     // Even when winning, check if we're selling below min price (at a loss)
     // If so, flag it as pending so generatePriceUpdate raises it to the floor.
     // OPT-OUT: raising a winning price can flip us WIN→LOSE (we go above the
-    // competitor). Default OFF — "just scrape every hour, beat by R1" keeps the box.
+    // competitor). Default OFF — "just scrape every hour, beat by configured amount" keeps the box.
     if (localStorage.getItem('bbp_raise_wins') === '1' && prod.cost_price > 0) {
       var winMin = prod.min_price || calcMinViablePrice(prod.cost_price, getProductProfitPct(prod));
       var winListing = findListingByFsn(prod.fsn);
@@ -3443,7 +3476,7 @@ function autoReprice(prod) {
 
   var maxPrice = prod.max_price || null;
 
-  var rawTarget = roundPrice(buybox - 1);   // beat by R1, rounded to whole number
+  var rawTarget = roundPrice(buybox - getAutoBeatAmount());   // beat by configured amount, rounded to whole number
   var targetPrice = rawTarget;
   if (targetPrice < ABSOLUTE_PRICE_FLOOR) targetPrice = ABSOLUTE_PRICE_FLOOR; // never below R150 absolute floor
   if (targetPrice < minPrice) targetPrice = minPrice;   // never below floor
@@ -3478,7 +3511,7 @@ function autoReprice(prod) {
     var atFloor = targetPrice === minPrice;
     log('info',
       '💰 Auto-repriced: R' + roundPrice(buybox) + ' → R' + targetPrice +
-      (atFloor ? ' ⚠ AT FLOOR (min R' + minPrice + ')' : ' (beat by R1)')
+      (atFloor ? ' ⚠ AT FLOOR (min R' + minPrice + ')' : ' (beat by R' + getAutoBeatAmount() + ')')
     );
     // Update pending upload badge
     updatePendingBadge();
@@ -5181,7 +5214,7 @@ function openPushModal(idx) {
   if (listing && listing.myPrice > 0) sub.push('My current: <b style="color:var(--accent3)">R' + Math.round(listing.myPrice) + '</b>');
   document.getElementById('pushModalSub').innerHTML = sub.join(' &nbsp;·&nbsp; ');
 
-  // Build options: beat buybox, beat each seller by R1, custom
+  // Build options: beat buybox, beat each seller by configured amount, custom
   var opts = [];
   var sellers = p.sellers || [];
   var bbPrice = p.buybox_price > 0 ? p.buybox_price : (sellers.length ? sellers[0].price : 0);
@@ -8604,12 +8637,80 @@ function toggleWatchlistFromProduct(idx) {
   }
 }
 
+
+// Save auto beat amount setting
+function saveAutoBeatAmount() {
+  var sel = document.getElementById('autoBeatAmount');
+  var customWrap = document.getElementById('customBeatWrap');
+  var customInput = document.getElementById('customBeatInput');
+  
+  if (sel.value === 'custom') {
+    customWrap.style.display = 'block';
+    var amount = parseFloat(customInput.value) || 1;
+    localStorage.setItem('auto_beat_amount', amount.toString());
+  } else {
+    customWrap.style.display = 'none';
+    localStorage.setItem('auto_beat_amount', sel.value);
+  }
+}
+
+// Get the auto beat amount
+function getAutoBeatAmount() {
+  var sel = document.getElementById('autoBeatAmount');
+  if (!sel) return 1;
+  
+  if (sel.value === 'custom') {
+    var customInput = document.getElementById('customBeatInput');
+    var amount = parseFloat(customInput ? customInput.value : 1);
+    return isNaN(amount) ? 1 : amount;
+  } else {
+    return parseFloat(sel.value) || 1;
+  }
+}
+
+// Initialize beat amount from localStorage
+function initBeatAmount() {
+  var sel = document.getElementById('autoBeatAmount');
+  var customWrap = document.getElementById('customBeatWrap');
+  var customInput = document.getElementById('customBeatInput');
+  
+  if (!sel) return;
+  
+  var saved = localStorage.getItem('auto_beat_amount');
+  if (saved) {
+    // Check if it's one of the preset options
+    var presetValues = ['1', '2', '3', '5', '10'];
+    if (presetValues.includes(saved)) {
+      sel.value = saved;
+      customWrap.style.display = 'none';
+    } else {
+      // It's a custom value
+      sel.value = 'custom';
+      customWrap.style.display = 'block';
+      customInput.value = saved;
+    }
+  }
+}
+
 function initAutoScrape() {
+  initBeatAmount();
   var sel = document.getElementById('autoScrapeInterval');
   var modeEl = document.getElementById('autoScrapeMode');
   var sellerEl = document.getElementById('autoScrapeSeller');
   if (!sel) return;
   sel.value  = localStorage.getItem('auto_scrape_interval') || '60';
+      // Handle custom interval
+      if (localStorage.getItem('auto_scrape_interval_custom') === 'true') {
+        sel.value = 'custom';
+        var customWrap = document.getElementById('customIntervalWrap');
+        var customInput = document.getElementById('customIntervalInput');
+        if (customWrap) customWrap.style.display = 'block';
+        if (customInput) {
+          customInput.value = localStorage.getItem('auto_scrape_interval') || '30';
+          var display = document.getElementById('customIntervalDisplay');
+          if (display) display.textContent = customInput.value;
+        }
+      }
   if (modeEl) modeEl.value = localStorage.getItem('auto_scrape_mode') || 'smart';
   if (sellerEl) sellerEl.value = localStorage.getItem('auto_scrape_seller') || 'Korvex';
   applyAutoScrape();
@@ -8695,11 +8796,61 @@ function buildAutoScrapeQueue() {
   return urls.filter(function(u, i, a){ return u && a.indexOf(u) === i; }); // dedupe
 }
 
+
+// Toggle custom interval input visibility
+function toggleCustomInterval(value) {
+  var customWrap = document.getElementById('customIntervalWrap');
+  var customInput = document.getElementById('customIntervalInput');
+  if (value === 'custom') {
+    customWrap.style.display = 'block';
+    customInput.focus();
+    // Apply custom value immediately
+    applyCustomInterval(customInput.value);
+  } else {
+    customWrap.style.display = 'none';
+    // Save the selected preset interval
+    localStorage.setItem('auto_scrape_interval', value);
+    applyAutoScrape();
+  }
+}
+
+// Apply custom interval value
+function applyCustomInterval(minutes) {
+  minutes = parseInt(minutes);
+  if (isNaN(minutes) || minutes < 1) minutes = 1;
+  if (minutes > 1440) minutes = 1440; // max 24 hours
+  
+  // Update display
+  var display = document.getElementById('customIntervalDisplay');
+  if (display) display.textContent = minutes;
+  
+  // Save to localStorage
+  localStorage.setItem('auto_scrape_interval', minutes.toString());
+  localStorage.setItem('auto_scrape_interval_custom', 'true');
+  
+  // Apply the interval
+  applyAutoScrape();
+}
+
+// Get the actual interval value (handles custom)
+function getAutoScrapeInterval() {
+  var sel = document.getElementById('autoScrapeInterval');
+  if (!sel) return 60;
+  
+  if (sel.value === 'custom') {
+    var customInput = document.getElementById('customIntervalInput');
+    var minutes = parseInt(customInput ? customInput.value : 30);
+    return isNaN(minutes) ? 30 : minutes;
+  } else {
+    return parseInt(sel.value) || 60;
+  }
+}
+
 function applyAutoScrape() {
   if (_autoScrapeTimer) { clearInterval(_autoScrapeTimer); _autoScrapeTimer = null; }
   var sel = document.getElementById('autoScrapeInterval');
   var statusEl = document.getElementById('autoScrapeStatus');
-  var mins = sel ? parseInt(sel.value) : 0;
+  var mins = getAutoScrapeInterval();
   if (getTestMode() || watchlistActive()) mins = 10; // scoped mode: pin to every 10 minutes
   if (!mins) {
     if (statusEl) statusEl.textContent = 'Auto-scrape off.';
