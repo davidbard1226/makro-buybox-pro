@@ -1085,6 +1085,7 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
                 <input type="checkbox" id="autoPushToggle" onchange="toggleAutoPush(this.checked)" style="width:14px;height:14px;accent-color:#00e5a0">
                 Auto-generate price file & upload to portal after each scrape
               </label>
+              <div id="autoPushStatus" style="font-size:10px;margin-top:4px;line-height:1.5"></div>
               <div style="font-size:10px;color:var(--muted);line-height:1.5">
                 When ON: after every scrape cycle completes, the price update XLS is automatically generated and sent to the Makro portal via the extension. Works with all scrape modes (Smart, Losses, All, Korvex).
               </div>
@@ -3093,6 +3094,12 @@ function scrapeAllProducts() {
 // ============================================================
 function toggleAutoPush(enabled) {
   localStorage.setItem('bbp_auto_push_enabled', enabled ? '1' : '0');
+  var statusEl = document.getElementById('autoPushStatus');
+  if (statusEl) {
+    statusEl.innerHTML = enabled
+      ? '<span style="color:var(--accent)">✅ Armed — will auto-push after next scrape finishes</span>'
+      : '<span style="color:var(--muted)">Disabled</span>';
+  }
   log('info', '🚀 Auto-push ' + (enabled ? 'ENABLED' : 'DISABLED') + ' — prices will ' + (enabled ? '' : 'not ') + 'auto-upload after scrape');
 }
 
@@ -3133,8 +3140,13 @@ async function fullCycleScrapeRepricePush() {
   scrapeAllProducts();
 
   // Step 2: Watch for scraping to finish, then generate price file + push
+  // Wait 5s before checking — scrapeAllProducts → startScraping sets
+  // state.scraping = true asynchronously via postMessage. Checking too
+  // early sees false and thinks scraping is already done (race condition).
+  var scrapeStarted = false;
+  setTimeout(function() { scrapeStarted = true; }, 5000);
   var checkInterval = setInterval(function() {
-    if (!state.scraping) {
+    if (scrapeStarted && !state.scraping) {
       clearInterval(checkInterval);
       btn.innerHTML = '⏳ Generating price file...';
 
@@ -3620,7 +3632,14 @@ function maybeAutoPushPrices() {
     log('info', '🤖 Auto-push: generating price file for ' + pending.length + ' pending product(s)...');
     var result = generatePriceUpdate(true);
     if (!result || !result.changed) {
-      addAutoPushLogEntry({ level: 'skip', msg: 'Price file generated 0 changes (guards skipped everything).' });
+      // Check if the raw template is missing — the most common silent failure
+      var rawBase64 = localStorage.getItem('makro_listings_raw');
+      if (!rawBase64) {
+        addAutoPushLogEntry({ level: 'error', msg: '❌ Auto-push FAILED: S_listing raw template not found in browser storage. Re-import your S_listing XLS from the Products tab, then try again. The template is required to build the Makro upload file.' });
+        log('err', '❌ Auto-push failed: S_listing template missing — re-import your listing XLS');
+      } else {
+        addAutoPushLogEntry({ level: 'skip', msg: 'Price file generated 0 changes (guards skipped everything — check cost prices and min prices).' });
+      }
       return;
     }
 
@@ -7224,9 +7243,10 @@ function generatePriceUpdate(autoMode) {
   if (!rawBase64) {
     if (!autoMode) {
       document.getElementById('pricerResult').innerHTML =
-        '❌ <span style="color:#ff4444">Original listing file not found.<br>Please re-import your S_listing XLS file from the Products tab — the raw file is needed as a template.</span>';
+        '⚠️ <span style="color:#ff9500">Original S_listing template not found — generating CSV fallback instead.<br>For full XLS upload, re-import your S_listing XLS from the Products tab.</span>';
     }
-    return null;
+    // FALLBACK: generate a CSV with SKU, FSN, New Price that can be manually entered
+    return generateCsvFallback(autoMode);
   }
 
   // Build FSN → new price map (watchlist/test mode: only scoped products)
@@ -7515,11 +7535,131 @@ function generatePriceUpdate(autoMode) {
   }
 }
 
+// ============================================================
+// CSV FALLBACK — generates a simple CSV when S_listing template is missing
+// Contains: SKU, FSN, Product Title, Old Price, New Price, Change
+// User can manually enter these prices into the Makro portal
+// ============================================================
+function generateCsvFallback(autoMode) {
+  const listings = getListings();
+  const strategy = (document.getElementById('pricerStrategy') || {}).value || 'beat';
+  const beatBy   = parseFloat((document.getElementById('pricerBeatBy') || {}).value) || 1;
+  const floorPct = parseFloat((document.getElementById('pricerFloor') || {}).value) || 10;
+  const winsOnly    = (document.getElementById('pricerWinsOnly') || {}).checked;
+  const skipUnknown = (document.getElementById('pricerSkipUnknown') || {}).checked;
+  const allowBelow  = (document.getElementById('pricerAllowBelowFloor') && document.getElementById('pricerAllowBelowFloor').checked);
+
+  // Build scraped product map
+  const scrapedMap = {};
+  state.products.forEach(function(p) { if (p.fsn && isScopedProduct(p)) scrapedMap[p.fsn] = p; });
+
+  function findScraped(fsn) {
+    if (!fsn) return null;
+    if (scrapedMap[fsn]) return scrapedMap[fsn];
+    var short = fsn.slice(0, 15);
+    if (scrapedMap[short]) return scrapedMap[short];
+    for (var k in scrapedMap) {
+      if (k.indexOf(fsn) === 0 || fsn.indexOf(k) === 0) return scrapedMap[k];
+    }
+    return null;
+  }
+
+  var rows = [['SKU', 'FSN', 'Product Title', 'My Current Price', 'BuyBox Price', 'New Price', 'Change', 'Status']];
+  var updateCount = 0;
+
+  // If no listings, use products directly
+  var targets = listings.length > 0 ? listings : state.products.filter(function(p) { return p.fsn && p.url; });
+
+  targets.forEach(function(t) {
+    var fsn = t.fsn || '';
+    var scraped = findScraped(fsn);
+    if (!scraped) return;
+    if (!scraped.cost_price || scraped.cost_price <= 0) return;
+    if (winsOnly && scraped.status === 'win') return;
+    if (skipUnknown && (!scraped.buybox_price || scraped.buybox_price <= 0)) return;
+
+    var myPrice = t.myPrice || 0;
+    var buybox  = scraped.buybox_price || 0;
+    if (buybox <= 0) return;
+
+    // Calculate new price
+    var newPrice;
+    if (scraped.pending_price != null) {
+      newPrice = scraped.pending_price;
+    } else {
+      var result = calcNewPrice(myPrice, buybox, strategy, beatBy, floorPct, null, null);
+      if (!result) return;
+      newPrice = result.price;
+    }
+
+    // Apply guards
+    var minPrice = scraped.min_price || 0;
+    if (!allowBelow) {
+      if (newPrice < ABSOLUTE_PRICE_FLOOR) newPrice = ABSOLUTE_PRICE_FLOOR;
+      if (minPrice > 0 && newPrice < minPrice) newPrice = minPrice;
+    }
+
+    var change = newPrice - myPrice;
+    rows.push([
+      t.sku || scraped.sku || '',
+      fsn,
+      (scraped.title || t.title || '').slice(0, 60),
+      myPrice > 0 ? 'R' + myPrice.toFixed(2) : '—',
+      'R' + buybox.toFixed(2),
+      'R' + newPrice.toFixed(2),
+      (change >= 0 ? '+' : '') + 'R' + change.toFixed(2),
+      scraped.status || 'unknown'
+    ]);
+    updateCount++;
+  });
+
+  if (updateCount === 0) {
+    if (!autoMode) {
+      document.getElementById('pricerResult').innerHTML =
+        '⚠️ <span style="color:#ff9500">No products to update. Make sure products have cost prices set and buybox data scraped.</span>';
+    }
+    return null;
+  }
+
+  // Generate CSV
+  var csv = rows.map(function(r) {
+    return r.map(function(cell) {
+      var s = String(cell);
+      return s.includes(',') || s.includes('"') ? '"' + s.replace(/"/g, '""') + '"' : s;
+    }).join(',');
+  }).join('\n');
+
+  var blob = new Blob([csv], { type: 'text/csv' });
+  var a = document.createElement('a');
+  var filename = 'price_update_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(a.href);
+
+  // Also store for portal push
+  var base64 = btoa(unescape(encodeURIComponent(csv)));
+  localStorage.setItem('portal_upload_file', base64);
+  localStorage.setItem('portal_upload_filename', filename);
+
+  if (!autoMode) {
+    document.getElementById('pricerResult').innerHTML =
+      '✅ <span style="color:var(--accent)">Downloaded <b>' + filename + '</b> — ' +
+      updateCount + ' prices (CSV format).</span><br>' +
+      '<span style="color:var(--muted)">⚠ This is a CSV fallback (S_listing template missing). For full XLS upload, re-import your S_listing from the Products tab.</span><br>' +
+      '<span style="color:var(--muted)">Open Makro Seller Portal → Products → Update Products → Bulk Upload and manually enter these prices.</span>';
+  }
+
+  return { filename: filename, changed: updateCount, changeLog: [], skippedNoCost: 0, skippedClamped: 0, buildNote: 'CSV fallback (no S_listing template)', staleDays: 0 };
+}
+
 function sendFileToPortal(autoUpload) {
   const base64   = localStorage.getItem('portal_upload_file');
   const filename = localStorage.getItem('portal_upload_filename');
   if (!base64) {
-    alert('No price file generated yet.\nGo to Price Updater → Generate & Download first.');
+    if (!autoUpload) alert('No price file generated yet.\nGo to Price Updater → Generate & Download first.');
     return false;
   }
   // Send to bridge → chrome.storage.local so portal.js can read it
@@ -9155,6 +9295,12 @@ function initAutoScrape() {
   // Restore auto-push toggle state
   var autoPushEl = document.getElementById('autoPushToggle');
   if (autoPushEl) autoPushEl.checked = localStorage.getItem('bbp_auto_push_enabled') === '1';
+  var autoPushStatus = document.getElementById('autoPushStatus');
+  if (autoPushStatus) {
+    autoPushStatus.innerHTML = localStorage.getItem('bbp_auto_push_enabled') === '1'
+      ? '<span style="color:var(--accent)">✅ Armed — will auto-push after next scrape finishes</span>'
+      : '<span style="color:var(--muted)">Disabled</span>';
+  }
   var sel = document.getElementById('autoScrapeInterval');
   var modeEl = document.getElementById('autoScrapeMode');
   var sellerEl = document.getElementById('autoScrapeSeller');
