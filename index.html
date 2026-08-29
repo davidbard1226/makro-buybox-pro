@@ -954,7 +954,8 @@
           <div>
             <div class="card-title" style="margin-bottom:10px">PASTE MAKRO PRODUCT URLs</div>
             <div style="margin-bottom:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-              <button class="btn-primary" onclick="generateUrlsFromListings()" style="width:auto;padding:8px 16px;font-size:12px">⚡ Generate URLs from Imported Listings</button>
+              <button class="btn-primary" onclick="scrapeAllProducts()" style="width:auto;padding:10px 20px;font-size:13px;background:linear-gradient(135deg,var(--accent),#00c9a7);box-shadow:0 2px 12px rgba(0,229,160,.3)">🚀 Scrape ALL Products</button>
+              <button class="btn-primary" onclick="generateUrlsFromListings()" style="width:auto;padding:8px 16px;font-size:12px">⚡ Generate URLs from Listings</button>
               <span id="urlGenStatus" style="font-size:11px;color:var(--muted)"></span>
             </div>
             <textarea id="urlInput" class="url-input-area" placeholder="https://www.makro.co.za/electronics/televisions/p/itmxxxxxxxx
@@ -1076,6 +1077,17 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
               </div>
 
               <div id="autoScrapeStatus" style="font-size:10px;color:var(--accent);margin-top:6px;line-height:1.6"></div>
+            </div>
+
+            <div class="config-field">
+              <label>🚀 Auto-Push After Scrape</label>
+              <label style="font-size:11px;display:flex;align-items:center;gap:6px;color:var(--muted);cursor:pointer;margin-bottom:6px">
+                <input type="checkbox" id="autoPushToggle" onchange="toggleAutoPush(this.checked)" style="width:14px;height:14px;accent-color:#00e5a0">
+                Auto-generate price file & upload to portal after each scrape
+              </label>
+              <div style="font-size:10px;color:var(--muted);line-height:1.5">
+                When ON: after every scrape cycle completes, the price update XLS is automatically generated and sent to the Makro portal via the extension. Works with all scrape modes (Smart, Losses, All, Korvex).
+              </div>
             </div>
 
             <div class="config-field">
@@ -1269,9 +1281,33 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
             <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Import your S_listing XLS first (Products tab → Import Listings). The price updater uses your current prices and FSN codes to generate the upload file.</p>
             <div id="pricerListingsStatus" style="font-size:13px;color:var(--muted);margin-bottom:8px">⏳ Checking listings...</div>
           <div id="pendingUploadCount" style="font-size:12px;color:var(--muted);margin-bottom:12px;font-family:'Space Mono',monospace"></div>
+
+          <!-- ONE-CLICK FULL CYCLE -->
+          <div style="background:linear-gradient(135deg,rgba(0,229,160,.08),rgba(0,201,167,.05));border:1px solid rgba(0,229,160,.3);border-radius:10px;padding:14px;margin-bottom:14px">
+            <div style="font-size:11px;color:var(--accent);font-weight:700;letter-spacing:1px;margin-bottom:8px">⚡ ONE-CLICK FULL CYCLE</div>
+            <button class="btn-primary" onclick="fullCycleScrapeRepricePush()" id="fullCycleBtn" style="width:100%;margin-bottom:8px;background:linear-gradient(135deg,#00e5a0,#00c9a7);font-size:14px;padding:14px 24px">
+              🚀 Scrape → Reprice → Push to Portal
+            </button>
+            <div style="font-size:10px;color:var(--muted);line-height:1.6">
+              Scrapes all products, calculates new prices, generates XLS, and uploads to Makro portal — all in one click.
+            </div>
+          </div>
+
           <button class="btn-primary" onclick="generatePriceUpdate()" id="generateBtn" style="width:100%;margin-bottom:8px">⬇ Generate & Download Price Update File</button>
           <button class="btn-secondary" onclick="openPortalUpload()" id="portalUploadBtn" style="width:100%;margin-bottom:8px;color:#00e5a0;border-color:#00e5a044">🚀 Send to Portal & Auto Upload</button>
           <button class="btn-secondary" onclick="sendFileToPortal()" id="sendFileBtn" style="width:100%;margin-bottom:4px;color:#ffd60a;border-color:#ffd60a44" title="Re-send the generated file to the portal extension without downloading again">📤 Re-send File to Portal</button>
+
+          <!-- IMPORT PRICES FROM SHEET -->
+          <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+            <div style="font-size:11px;color:var(--accent3);font-weight:700;letter-spacing:1px;margin-bottom:8px">📊 IMPORT PRICES FROM SHEET</div>
+            <p style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.5">Upload a CSV/XLSX with columns: <b style="color:var(--text)">SKU</b> (or FSN) + <b style="color:var(--text)">New Price</b>. Optionally include <b style="color:var(--text)">Stock</b> column.</p>
+            <label class="btn-secondary" style="width:100%;margin-bottom:8px;cursor:pointer;color:#ffd60a;border-color:rgba(255,214,10,0.4)">
+              📂 Import Prices from CSV/XLSX
+              <input type="file" id="priceSheetInput" accept=".csv,.xls,.xlsx" style="display:none" onchange="importPricesFromSheet(this)">
+            </label>
+            <div id="priceSheetResult" style="font-size:11px;color:var(--muted);margin-top:4px"></div>
+          </div>
+
             <div id="pricerResult" style="margin-top:14px;font-size:12px;color:var(--muted)"></div>
           </div>
         </div>
@@ -2996,6 +3032,312 @@ document.getElementById('urlInput').addEventListener('input', function() {
 function clearUrlInput() {
   document.getElementById('urlInput').value = '';
   document.getElementById('urlCount').textContent = '0 URLs detected';
+}
+
+// ============================================================
+// SCRAPE ALL PRODUCTS — one-click: loads ALL URLs then starts scraping
+// ============================================================
+function scrapeAllProducts() {
+  if (!state.extReady) { alert('Extension not connected. Please install the Makro Pro Scraper extension.'); return; }
+
+  // Build URL list from: (1) already-scraped products with URLs, (2) imported listings via FSN search
+  var urls = [];
+  var seen = {};
+
+  // Source 1: products already in the tracker that have makro URLs
+  state.products.forEach(function(p) {
+    if (p.url && p.url.includes('makro.co.za') && !seen[p.url]) {
+      urls.push(p.url);
+      seen[p.url] = 1;
+    }
+  });
+
+  // Source 2: imported listings — generate search URLs for FSNs not yet tracked
+  var listings = getListings();
+  var trackedFsns = {};
+  state.products.forEach(function(p) { if (p.fsn) trackedFsns[p.fsn] = 1; });
+
+  listings.forEach(function(l) {
+    if (!l.fsn || l.fsn.length < 6) return;
+    if (trackedFsns[l.fsn]) return; // already have this product
+    var searchUrl = 'https://www.makro.co.za/search?q=' + encodeURIComponent(l.fsn);
+    if (!seen[searchUrl]) {
+      urls.push(searchUrl);
+      seen[searchUrl] = 1;
+    }
+  });
+
+  if (!urls.length) {
+    alert('No products to scrape.\n\nImport your listings first (Products tab → Import Listings) or add products via the Scraper tab.');
+    return;
+  }
+
+  // Load into the URL textarea
+  document.getElementById('urlInput').value = urls.join('\n');
+  document.getElementById('urlCount').textContent = urls.length + ' URLs loaded';
+
+  var statusEl = document.getElementById('urlGenStatus');
+  statusEl.textContent = '🚀 Loaded ' + urls.length + ' products — starting scrape...';
+  statusEl.style.color = 'var(--accent)';
+
+  log('info', '🚀 Scrape ALL: loaded ' + urls.length + ' product URLs (' + state.products.length + ' tracked, ' + (urls.length - state.products.length) + ' new from listings)');
+
+  // Auto-start scraping after a short delay
+  setTimeout(function() {
+    startScraping();
+  }, 300);
+}
+
+// ============================================================
+// AUTO-PUSH TOGGLE — works with all scrape modes
+// ============================================================
+function toggleAutoPush(enabled) {
+  localStorage.setItem('bbp_auto_push_enabled', enabled ? '1' : '0');
+  log('info', '🚀 Auto-push ' + (enabled ? 'ENABLED' : 'DISABLED') + ' — prices will ' + (enabled ? '' : 'not ') + 'auto-upload after scrape');
+}
+
+function isAutoPushEnabled() {
+  return localStorage.getItem('bbp_auto_push_enabled') === '1';
+}
+
+// ============================================================
+// ONE-CLICK FULL CYCLE: Scrape → Reprice → Push
+// ============================================================
+async function fullCycleScrapeRepricePush() {
+  var btn = document.getElementById('fullCycleBtn');
+  if (state.scraping) {
+    alert('A scrape is already running. Wait for it to finish.');
+    return;
+  }
+  if (!state.extReady) {
+    alert('Extension not connected. Please install the Makro Pro Scraper extension.');
+    return;
+  }
+
+  // Enable auto-push for this cycle
+  var wasAutoPush = isAutoPushEnabled();
+  localStorage.setItem('bbp_auto_push_enabled', '1');
+
+  // Set scrape mode to "all" for full coverage
+  var modeEl = document.getElementById('autoScrapeMode');
+  var prevMode = modeEl ? modeEl.value : 'smart';
+  if (modeEl) modeEl.value = 'all';
+
+  btn.disabled = true;
+  btn.innerHTML = '⏳ Scraping all products...';
+  btn.style.opacity = '0.7';
+
+  log('info', '🚀 FULL CYCLE STARTED — Scrape → Reprice → Push');
+
+  // Step 1: Load all URLs and start scraping
+  scrapeAllProducts();
+
+  // Step 2: Watch for scraping to finish, then generate price file + push
+  var checkInterval = setInterval(function() {
+    if (!state.scraping) {
+      clearInterval(checkInterval);
+      btn.innerHTML = '⏳ Generating price file...';
+
+      setTimeout(function() {
+        // Step 3: Generate price update
+        var result = generatePriceUpdate(true); // autoMode = true
+        if (result && result.changed > 0) {
+          btn.innerHTML = '⏳ Uploading to portal...';
+          // Step 4: Send to portal
+          sendFileToPortal(true);
+
+          setTimeout(function() {
+            btn.disabled = false;
+            btn.innerHTML = '🚀 Scrape → Reprice → Push to Portal';
+            btn.style.opacity = '1';
+            log('ok', '✅ FULL CYCLE COMPLETE — ' + result.changed + ' prices updated and sent to portal');
+          }, 1500);
+        } else {
+          btn.disabled = false;
+          btn.innerHTML = '🚀 Scrape → Reprice → Push to Portal';
+          btn.style.opacity = '1';
+          log('info', 'ℹ Full cycle: scrape done but no prices needed updating.');
+        }
+
+        // Restore settings
+        localStorage.setItem('bbp_auto_push_enabled', wasAutoPush ? '1' : '0');
+        if (modeEl) modeEl.value = prevMode;
+      }, 2000);
+    }
+  }, 1000);
+
+  // Safety timeout — don't hang forever
+  setTimeout(function() {
+    if (btn.disabled) {
+      clearInterval(checkInterval);
+      btn.disabled = false;
+      btn.innerHTML = '🚀 Scrape → Reprice → Push to Portal';
+      btn.style.opacity = '1';
+      localStorage.setItem('bbp_auto_push_enabled', wasAutoPush ? '1' : '0');
+      if (modeEl) modeEl.value = prevMode;
+      log('warn', '⚠ Full cycle timed out — scrape may still be running.');
+    }
+  }, 600000); // 10 min timeout
+}
+
+// ============================================================
+// IMPORT PRICES FROM SHEET — upload CSV/XLSX with SKU/FSN + New Price
+// ============================================================
+function importPricesFromSheet(input) {
+  if (!window.XLSX) { ensureXLSX(function(){ importPricesFromSheet(input); }); return; }
+  var file = input.files[0];
+  if (!file) return;
+
+  var resultEl = document.getElementById('priceSheetResult');
+  resultEl.innerHTML = '⏳ Reading file...';
+  resultEl.style.color = 'var(--muted)';
+
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var data = new Uint8Array(e.target.result);
+      var wb = XLSX.read(data, { type: 'array', dense: true });
+      var sh = wb.Sheets[wb.SheetNames[0]];
+      var rows = XLSX.utils.sheet_to_json(sh, { header: 1 });
+
+      if (rows.length < 2) {
+        resultEl.innerHTML = '❌ File has no data rows.';
+        resultEl.style.color = '#ff4d6d';
+        return;
+      }
+
+      // Auto-detect columns: look for headers containing sku, fsn, price, cost, stock
+      var headerRow = rows[0].map(function(h) { return String(h || '').toLowerCase().trim(); });
+      var skuCol = -1, fsnCol = -1, priceCol = -1, stockCol = -1, costCol = -1;
+
+      for (var i = 0; i < headerRow.length; i++) {
+        var h = headerRow[i];
+        if ((h.includes('sku') || h.includes('code') || h.includes('product code')) && skuCol === -1) skuCol = i;
+        if ((h.includes('fsn') || h.includes('fulfillment')) && fsnCol === -1) fsnCol = i;
+        if ((h.includes('price') || h.includes('selling') || h.includes('new price')) && priceCol === -1) priceCol = i;
+        if ((h.includes('stock') || h.includes('qty') || h.includes('quantity')) && stockCol === -1) stockCol = i;
+        if ((h.includes('cost') || h.includes('buy price')) && costCol === -1) costCol = i;
+      }
+
+      // Fallback: if no headers detected, assume column order SKU, Price, Stock
+      if (skuCol === -1 && fsnCol === -1) {
+        skuCol = 0;
+        priceCol = headerRow.length > 1 ? 1 : -1;
+        stockCol = headerRow.length > 2 ? 2 : -1;
+      }
+
+      if (priceCol === -1 && costCol === -1) {
+        resultEl.innerHTML = '❌ Could not find a Price column. Use headers like "New Price", "Selling Price", or "Price".';
+        resultEl.style.color = '#ff4d6d';
+        return;
+      }
+
+      // Build lookup: SKU/FSN → { newPrice, stock, cost }
+      var updates = [];
+      var notFound = 0;
+      var skipped = 0;
+
+      for (var r = 1; r < rows.length; r++) {
+        var row = rows[r];
+        if (!row) continue;
+
+        var identifier = '';
+        if (skuCol >= 0) identifier = String(row[skuCol] || '').trim();
+        if (!identifier && fsnCol >= 0) identifier = String(row[fsnCol] || '').trim();
+        if (!identifier) { skipped++; continue; }
+
+        var newPrice = priceCol >= 0 ? parseFloat(row[priceCol]) : null;
+        var newStock = stockCol >= 0 ? parseInt(row[stockCol]) : null;
+        var newCost = costCol >= 0 ? parseFloat(row[costCol]) : null;
+
+        if (newPrice === null || isNaN(newPrice)) { skipped++; continue; }
+
+        // Find matching product by SKU or FSN
+        var product = null;
+        state.products.forEach(function(p) {
+          if (product) return;
+          if (p.sku && p.sku.toLowerCase() === identifier.toLowerCase()) product = p;
+          if (p.fsn && (p.fsn === identifier || p.fsn.slice(0, 15) === identifier)) product = p;
+        });
+
+        if (!product) {
+          // Try listings lookup
+          var listings = getListings();
+          listings.forEach(function(l) {
+            if (product) return;
+            if (l.sku && l.sku.toLowerCase() === identifier.toLowerCase()) {
+              // Find product by FSN
+              state.products.forEach(function(p) {
+                if (!product && p.fsn && (p.fsn === l.fsn || p.fsn.slice(0, 15) === l.fsn)) product = p;
+              });
+            }
+          });
+        }
+
+        if (!product) { notFound++; continue; }
+
+        updates.push({
+          product: product,
+          identifier: identifier,
+          newPrice: newPrice,
+          newStock: newStock,
+          newCost: newCost,
+          oldPrice: product.my_price || product.buybox_price || 0
+        });
+      }
+
+      if (!updates.length) {
+        resultEl.innerHTML = '❌ No matching products found. Check that SKU/FSN codes in your file match your tracked products.';
+        resultEl.style.color = '#ff4d6d';
+        return;
+      }
+
+      // Apply updates
+      var priceUpdated = 0, stockUpdated = 0, costUpdated = 0;
+      updates.forEach(function(u) {
+        if (u.newPrice > 0) {
+          u.product.pending_price = u.newPrice;
+          u.product.pending_updated = new Date().toISOString();
+          priceUpdated++;
+        }
+        if (u.newStock !== null && !isNaN(u.newStock)) {
+          u.product.stock = u.newStock;
+          stockUpdated++;
+        }
+        if (u.newCost !== null && !isNaN(u.newCost) && u.newCost > 0) {
+          u.product.cost_price = u.newCost;
+          costUpdated++;
+        }
+      });
+
+      saveProducts();
+      renderProducts();
+      renderDashboard();
+      updatePendingBadge();
+
+      // Build result message
+      var msg = '✅ Imported ' + updates.length + ' price updates from sheet!';
+      if (priceUpdated) msg += '<br>📊 ' + priceUpdated + ' prices set as pending';
+      if (stockUpdated) msg += '<br>📦 ' + stockUpdated + ' stock levels updated';
+      if (costUpdated) msg += '<br>💰 ' + costUpdated + ' cost prices updated';
+      if (notFound > 0) msg += '<br><span style="color:#ff9500">⚠ ' + notFound + ' rows — no matching product found</span>';
+      if (skipped > 0) msg += '<br><span style="color:var(--muted)">' + skipped + ' rows skipped (empty or no price)</span>';
+
+      msg += '<br><br><span style="color:var(--accent)">→ Go to Price Updater → Generate & Download to create the upload file, or use 🚀 Send to Portal.</span>';
+
+      resultEl.innerHTML = msg;
+      resultEl.style.color = 'var(--accent)';
+
+      // Log it
+      log('ok', '📊 Imported ' + updates.length + ' prices from sheet (' + priceUpdated + ' prices, ' + stockUpdated + ' stock, ' + costUpdated + ' costs)');
+
+    } catch(err) {
+      resultEl.innerHTML = '❌ Error: ' + err.message;
+      resultEl.style.color = '#ff4d6d';
+    }
+  };
+  reader.readAsArrayBuffer(file);
+  input.value = '';
 }
 
 function generateUrlsFromListings() {
@@ -8810,6 +9152,9 @@ function getCooldownRemaining(prod) {
 // Find where initAutoScrape is defined and add this before it
 function initAutoScrape() {
   initBeatAmount();
+  // Restore auto-push toggle state
+  var autoPushEl = document.getElementById('autoPushToggle');
+  if (autoPushEl) autoPushEl.checked = localStorage.getItem('bbp_auto_push_enabled') === '1';
   var sel = document.getElementById('autoScrapeInterval');
   var modeEl = document.getElementById('autoScrapeMode');
   var sellerEl = document.getElementById('autoScrapeSeller');
