@@ -1086,7 +1086,8 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
                 Auto-generate price file & upload to portal after each scrape
               </label>
               <div id="autoPushStatus" style="font-size:10px;margin-top:4px;line-height:1.5"></div>
-              <div style="font-size:10px;color:var(--muted);line-height:1.5">
+              <button class="action-btn" onclick="debugAutoPush()" style="margin-top:6px;font-size:10px;padding:3px 8px">🔍 Debug Auto-Push</button>
+              <div style="font-size:10px;color:var(--muted);line-height:1.5;margin-top:4px">
                 When ON: after every scrape cycle completes, the price update XLS is automatically generated and sent to the Makro portal via the extension. Works with all scrape modes (Smart, Losses, All, Korvex).
               </div>
             </div>
@@ -3607,6 +3608,47 @@ function finishScraping() {
 
   // ── LOST-BUYBOX CHASE: re-scrape products we lost so we win back now. ──
   maybeChaseLostBuybox();
+}
+
+// ============================================================
+// DEBUG: check auto-push state and template status
+// ============================================================
+function debugAutoPush() {
+  var autoPush = localStorage.getItem('bbp_auto_push_enabled');
+  var rawTemplate = localStorage.getItem('makro_listings_raw');
+  var listings = getListings();
+  var pending = state.products.filter(function(p) { return p.pending_price != null; });
+  var withCost = state.products.filter(function(p) { return p.cost_price > 0; });
+  var mode = (document.getElementById('autoScrapeMode') || {}).value || 'smart';
+
+  var lines = [];
+  lines.push('=== AUTO-PUSH DEBUG ===');
+  lines.push('Auto-push toggle: ' + (autoPush === '1' ? '✅ ON' : '❌ OFF'));
+  lines.push('Scrape mode: ' + mode);
+  lines.push('S_listing template: ' + (rawTemplate ? '✅ Present (' + Math.round(rawTemplate.length/1024) + 'KB)' : '❌ MISSING'));
+  lines.push('Listings imported: ' + listings.length);
+  lines.push('Products with cost: ' + withCost.length);
+  lines.push('Products with pending price: ' + pending.length);
+  lines.push('');
+  if (pending.length > 0) {
+    lines.push('Pending prices:');
+    pending.slice(0, 10).forEach(function(p) {
+      lines.push('  ' + (p.title || p.fsn || '').slice(0,40) + ' → R' + p.pending_price);
+    });
+    if (pending.length > 10) lines.push('  ... and ' + (pending.length - 10) + ' more');
+  }
+  lines.push('');
+  if (autoPush !== '1') {
+    lines.push('⚠ FIX: Toggle Auto-Push ON in Scraper config sidebar');
+  }
+  if (!rawTemplate) {
+    lines.push('⚠ FIX: Re-import your S_listing XLS from Products tab → Import Listings');
+  }
+  if (pending.length === 0) {
+    lines.push('⚠ No pending prices — repricer may have skipped products (check cost prices)');
+  }
+  console.log(lines.join('\n'));
+  alert(lines.join('\n'));
 }
 
 // Korvex full-auto: generate price file + auto-upload after each scrape cycle.
