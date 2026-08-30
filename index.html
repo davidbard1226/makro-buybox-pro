@@ -7761,12 +7761,16 @@ function portalApiCall(action, req) {
     var msgType = action === 'portal_batch_update_prices' ? 'BATCH_UPDATE_PRICES' : 'UPDATE_PRICE';
     var payload = action === 'portal_batch_update_prices' ? { items: req } : { req: req };
 
+    console.log('[BBP DirectPush] Sending:', msgType, payload);
+
     var timeout = setTimeout(function() {
+      console.error('[BBP DirectPush] TIMEOUT — bridge did not respond');
       reject(new Error('Portal API timeout — is seller.makro.co.za open in Chrome?'));
     }, 15000);
 
     function handler(ev) {
       if (ev.data && ev.data.type === msgType + '_RESULT') {
+        console.log('[BBP DirectPush] Got response:', ev.data);
         clearTimeout(timeout);
         window.removeEventListener('message', handler);
         if (ev.data.ok) {

@@ -250,24 +250,28 @@
 
     // ── DIRECT PRICE PUSH ──────────────────────────────────────────────────
     if (ev.data.type === 'UPDATE_PRICE') {
+      console.log('[Bridge] UPDATE_PRICE received:', ev.data.req);
       safe(function() {
         chrome.runtime.sendMessage({
           action: 'portal_update_price',
           req: ev.data.req
         }, function(r) {
           var err = chrome.runtime.lastError ? chrome.runtime.lastError.message : (r && r.error) || null;
+          console.log('[Bridge] UPDATE_PRICE response:', r, 'error:', err);
           window.postMessage({ type: 'UPDATE_PRICE_RESULT', ok: !!(r && r.ok), result: r, error: err }, '*');
         });
       });
     }
 
     if (ev.data.type === 'BATCH_UPDATE_PRICES') {
+      console.log('[Bridge] BATCH_UPDATE_PRICES received:', ev.data.items && ev.data.items.length, 'items');
       safe(function() {
         chrome.runtime.sendMessage({
           action: 'portal_batch_update_prices',
           items: ev.data.items
         }, function(r) {
           var err = chrome.runtime.lastError ? chrome.runtime.lastError.message : (r && r.error) || null;
+          console.log('[Bridge] BATCH_UPDATE_PRICES response:', r, 'error:', err);
           window.postMessage({ type: 'BATCH_UPDATE_PRICES_RESULT', ok: !!(r && r.ok), results: r && r.results, total: r && r.total, error: err }, '*');
         });
       });
