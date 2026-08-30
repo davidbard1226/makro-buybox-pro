@@ -248,6 +248,31 @@
       });
     }
 
+    // ── DIRECT PRICE PUSH ──────────────────────────────────────────────────
+    if (ev.data.type === 'UPDATE_PRICE') {
+      safe(function() {
+        chrome.runtime.sendMessage({
+          action: 'portal_update_price',
+          req: ev.data.req
+        }, function(r) {
+          var err = chrome.runtime.lastError ? chrome.runtime.lastError.message : (r && r.error) || null;
+          window.postMessage({ type: 'UPDATE_PRICE_RESULT', ok: !!(r && r.ok), result: r, error: err }, '*');
+        });
+      });
+    }
+
+    if (ev.data.type === 'BATCH_UPDATE_PRICES') {
+      safe(function() {
+        chrome.runtime.sendMessage({
+          action: 'portal_batch_update_prices',
+          items: ev.data.items
+        }, function(r) {
+          var err = chrome.runtime.lastError ? chrome.runtime.lastError.message : (r && r.error) || null;
+          window.postMessage({ type: 'BATCH_UPDATE_PRICES_RESULT', ok: !!(r && r.ok), results: r && r.results, total: r && r.total, error: err }, '*');
+        });
+      });
+    }
+
     if (ev.data.type === 'REQUEST_EXTENSION') announce();
 
     // ── PORTAL API PULLS (dashboard → seller tab via background) ────────────

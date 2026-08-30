@@ -226,7 +226,7 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
   }
 
   // ── PORTAL API RELAY (dashboard → seller tab) ────────────────────────────
-  if (msg.action === 'portal_get_orders' || msg.action === 'portal_get_listings' || msg.action === 'portal_list_product' || msg.action === 'portal_lookup_product') {
+  if (msg.action === 'portal_get_orders' || msg.action === 'portal_get_listings' || msg.action === 'portal_list_product' || msg.action === 'portal_lookup_product' || msg.action === 'portal_update_price' || msg.action === 'portal_batch_update_prices') {
     chrome.tabs.query({}, function(tabs) {
       var portalTab = null;
       for (var i = 0; i < tabs.length; i++) {
@@ -241,13 +241,13 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
         sendResponse({ ok: false, error: 'no_portal_tab' });
         return;
       }
-      chrome.tabs.sendMessage(portalTab.id, { action: msg.action }, function(resp) {
+      chrome.tabs.sendMessage(portalTab.id, { action: msg.action, req: msg.req }, function(resp) {
         if (chrome.runtime.lastError) {
           // Content script not injected (e.g. portal tab was opened before the
           // extension was reloaded). Inject portal_api.js on demand, retry once.
           injectPortalApi(portalTab.id, function(ok) {
             if (!ok) { sendResponse({ ok: false, error: 'portal_not_ready' }); return; }
-            chrome.tabs.sendMessage(portalTab.id, { action: msg.action }, function(resp2) {
+            chrome.tabs.sendMessage(portalTab.id, { action: msg.action, req: msg.req }, function(resp2) {
               if (chrome.runtime.lastError) { sendResponse({ ok: false, error: 'portal_not_ready' }); return; }
               sendResponse(resp2);
             });

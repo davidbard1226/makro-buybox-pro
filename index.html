@@ -7755,24 +7755,29 @@ function sendFileToPortal(autoUpload) {
 // DIRECT PRICE PUSH (API — NO XLS)
 // ============================================================
 
-// Helper: send message to the extension's portal_api.js
+// Helper: send message to the extension via bridge (window.postMessage)
 function portalApiCall(action, req) {
   return new Promise(function(resolve, reject) {
-    try {
-      chrome.runtime.sendMessage({ action: action, req: req }, function(res) {
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message));
-          return;
+    var msgType = action === 'portal_batch_update_prices' ? 'BATCH_UPDATE_PRICES' : 'UPDATE_PRICE';
+    var payload = action === 'portal_batch_update_prices' ? { items: req } : { req: req };
+
+    var timeout = setTimeout(function() {
+      reject(new Error('Portal API timeout — is seller.makro.co.za open in Chrome?'));
+    }, 15000);
+
+    function handler(ev) {
+      if (ev.data && ev.data.type === msgType + '_RESULT') {
+        clearTimeout(timeout);
+        window.removeEventListener('message', handler);
+        if (ev.data.ok) {
+          resolve(ev.data);
+        } else {
+          reject(new Error(ev.data.error || 'Portal API error'));
         }
-        if (!res || !res.ok) {
-          reject(new Error((res && res.error) || 'Unknown error from portal API'));
-          return;
-        }
-        resolve(res);
-      });
-    } catch(e) {
-      reject(e);
+      }
     }
+    window.addEventListener('message', handler);
+    window.postMessage({ type: msgType, req: req }, '*');
   });
 }
 
