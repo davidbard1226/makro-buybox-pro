@@ -1,8 +1,18 @@
-// bridge.js v3.1 — stable context handling + concurrency fix
+// bridge.js v3.2 — stable context handling + concurrency fix + visual indicator
 // FIX: concurrency now defaults to 5 (not 1) so work PC scrapes all tabs
 
 (function() {
   'use strict';
+
+  // ── VISUAL INDICATOR — proves bridge is loaded ────────────────────────────
+  var indicator = document.createElement('div');
+  indicator.id = 'bbp-bridge-indicator';
+  indicator.textContent = '🔗 BBP Bridge v3.2 Connected';
+  indicator.style.cssText = 'position:fixed;top:4px;right:4px;z-index:999999;background:#00e5a0;color:#1a1a2e;padding:4px 10px;border-radius:6px;font:bold 11px monospace;pointer-events:none;opacity:0.9;transition:opacity 0.5s';
+  document.documentElement.appendChild(indicator);
+  setTimeout(function() { indicator.style.opacity = '0'; }, 4000);
+  setTimeout(function() { try { indicator.remove(); } catch(e) {} }, 5000);
+  console.log('[BBP Bridge v3.2] Loaded and running on:', window.location.href);
 
   const STORAGE_KEY = 'makro_buybox_v2';
   let syncInterval = null;
@@ -140,6 +150,13 @@
   // ── MESSAGE HANDLER ───────────────────────────────────────────────────────
   window.addEventListener('message', function(ev) {
     if (!ev.data || !ev.data.type || dead) return;
+
+    // PING handler — proves bridge is alive and listening
+    if (ev.data.type === 'PING') {
+      console.log('[BBP Bridge] PING received — responding');
+      window.postMessage({ type: 'PONG', bridge: 'v3.2', time: Date.now() }, '*');
+      return;
+    }
 
     if (ev.data.type === 'DELETE_PRODUCT') {
       // Add URL and FSN to the deleted blocklist so sync never restores it
