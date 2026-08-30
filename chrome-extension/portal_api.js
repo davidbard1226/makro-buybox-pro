@@ -278,6 +278,48 @@
     return { dryRun: false, result: j };
   }
 
+  // ── DIRECT PRICE UPDATE (THE REAL ENDPOINT) ─────────────────────────────
+  // This is the exact API the portal uses when you click Edit → Change Price → Save.
+  // Verified from live cURL capture (2026-08-30):
+  //   POST napi/listing/updateSellingPrice?warningConfirmed=false&userName=...
+  //   Body: { listingUpdate: { <SKU>: { product_id: <FSN>, price: { mrp, selling_price, currency: "INR" } } },
+  //           priceRecoUpdate: {} }
+  async function updatePrice(req) {
+    const auth = readAppData();
+    const sellerId = auth.sellerId;
+    const userName = req.userName || 'Bonolo Online';
+
+    const skuId  = String(req.skuId || '').trim();
+    const fsn    = String(req.fsn || '').trim().toUpperCase();
+    const mrp    = Number(req.mrp);
+    const price  = Number(req.sellingPrice);
+
+    if (!skuId) throw new Error('SKU ID is required');
+    if (!fsn) throw new Error('FSN (product_id) is required');
+    if (!(mrp > 0)) throw new Error('MRP must be > 0');
+    if (!(price > 0)) throw new Error('Selling price must be > 0');
+
+    const payload = {
+      listingUpdate: {},
+      priceRecoUpdate: {}
+    };
+    payload.listingUpdate[skuId] = {
+      product_id: fsn,
+      price: {
+        mrp: mrp,
+        selling_price: price,
+        currency: 'INR'
+      }
+    };
+
+    const qs = 'warningConfirmed=false&userName=' + encodeURIComponent(userName);
+    const j = await napi('/napi/listing/updateSellingPrice?' + qs, {
+      method: 'POST',
+      body: payload
+    });
+    return { result: j, skuId: skuId, fsn: fsn, price: price };
+  }
+
   // ── MESSAGE HANDLER ───────────────────────────────────────────────────────
   chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
     if (msg.action === 'portal_get_orders') {
@@ -339,17 +381,16 @@
   }
 
   // ── SINGLE-PRODUCT PRICE PUSH ───────────────────────────────────────────
-  // Updates the selling price (and optionally MRP/stock) for ONE product
-  // directly via the portal API. No XLS file needed.
-  // msg.req = { fsn, skuId, sellingPrice, mrp?, listingState?, serviceProfile?, stock? }
+  // Updates the selling price for ONE product using the real portal endpoint.
+  // msg.req = { fsn, skuId, sellingPrice, mrp?, userName? }
   if (msg.action === 'portal_update_price') {
     ensureAuth().then(function(ok) {
       if (!ok) {
         sendResponse({ ok: false, error: 'Could not capture session token — reload the portal page and try again.' });
         return;
       }
-      listProduct(msg.req || {}).then(function(res) {
-        sendResponse({ ok: true, dryRun: res.dryRun, payload: res.payload, result: res.result, sellerId: res.sellerId });
+      updatePrice(msg.req || {}).then(function(res) {
+        sendResponse({ ok: true, result: res.result, skuId: res.skuId, fsn: res.fsn, price: res.price });
       }).catch(function(e) {
         sendResponse({ ok: false, error: e.message });
       });
@@ -376,9 +417,8 @@
         }
         var item = items[idx];
         idx++;
-        listProduct(item).then(function(res) {
+        updatePrice(item).then(function(res) {
           results.push({ fsn: item.fsn, ok: true, result: res.result });
-          // Small delay between requests to avoid rate limits
           setTimeout(nextItem, 500);
         }).catch(function(e) {
           results.push({ fsn: item.fsn, ok: false, error: e.message });
