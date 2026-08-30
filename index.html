@@ -7755,33 +7755,35 @@ function sendFileToPortal(autoUpload) {
 // DIRECT PRICE PUSH (API — NO XLS)
 // ============================================================
 
-// Helper: send message to the extension via bridge (window.postMessage)
+// Helper: send price push to local server (port 4321)
 function portalApiCall(action, req) {
   return new Promise(function(resolve, reject) {
-    var msgType = action === 'portal_batch_update_prices' ? 'BATCH_UPDATE_PRICES' : 'UPDATE_PRICE';
-    var payload = action === 'portal_batch_update_prices' ? { items: req } : { req: req };
+    var url = action === 'portal_batch_update_prices'
+      ? 'http://localhost:4321/api/push-prices'
+      : 'http://localhost:4321/api/push-price';
 
-    console.log('[BBP DirectPush] Sending:', msgType, payload);
+    var body = action === 'portal_batch_update_prices' ? req : req;
 
-    var timeout = setTimeout(function() {
-      console.error('[BBP DirectPush] TIMEOUT — bridge did not respond');
-      reject(new Error('Portal API timeout — is seller.makro.co.za open in Chrome?'));
-    }, 15000);
+    console.log('[BBP DirectPush] Calling:', url, body);
 
-    function handler(ev) {
-      if (ev.data && ev.data.type === msgType + '_RESULT') {
-        console.log('[BBP DirectPush] Got response:', ev.data);
-        clearTimeout(timeout);
-        window.removeEventListener('message', handler);
-        if (ev.data.ok) {
-          resolve(ev.data);
-        } else {
-          reject(new Error(ev.data.error || 'Portal API error'));
-        }
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      console.log('[BBP DirectPush] Response:', data);
+      if (data.ok) {
+        resolve(data);
+      } else {
+        reject(new Error(data.error || 'Server error'));
       }
-    }
-    window.addEventListener('message', handler);
-    window.postMessage({ type: msgType, req: req }, '*');
+    })
+    .catch(function(e) {
+      console.error('[BBP DirectPush] Fetch error:', e);
+      reject(new Error('Cannot reach local server (port 4321) — is server.js running?'));
+    });
   });
 }
 
