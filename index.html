@@ -1299,6 +1299,32 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
           <button class="btn-secondary" onclick="openPortalUpload()" id="portalUploadBtn" style="width:100%;margin-bottom:8px;color:#00e5a0;border-color:#00e5a044">🚀 Send to Portal & Auto Upload</button>
           <button class="btn-secondary" onclick="sendFileToPortal()" id="sendFileBtn" style="width:100%;margin-bottom:4px;color:#ffd60a;border-color:#ffd60a44" title="Re-send the generated file to the portal extension without downloading again">📤 Re-send File to Portal</button>
 
+          <!-- SINGLE-PRODUCT PRICE PUSH (API) -->
+          <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);background:linear-gradient(135deg,rgba(255,214,10,.06),rgba(255,107,53,.04));border:1px solid rgba(255,214,10,.25);border-radius:10px;padding:14px;margin-bottom:14px">
+            <div style="font-size:11px;color:#ffd60a;font-weight:700;letter-spacing:1px;margin-bottom:8px">⚡ DIRECT PRICE PUSH (NO XLS)</div>
+            <p style="font-size:10px;color:var(--muted);margin-bottom:10px;line-height:1.5">Push price changes directly to Makro via API. No bulk upload file needed.</p>
+            <div style="display:flex;gap:6px;margin-bottom:6px">
+              <input type="text" id="singlePushFsn" placeholder="FSN (e.g. 6009999999)" style="flex:1;padding:8px 10px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:'Space Mono',monospace">
+              <input type="text" id="singlePushSku" placeholder="SKU" style="width:120px;padding:8px 10px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:'Space Mono',monospace">
+            </div>
+            <div style="display:flex;gap:6px;margin-bottom:8px">
+              <input type="number" id="singlePushPrice" placeholder="New Price (R)" step="0.01" min="0" style="flex:1;padding:8px 10px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:'Space Mono',monospace">
+              <input type="number" id="singlePushMrp" placeholder="MRP (optional)" step="0.01" min="0" style="flex:1;padding:8px 10px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:'Space Mono',monospace">
+            </div>
+            <button class="btn-primary" onclick="pushSinglePrice()" id="singlePushBtn" style="width:100%;margin-bottom:6px;background:linear-gradient(135deg,#ffd60a,#ff8c00);color:#1a1a2e;font-weight:700">
+              💰 Push Price to Portal
+            </button>
+            <div id="singlePushResult" style="font-size:11px;color:var(--muted);margin-top:4px;min-height:16px"></div>
+
+            <!-- BATCH PUSH ALL REPRICED -->
+            <div style="margin-top:10px;padding-top:10px;border-top:1px dashed rgba(255,214,10,.2)">
+              <button class="btn-secondary" onclick="pushAllRepricedPrices()" id="batchPushBtn" style="width:100%;color:#ffd60a;border-color:#ffd60a44">
+                🚀 Push ALL Repriced Products (Direct API)
+              </button>
+              <div id="batchPushResult" style="font-size:11px;color:var(--muted);margin-top:4px;min-height:16px"></div>
+            </div>
+          </div>
+
           <!-- IMPORT PRICES FROM SHEET -->
           <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
             <div style="font-size:11px;color:var(--accent3);font-weight:700;letter-spacing:1px;margin-bottom:8px">📊 IMPORT PRICES FROM SHEET</div>
@@ -3122,7 +3148,7 @@ async function fullCycleScrapeRepricePush() {
     return;
   }
 
-  // Enable auto-push for this cycle
+  // Enable auto-push for this cycle (uses direct API push now)
   var wasAutoPush = isAutoPushEnabled();
   localStorage.setItem('bbp_auto_push_enabled', '1');
 
@@ -3135,47 +3161,29 @@ async function fullCycleScrapeRepricePush() {
   btn.innerHTML = '⏳ Scraping all products...';
   btn.style.opacity = '0.7';
 
-  log('info', '🚀 FULL CYCLE STARTED — Scrape → Reprice → Push');
+  log('info', '🚀 FULL CYCLE STARTED — Scrape → Reprice → Push (API)');
 
   // Step 1: Load all URLs and start scraping
   scrapeAllProducts();
 
-  // Step 2: Watch for scraping to finish, then generate price file + push
-  // Wait 5s before checking — scrapeAllProducts → startScraping sets
-  // state.scraping = true asynchronously via postMessage. Checking too
-  // early sees false and thinks scraping is already done (race condition).
+  // Step 2: Watch for scraping to finish — maybeAutoPushPrices() fires
+  // from finishScraping() and handles the direct API push automatically.
   var scrapeStarted = false;
   setTimeout(function() { scrapeStarted = true; }, 5000);
   var checkInterval = setInterval(function() {
     if (scrapeStarted && !state.scraping) {
       clearInterval(checkInterval);
-      btn.innerHTML = '⏳ Generating price file...';
 
+      // Wait a bit for repricing + auto-push to finish
       setTimeout(function() {
-        // Step 3: Generate price update
-        var result = generatePriceUpdate(true); // autoMode = true
-        if (result && result.changed > 0) {
-          btn.innerHTML = '⏳ Uploading to portal...';
-          // Step 4: Send to portal
-          sendFileToPortal(true);
-
-          setTimeout(function() {
-            btn.disabled = false;
-            btn.innerHTML = '🚀 Scrape → Reprice → Push to Portal';
-            btn.style.opacity = '1';
-            log('ok', '✅ FULL CYCLE COMPLETE — ' + result.changed + ' prices updated and sent to portal');
-          }, 1500);
-        } else {
-          btn.disabled = false;
-          btn.innerHTML = '🚀 Scrape → Reprice → Push to Portal';
-          btn.style.opacity = '1';
-          log('info', 'ℹ Full cycle: scrape done but no prices needed updating.');
-        }
-
+        btn.disabled = false;
+        btn.innerHTML = '🚀 Scrape → Reprice → Push to Portal';
+        btn.style.opacity = '1';
         // Restore settings
         localStorage.setItem('bbp_auto_push_enabled', wasAutoPush ? '1' : '0');
         if (modeEl) modeEl.value = prevMode;
-      }, 2000);
+        log('ok', '✅ FULL CYCLE DONE — prices pushed via API');
+      }, 3000);
     }
   }, 1000);
 
@@ -3660,8 +3668,7 @@ function maybeAutoPushPrices() {
     var forced = localStorage.getItem('bbp_auto_push_enabled') === '1' || getTestMode() || watchlistActive();
     if (mode !== 'korvex' && !forced) return;
 
-    // Guard: finishScraping() fires from several paths (per-URL completion,
-    // QUEUE_FINISHED, QUEUE_ABORTED, error handler) — only push once per cycle.
+    // Guard: finishScraping() fires from several paths — only push once per cycle.
     if (_autoPushFired) return;
     _autoPushFired = true;
 
@@ -3671,31 +3678,57 @@ function maybeAutoPushPrices() {
       return;
     }
 
-    log('info', '🤖 Auto-push: generating price file for ' + pending.length + ' pending product(s)...');
-    var result = generatePriceUpdate(true);
-    if (!result || !result.changed) {
-      // Check if the raw template is missing — the most common silent failure
-      var rawBase64 = localStorage.getItem('makro_listings_raw');
-      if (!rawBase64) {
-        addAutoPushLogEntry({ level: 'error', msg: '❌ Auto-push FAILED: S_listing raw template not found in browser storage. Re-import your S_listing XLS from the Products tab, then try again. The template is required to build the Makro upload file.' });
-        log('err', '❌ Auto-push failed: S_listing template missing — re-import your listing XLS');
-      } else {
-        addAutoPushLogEntry({ level: 'skip', msg: 'Price file generated 0 changes (guards skipped everything — check cost prices and min prices).' });
-      }
+    // ── DIRECT API PUSH (no XLS needed) ──
+    var withSku = pending.filter(function(p) { return p.fsn && p.sku; });
+    if (!withSku.length) {
+      addAutoPushLogEntry({ level: 'error', msg: '❌ Auto-push FAILED: ' + pending.length + ' pending products have no FSN/SKU. Import listings from the Products tab first.' });
       return;
     }
 
-    var sent = sendFileToPortal(true);
-    addAutoPushLogEntry({
-      level: sent ? 'push' : 'error',
-      msg: (sent ? '🚀 Auto-pushed ' : '❌ Push failed: ') + result.changed + ' price(s) → ' + result.filename +
-           (result.buildNote ? ' [' + result.buildNote + ']' : '') +
-           (result.skippedNoCost ? ' | ' + result.skippedNoCost + ' skipped (no cost/min)' : '') +
-           (result.skippedClamped ? ' | ' + result.skippedClamped + ' skipped (guard)' : '') +
-           (result.staleDays > 30 ? ' ⚠ TEMPLATE STAMP ' + Math.round(result.staleDays) + ' DAYS OLD — pushes still work (stamp refreshed), re-download only for fresh data' : ''),
-      details: result.changeLog || []
-    });
-    log(sent ? 'ok' : 'error', '🤖 Auto-push: ' + (sent ? 'file sent to portal — auto-upload armed.' : 'FAILED to send file.'));
+    log('info', '🤖 Auto-push (API): pushing ' + withSku.length + ' price(s) directly to portal...');
+    addAutoPushLogEntry({ level: 'push', msg: '🚀 Auto-pushing ' + withSku.length + ' price(s) directly via API (no XLS)...' });
+
+    var succeeded = 0, failed = 0, errors = [];
+    var idx = 0;
+
+    function pushNext() {
+      if (idx >= withSku.length) {
+        var color = failed === 0 ? '#00e5a0' : '#ffd60a';
+        addAutoPushLogEntry({
+          level: failed === 0 ? 'push' : 'error',
+          msg: '✅ Auto-push complete: ' + succeeded + ' pushed, ' + failed + ' failed' +
+               (errors.length ? ' — ' + errors.slice(0, 3).join('; ') : '')
+        });
+        log(failed === 0 ? 'ok' : 'error', '🤖 Auto-push (API): ' + succeeded + ' ok, ' + failed + ' failed');
+        return;
+      }
+      var p = withSku[idx];
+      var newPrice = p.pending_price || p.new_price || p.buybox_price;
+      idx++;
+
+      var req = {
+        fsn: p.fsn,
+        skuId: p.sku,
+        sellingPrice: newPrice,
+        mrp: p.mrp || newPrice,
+        listingState: 'ACTIVE',
+        serviceProfile: 'NON_FBF',
+        pickPackSla: 2
+      };
+
+      portalApiCall('portal_update_price', req).then(function() {
+        succeeded++;
+        log('ok', '  ✅ [' + idx + '/' + withSku.length + '] ' + (p.title || p.fsn).substring(0, 40) + ' → R' + newPrice.toFixed(2));
+        setTimeout(pushNext, 600);
+      }).catch(function(e) {
+        failed++;
+        errors.push(p.fsn + ': ' + e.message);
+        log('error', '  ❌ [' + idx + '/' + withSku.length + '] ' + p.fsn + ': ' + e.message);
+        setTimeout(pushNext, 600);
+      });
+    }
+
+    pushNext();
   } catch(e) {
     addAutoPushLogEntry({ level: 'error', msg: 'Auto-push error: ' + e.message });
     log('error', '🤖 Auto-push error: ' + e.message);
@@ -7716,6 +7749,133 @@ function sendFileToPortal(autoUpload) {
       '<br><span style="color:#ffd60a">✅ File sent to portal extension. Open seller.makro.co.za — click <b style="color:#00e5a0">🚀 Auto Upload Now</b> in the green overlay.</span>';
   }, 300);
   return true;
+}
+
+// ============================================================
+// DIRECT PRICE PUSH (API — NO XLS)
+// ============================================================
+
+// Helper: send message to the extension's portal_api.js
+function portalApiCall(action, req) {
+  return new Promise(function(resolve, reject) {
+    try {
+      chrome.runtime.sendMessage({ action: action, req: req }, function(res) {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+        if (!res || !res.ok) {
+          reject(new Error((res && res.error) || 'Unknown error from portal API'));
+          return;
+        }
+        resolve(res);
+      });
+    } catch(e) {
+      reject(e);
+    }
+  });
+}
+
+// Push a single product's price directly to the portal
+async function pushSinglePrice() {
+  var fsn   = document.getElementById('singlePushFsn').value.trim();
+  var sku   = document.getElementById('singlePushSku').value.trim();
+  var price = parseFloat(document.getElementById('singlePushPrice').value);
+  var mrp   = parseFloat(document.getElementById('singlePushMrp').value) || 0;
+  var resultEl = document.getElementById('singlePushResult');
+  var btn = document.getElementById('singlePushBtn');
+
+  if (!fsn) { resultEl.innerHTML = '<span style="color:#ff4444">Enter FSN</span>'; return; }
+  if (!sku) { resultEl.innerHTML = '<span style="color:#ff4444">Enter SKU</span>'; return; }
+  if (!(price > 0)) { resultEl.innerHTML = '<span style="color:#ff4444">Enter valid price</span>'; return; }
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Pushing...';
+  resultEl.innerHTML = '<span style="color:#ffd60a">Pushing R' + price.toFixed(2) + ' to FSN ' + fsn + '...</span>';
+
+  try {
+    var req = {
+      fsn: fsn,
+      skuId: sku,
+      sellingPrice: price,
+      mrp: mrp > 0 ? mrp : price,
+      listingState: 'ACTIVE',
+      serviceProfile: 'NON_FBF',
+      pickPackSla: 2
+    };
+    var res = await portalApiCall('portal_update_price', req);
+    resultEl.innerHTML = '<span style="color:#00e5a0">✅ Price pushed! FSN ' + fsn + ' → R' + price.toFixed(2) + '</span>';
+    console.log('[BBP DirectPush] Success:', res);
+  } catch(e) {
+    resultEl.innerHTML = '<span style="color:#ff4444">❌ ' + e.message + '</span>';
+    console.error('[BBP DirectPush] Error:', e);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '💰 Push Price to Portal';
+  }
+}
+
+// Push ALL repriced products directly via API (one at a time)
+async function pushAllRepricedPrices() {
+  var resultEl = document.getElementById('batchPushResult');
+  var btn = document.getElementById('batchPushBtn');
+  var products = JSON.parse(localStorage.getItem('makro_buybox_v2') || '[]');
+
+  // Find products that have a new price (reprice session results)
+  var toPush = products.filter(function(p) {
+    return p.fsn && p.sku && p.new_price > 0 && p.status === 'repriced';
+  });
+
+  if (toPush.length === 0) {
+    // Fallback: push all products with a buybox price and cost
+    toPush = products.filter(function(p) {
+      return p.fsn && p.sku && p.buybox_price > 0 && p.cost > 0;
+    });
+  }
+
+  if (toPush.length === 0) {
+    resultEl.innerHTML = '<span style="color:#ff4444">No products with FSN + SKU + price to push. Run the repricer first.</span>';
+    return;
+  }
+
+  btn.disabled = true;
+  resultEl.innerHTML = '<span style="color:#ffd60a">⏳ Pushing ' + toPush.length + ' products directly to portal...</span>';
+
+  var succeeded = 0;
+  var failed = 0;
+  var errors = [];
+
+  for (var i = 0; i < toPush.length; i++) {
+    var p = toPush[i];
+    var newPrice = p.new_price || p.buybox_price;
+    resultEl.innerHTML = '<span style="color:#ffd60a">⏳ [' + (i+1) + '/' + toPush.length + '] Pushing ' + (p.title || p.fsn).substring(0,40) + ' → R' + newPrice.toFixed(2) + '...</span>';
+
+    try {
+      var req = {
+        fsn: p.fsn,
+        skuId: p.sku,
+        sellingPrice: newPrice,
+        mrp: p.mrp || newPrice,
+        listingState: 'ACTIVE',
+        serviceProfile: 'NON_FBF',
+        pickPackSla: 2
+      };
+      await portalApiCall('portal_update_price', req);
+      succeeded++;
+      // Small delay between requests
+      await new Promise(function(r) { setTimeout(r, 600); });
+    } catch(e) {
+      failed++;
+      errors.push(p.fsn + ': ' + e.message);
+      console.error('[BBP BatchPush] Failed:', p.fsn, e);
+    }
+  }
+
+  var color = failed === 0 ? '#00e5a0' : (succeeded === 0 ? '#ff4444' : '#ffd60a');
+  resultEl.innerHTML = '<span style="color:' + color + '">✅ ' + succeeded + ' pushed, ❌ ' + failed + ' failed</span>' +
+    (errors.length ? '<br><span style="color:#ff4444;font-size:10px">' + errors.slice(0, 5).join('<br>') + '</span>' : '');
+  btn.disabled = false;
+  btn.textContent = '🚀 Push ALL Repriced Products (Direct API)';
 }
 
 // ============================================================

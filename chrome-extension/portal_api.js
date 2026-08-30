@@ -337,5 +337,57 @@
     });
     return true; // async
   }
+
+  // ── SINGLE-PRODUCT PRICE PUSH ───────────────────────────────────────────
+  // Updates the selling price (and optionally MRP/stock) for ONE product
+  // directly via the portal API. No XLS file needed.
+  // msg.req = { fsn, skuId, sellingPrice, mrp?, listingState?, serviceProfile?, stock? }
+  if (msg.action === 'portal_update_price') {
+    ensureAuth().then(function(ok) {
+      if (!ok) {
+        sendResponse({ ok: false, error: 'Could not capture session token — reload the portal page and try again.' });
+        return;
+      }
+      listProduct(msg.req || {}).then(function(res) {
+        sendResponse({ ok: true, dryRun: res.dryRun, payload: res.payload, result: res.result, sellerId: res.sellerId });
+      }).catch(function(e) {
+        sendResponse({ ok: false, error: e.message });
+      });
+    });
+    return true; // async
+  }
+
+  // ── BATCH PRICE PUSH ────────────────────────────────────────────────────
+  // Updates prices for multiple products sequentially (1 at a time to avoid
+  // rate limits). msg.items = [{ fsn, skuId, sellingPrice, mrp? }, ...]
+  if (msg.action === 'portal_batch_update_prices') {
+    ensureAuth().then(function(ok) {
+      if (!ok) {
+        sendResponse({ ok: false, error: 'Could not capture session token — reload the portal page and try again.' });
+        return;
+      }
+      var items = msg.items || [];
+      var results = [];
+      var idx = 0;
+      function nextItem() {
+        if (idx >= items.length) {
+          sendResponse({ ok: true, results: results, total: items.length });
+          return;
+        }
+        var item = items[idx];
+        idx++;
+        listProduct(item).then(function(res) {
+          results.push({ fsn: item.fsn, ok: true, result: res.result });
+          // Small delay between requests to avoid rate limits
+          setTimeout(nextItem, 500);
+        }).catch(function(e) {
+          results.push({ fsn: item.fsn, ok: false, error: e.message });
+          setTimeout(nextItem, 500);
+        });
+      }
+      nextItem();
+    });
+    return true; // async
+  }
 });
 })();
