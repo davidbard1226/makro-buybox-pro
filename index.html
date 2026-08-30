@@ -7755,7 +7755,7 @@ function sendFileToPortal(autoUpload) {
 // DIRECT PRICE PUSH (API — NO XLS)
 // ============================================================
 
-// Helper: send price push to local server (port 4321)
+// Helper: call local server for price push
 function portalApiCall(action, req) {
   return new Promise(function(resolve, reject) {
     var url = action === 'portal_batch_update_prices'
@@ -7764,8 +7764,6 @@ function portalApiCall(action, req) {
 
     var body = action === 'portal_batch_update_prices' ? req : req;
 
-    console.log('[BBP DirectPush] Calling:', url, body);
-
     fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -7773,16 +7771,11 @@ function portalApiCall(action, req) {
     })
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      console.log('[BBP DirectPush] Response:', data);
-      if (data.ok) {
-        resolve(data);
-      } else {
-        reject(new Error(data.error || 'Server error'));
-      }
+      if (data.ok) resolve(data);
+      else reject(new Error(data.error || 'Server error'));
     })
     .catch(function(e) {
-      console.error('[BBP DirectPush] Fetch error:', e);
-      reject(new Error('Cannot reach local server (port 4321) — is server.js running?'));
+      reject(new Error('Cannot reach server — run: node server.js'));
     });
   });
 }

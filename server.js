@@ -215,6 +215,27 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // API: Run a PowerShell command (for price push)
+  // GET /api/run-ps?cmd=<powershell command>
+  if (req.url.startsWith('/api/run-ps')) {
+    const urlObj = new URL(req.url, 'http://localhost');
+    const cmd = urlObj.searchParams.get('cmd');
+    if (!cmd) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: 'Missing cmd parameter' }));
+      return;
+    }
+    const proc = spawn('powershell', ['-ExecutionPolicy', 'Bypass', '-Command', cmd]);
+    let output = '';
+    proc.stdout.on('data', d => output += d);
+    proc.stderr.on('data', d => output += d);
+    proc.on('close', () => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, output: output.trim() }));
+    });
+    return;
+  }
+
   // Serve dashboard + static assets
   let filePath = path.join(DASHBOARD_DIR, 'index.html');
   if (req.url !== '/') {
