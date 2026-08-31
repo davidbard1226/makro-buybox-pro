@@ -136,13 +136,15 @@ const server = http.createServer((req, res) => {
     req.on('data', chunk => body += chunk);
     req.on('end', () => {
       try {
-        const { fsn, sku, price, mrp } = JSON.parse(body);
-        if (!fsn || !sku || !price) {
+        const { fsn, sku, skuId, price, sellingPrice, mrp } = JSON.parse(body);
+        const skuCode = sku || skuId;
+        const priceVal = price || sellingPrice;
+        if (!fsn || !skuCode || !priceVal) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: false, error: 'Missing fsn, sku, or price' }));
           return;
         }
-        pushPriceToPortal(fsn, sku, price, mrp || price)
+        pushPriceToPortal(fsn, skuCode, priceVal, mrp || priceVal)
           .then(result => {
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ ok: true, ...result }));
