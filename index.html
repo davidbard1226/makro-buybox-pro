@@ -3920,7 +3920,14 @@ function autoReprice(prod) {
     delete prod._cooldown_reason;
   }
   
+  // Use tracker price (live) over scraper price (stale) when tracker is fresh (< 2 hours)
   var buybox = prod.buybox_price;
+  if (prod.trackerCheck && prod.trackerCheck.price > 0 && prod.trackerCheck.checkedAt) {
+    var trackerAge = Date.now() - new Date(prod.trackerCheck.checkedAt).getTime();
+    if (trackerAge < 2 * 60 * 60 * 1000) {   // fresh within 2 hours
+      buybox = prod.trackerCheck.price;
+    }
+  }
   if (!buybox || buybox <= 0) return;         // no buybox data yet
   if (prod.status === 'win') {
     // Even when winning, check if we're selling below min price (at a loss)
@@ -7650,6 +7657,11 @@ function generateCsvFallback(autoMode) {
 
     var myPrice = t.myPrice || 0;
     var buybox  = scraped.buybox_price || 0;
+    // Use tracker price (live) over scraper price (stale) when fresh
+    if (scraped.trackerCheck && scraped.trackerCheck.price > 0 && scraped.trackerCheck.checkedAt) {
+      var trackerAge = Date.now() - new Date(scraped.trackerCheck.checkedAt).getTime();
+      if (trackerAge < 2 * 60 * 60 * 1000) buybox = scraped.trackerCheck.price;
+    }
     if (buybox <= 0) return;
 
     // Calculate new price
