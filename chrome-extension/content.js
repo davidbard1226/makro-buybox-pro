@@ -111,6 +111,7 @@
   // Same endpoint the sellers page itself uses — one call gets BOTH the
   // buybox winner AND the full seller list, no need to visit /sellers?pid=.
   function fetchSellersApi(pid) {
+    console.log('[BuyBox v5] Calling sellers API for PID:', pid);
     return fetch('/fccng/api/3/page/dynamic/product-sellers', {
       method: 'POST',
       headers: {
@@ -120,8 +121,16 @@
       credentials: 'include',
       body: JSON.stringify({ requestContext: { productId: pid }, locationContext: {} })
     })
-      .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-      .then(function(json) { return parseSellersJson(json); })
+      .then(function(r) {
+        console.log('[BuyBox v5] Sellers API response:', r.status, r.ok);
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function(json) {
+        var sellers = parseSellersJson(json);
+        console.log('[BuyBox v5] Parsed sellers:', sellers.length, sellers.map(function(s) { return s.seller + ' R' + s.price + (s.selected ? ' ★' : ''); }));
+        return sellers;
+      })
       .catch(function(e) { console.warn('[BuyBox v5] Sellers API failed:', e.message); return null; });
   }
 
@@ -159,10 +168,12 @@
   // ── MAIN SCRAPE ────────────────────────────────────────────────────────────
   function scrapeProduct() {
     return scrapeProductDom().then(function(data) {
+      console.log('[BuyBox v5] DOM result:', data.buyBoxPrice, data.buyBoxSeller, 'fsn:', data.fsn);
       if (!data.fsn) return data;
       return fetchSellersApi(data.fsn).then(function(sellers) {
         if (sellers && sellers.length) {
           var winner = sellers.filter(function(s) { return s.selected; })[0] || sellers[0];
+          console.log('[BuyBox v5] API override:', winner.seller, 'R' + winner.price, 'selected:', winner.selected);
           data.buyBoxPrice = winner.price;
           data.buyBoxSeller = winner.seller;
           data.hasBuyBox = true;
@@ -171,6 +182,7 @@
           data.sellersChecked = new Date().toISOString();
           data.dataSource = 'api';
         } else {
+          console.log('[BuyBox v5] No sellers from API, using DOM fallback');
           data.dataSource = 'dom-fallback';
         }
         return data;
