@@ -3505,21 +3505,30 @@ function handleQueueProgress(d) {
         var skuBackfill = p.sku || (listingsMap[p.fsn] || listingsMap[p.fsn && p.fsn.slice(0, 15)] || {}).sku || '';
         if (skuBackfill && !/^itm/i.test(skuBackfill)) existing.sku = skuBackfill;
       }
+      // Backfill cost_price from saved listings — scraper products without cost
+      // can't reprice (autoReprice skips them). Carry cost from imported data.
+      if (!existing.cost_price || existing.cost_price <= 0) {
+        var costBackfill = (listingsMap[p.fsn] || listingsMap[p.fsn && p.fsn.slice(0, 15)] || {}).cost_price || 0;
+        if (costBackfill > 0) existing.cost_price = costBackfill;
+      }
       if (p.sellers && p.sellers.length) existing.sellers = p.sellers;
       existing.history      = existing.history || [];
       existing.history.push({ price, seller, status, myPrice: (listingsMap[p.fsn]||{}).myPrice || 0, ts: new Date().toISOString() });
       if (existing.history.length > 30) existing.history.shift();
     } else {
+      // Get cost from listings if available
+      var listingMatch2 = listingsMap[p.fsn] || listingsMap[p.fsn && p.fsn.slice(0, 15)] || {};
       state.products.push({
         url: p.url, fsn: p.fsn || '',
         // Never store the itm... URL slug as a SKU — it gets cleared later and
         // leaves the product without a SKU (no cost → can't update). Prefer a
         // real SKU from the scrape or the saved listings (exact or 15-char prefix).
-        sku: (p.sku && !/^itm/i.test(p.sku)) ? p.sku : (listingsMap[p.fsn] || listingsMap[p.fsn && p.fsn.slice(0, 15)] || {}).sku || '',
+        sku: (p.sku && !/^itm/i.test(p.sku)) ? p.sku : listingMatch2.sku || '',
         title: p.title || p.url, buybox_price: price,
+        cost_price: listingMatch2.cost_price || 0,
         seller, status, lastChecked: new Date().toISOString(),
         sellers: p.sellers || [],
-        history: [{ price, seller, status, myPrice: (listingsMap[p.fsn]||{}).myPrice || 0, ts: new Date().toISOString() }]
+        history: [{ price, seller, status, myPrice: listingMatch2.myPrice || 0, ts: new Date().toISOString() }]
       });
     }
     saveProducts();
