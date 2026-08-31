@@ -3663,11 +3663,6 @@ function debugAutoPush() {
 // Enabled when auto-scrape mode is 'korvex' (or the toggle is forced on).
 function maybeAutoPushPrices() {
   try {
-    var mode = (document.getElementById('autoScrapeMode') || {}).value
-            || localStorage.getItem('auto_scrape_mode') || 'smart';
-    var forced = localStorage.getItem('bbp_auto_push_enabled') === '1' || getTestMode() || watchlistActive();
-    if (mode !== 'korvex' && !forced) return;
-
     // Guard: finishScraping() fires from several paths — only push once per cycle.
     if (_autoPushFired) return;
     _autoPushFired = true;
