@@ -3457,7 +3457,7 @@ function stopScraping() {
 }
 
 // Called by bridge when background reports a page was scraped
-async function handleQueueProgress(d) {
+function handleQueueProgress(d) {
   scrapeIdx++;
   updateProgress(scrapeIdx, scrapeQueue.length);
 
@@ -3526,7 +3526,7 @@ async function handleQueueProgress(d) {
 
     // ── AUTO REPRICE: beat competitor by configured amount, never below min_price ──────────
     var prod = existing || state.products[state.products.length - 1];
-    await autoReprice(prod);
+    autoReprice(prod);
 
     // ── PRICE LOG ENTRY ───────────────────────────────────────────────────
     var listingMatch = findListingByFsn(prod.fsn);
@@ -3904,7 +3904,7 @@ function roundPrice(p) {
 // Called after every scrape. Beats competitor by configured amount, never below min_price.
 // Updates the listing's myPrice and flags product as pending upload.
 // SAFETY: will NOT reprice if cost_price is missing — can't know the floor without it.
-async function autoReprice(prod) {
+function autoReprice(prod) {
   if (!prod) return;
   
   // ── COOLDOWN CHECK: skip if recently pushed price ──────────────────────
@@ -3920,33 +3920,13 @@ async function autoReprice(prod) {
     delete prod._cooldown_reason;
   }
   
-  // ── Fetch LIVE buybox from server (tracker data) ──────────────────────
-  // The scraper DOM can pick up MRP instead of buybox when the sellers API
-  // returns 500. The server's tracker data is more reliable.
+  // Use tracker price (live) over scraper price (stale) when tracker is fresh (< 2 hours)
   var buybox = prod.buybox_price;
-  try {
-    var resp = await fetch('http://localhost:4321/api/sellers', { cache: 'no-store' });
-    if (resp.ok) {
-      var serverData = await resp.json();
-      if (Array.isArray(serverData)) {
-        var match = serverData.find(function(s) {
-          return s.productId === prod.fsn || (prod.fsn && s.productId && s.productId.slice(0,15) === prod.fsn.slice(0,15));
-        });
-        if (match && match.buyboxWinner && match.buyboxWinner.price > 0) {
-          buybox = match.buyboxWinner.price;
-          // Also update the stored product data
-          prod.buybox_price = buybox;
-          prod.seller = match.buyboxWinner.sellerName || prod.seller;
-          prod.trackerCheck = { price: buybox, seller: prod.seller, checkedAt: new Date().toISOString(), agrees: true };
-        }
-      }
-    }
-  } catch(e) { /* server not running, use stored data */ }
-  
-  // Fallback: use tracker check if fresh (< 2 hours)
-  if ((!buybox || buybox <= 0) && prod.trackerCheck && prod.trackerCheck.price > 0 && prod.trackerCheck.checkedAt) {
+  if (prod.trackerCheck && prod.trackerCheck.price > 0 && prod.trackerCheck.checkedAt) {
     var trackerAge = Date.now() - new Date(prod.trackerCheck.checkedAt).getTime();
-    if (trackerAge < 2 * 60 * 60 * 1000) buybox = prod.trackerCheck.price;
+    if (trackerAge < 2 * 60 * 60 * 1000) {   // fresh within 2 hours
+      buybox = prod.trackerCheck.price;
+    }
   }
   if (!buybox || buybox <= 0) return;         // no buybox data yet
   if (prod.status === 'win') {
@@ -5119,15 +5099,9 @@ function crossCheckAgainstTracker(existing, pid, name, winner, ourOffer) {
     agrees: !sellerMismatch && !priceMismatch
   };
 
-  // When tracker and extension disagree, the tracker (Puppeteer, server-side)
-  // is often more reliable — the extension DOM can pick up MRP instead of buybox
-  // when the sellers API returns 500. Override buybox_price with tracker data.
-  if (priceMismatch || sellerMismatch) {
-    existing.buybox_price = trkPrice;
-    existing.seller = trkSeller;
-    existing.status = ourOffer && ourOffer.sellerId === winner.sellerId ? 'win' : 'lose';
-    log('info', '🔄 Cross-check override: ' + (name || pid || '').slice(0,30) +
-      ' — buybox updated from R' + extPrice + ' → R' + trkPrice + ' (' + trkSeller + ')');
+  if (sellerMismatch || priceMismatch) {
+    log('warn', '⚠️ Cross-check mismatch: ' + (name || pid) + ' — extension says ' +
+      extSeller + ' R' + extPrice.toFixed(2) + ', tracker says ' + trkSeller + ' R' + trkPrice.toFixed(2));
     sendCrossCheckAlert(existing, extSeller, extPrice, trkSeller, trkPrice);
   }
 }
