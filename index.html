@@ -660,6 +660,7 @@
       <div class="ext-dot" id="extDot"></div>
       <span id="extLabel">Extension offline</span>
     </div>
+    <button id="refreshSessionBtn" onclick="refreshPortalSession()" title="Capture fresh session cookies from your logged-in seller.makro.co.za tab and save them to the server (fixes 'SESSION EXPIRED' push errors)" style="margin-left:10px;background:var(--card);border:1px solid var(--border);color:var(--text);padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer">🔄 Refresh Portal Session</button>
   </header>
 
   <!-- INTEGRATIONS BAR -->
@@ -2243,19 +2244,11 @@ function getMySellerName() {
 function reEvaluateStatuses() {
   const myName = getMySellerName().toLowerCase().trim();
   state.products.forEach(function(p) {
-    var oldStatus = p.status;
     if (!p.seller || p.seller === 'Unknown Seller') {
       p.status = 'unknown';
     } else {
       const s = p.seller.toLowerCase();
       p.status = (s.includes(myName) || myName.includes(s.substring(0,6))) ? 'win' : 'lose';
-    }
-    // Set cooldown when status changes from win to lose
-    if (oldStatus === 'win' && p.status === 'lose' && !p._cooldown_until) {
-      var cooldownMinutes = getCooldownDuration();
-      p._cooldown_until = Date.now() + (cooldownMinutes * 60 * 1000);
-      p._cooldown_reason = 'lost_buybox';
-      log('info', '⏳ Cooldown set: ' + (p.title || p.fsn || '').slice(0,30) + ' — lost buybox, waiting ' + cooldownMinutes + ' min before reprice');
     }
     p._last_status = p.status;
     // ── MIGRATE FSN from URL if missing ─────────────────────────────────────
@@ -2289,6 +2282,20 @@ window.addEventListener('message', function(ev) {
       log('info', 'Extension connected' + (extensionId ? ' (id: ' + extensionId.slice(0,8) + '...)' : ''));
     }
     setExtStatus(true);
+    return;
+  }
+
+  if (d.type === 'REFRESH_PORTAL_SESSION_RESULT') {
+    var btn = document.getElementById('refreshSessionBtn');
+    if (btn) { btn.disabled = false; btn.textContent = '🔄 Refresh Portal Session'; }
+    if (d.ok) {
+      log('success', '✅ Portal session refreshed — new cookies saved to server');
+    } else {
+      log('error', '❌ Portal session refresh failed: ' + (d.error || 'unknown error'));
+      if (d.error === 'no_portal_tab') {
+        log('info', '👉 Open https://seller.makro.co.za in a tab and log in, then click Refresh Portal Session again');
+      }
+    }
     return;
   }
 
@@ -3070,6 +3077,20 @@ function pingExtension() {
   try {
     window.postMessage({ type: 'REQUEST_EXTENSION' }, '*');
   } catch(e) {}
+}
+
+// Refresh portal session: ask the extension to capture fresh cookies + CSRF
+// from the logged-in seller.makro.co.za tab and POST them to the server.
+function refreshPortalSession() {
+  var btn = document.getElementById('refreshSessionBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Refreshing...'; }
+  log('info', '🔄 Refreshing portal session — capturing cookies from seller.makro.co.za tab...');
+  try {
+    window.postMessage({ type: 'REFRESH_PORTAL_SESSION' }, '*');
+  } catch(e) {
+    if (btn) { btn.disabled = false; btn.textContent = '🔄 Refresh Portal Session'; }
+    log('error', '❌ Could not send refresh request: ' + e.message);
+  }
 }
 
 // ============================================================
@@ -4125,18 +4146,7 @@ function roundPrice(p) {
 function autoReprice(prod) {
   if (!prod) return;
   
-  // ── COOLDOWN CHECK: skip if recently pushed price ──────────────────────
-  if (prod._cooldown_until && Date.now() < prod._cooldown_until) {
-    var remaining = Math.ceil((prod._cooldown_until - Date.now()) / 60000);
-    log('info', '⏳ Cooldown active: ' + (prod.title || prod.fsn || '').slice(0,30) + ' — ' + remaining + ' min remaining');
-    return;
-  }
-  
-  // Clear cooldown if expired
-  if (prod._cooldown_until && Date.now() >= prod._cooldown_until) {
-    delete prod._cooldown_until;
-    delete prod._cooldown_reason;
-  }
+  // NOTE: cooldown removed — every scrape may reprice immediately.
   
   // Use tracker price (live) over scraper price (stale) when tracker is fresh (< 2 hours)
   var buybox = prod.buybox_price;
@@ -4222,17 +4232,12 @@ function autoReprice(prod) {
     // Mark product as pending price upload
     prod.pending_price    = targetPrice;
     prod.pending_updated  = new Date().toISOString();
-    // Set cooldown to prevent flip-flopping
-    var cooldownMinutes = getCooldownDuration();
-    prod._cooldown_until = Date.now() + (cooldownMinutes * 60 * 1000);
-    prod._cooldown_reason = 'price_pushed';
     saveProducts();
     // Show in scrape log
     var atFloor = targetPrice === minPrice;
     log('info',
       '💰 Auto-repriced: R' + roundPrice(buybox) + ' → R' + targetPrice +
-      (atFloor ? ' ⚠ AT FLOOR (min R' + minPrice + ')' : ' (beat by R' + getAutoBeatAmount() + ')') +
-      ' ⏳ cooldown ' + cooldownMinutes + ' min'
+      (atFloor ? ' ⚠ AT FLOOR (min R' + minPrice + ')' : ' (beat by R' + getAutoBeatAmount() + ')')
     );
     // Update pending upload badge
     updatePendingBadge();

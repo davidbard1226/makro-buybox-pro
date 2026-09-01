@@ -322,6 +322,19 @@
 
   // ── MESSAGE HANDLER ───────────────────────────────────────────────────────
   chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
+    if (msg.action === 'portal_refresh_session') {
+      // Capture fresh session auth from this logged-in portal tab
+      var auth = readAppData();
+      var cookies = '';
+      try { cookies = document.cookie || ''; } catch(e) {}
+      if (!auth.csrfToken || !cookies) {
+        sendResponse({ ok: false, error: 'Could not capture session — reload the portal page and try again.' });
+        return;
+      }
+      sendResponse({ ok: true, csrfToken: auth.csrfToken, sellerId: auth.sellerId, locationId: auth.locationId, cookies: cookies });
+      return;
+    }
+
     if (msg.action === 'portal_get_orders') {
       ensureAuth().then(function(ok) {
         if (!ok) {

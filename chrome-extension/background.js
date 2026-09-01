@@ -225,6 +225,70 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
     return true;
   }
 
+  // ── REFRESH PORTAL SESSION (dashboard button) ───────────────────────────
+  // Capture fresh cookies + CSRF from the logged-in seller tab and POST them
+  // to the local server so /api/push-price keeps working after session expiry.
+  if (msg.action === 'portal_refresh_session') {
+    chrome.tabs.query({}, function(tabs) {
+      var portalTab = null;
+      for (var i = 0; i < tabs.length; i++) {
+        var u = tabs[i].url || '';
+        if (u.indexOf('https://seller.makro.co.za') === 0) {
+          portalTab = tabs[i];
+          break;
+        }
+      }
+      if (!portalTab) {
+        sendResponse({ ok: false, error: 'no_portal_tab' });
+        return;
+      }
+      chrome.tabs.sendMessage(portalTab.id, { action: 'portal_refresh_session' }, function(resp) {
+        if (chrome.runtime.lastError) {
+          // Content script not injected — inject portal_api.js on demand, retry once
+          injectPortalApi(portalTab.id, function(ok) {
+            if (!ok) { sendResponse({ ok: false, error: 'portal_not_ready' }); return; }
+            chrome.tabs.sendMessage(portalTab.id, { action: 'portal_refresh_session' }, function(resp2) {
+              if (chrome.runtime.lastError) { sendResponse({ ok: false, error: 'portal_not_ready' }); return; }
+              finishRefresh(resp2);
+            });
+          });
+          return;
+        }
+        finishRefresh(resp);
+      });
+
+      function finishRefresh(resp) {
+        if (!resp || !resp.ok) {
+          sendResponse({ ok: false, error: (resp && resp.error) || 'portal_not_ready' });
+          return;
+        }
+        // POST captured auth to the local server
+        var payload = JSON.stringify({
+          csrfToken: resp.csrfToken || '',
+          sellerId: resp.sellerId || '',
+          locationId: resp.locationId || '',
+          cookies: resp.cookies || ''
+        });
+        var req = new XMLHttpRequest();
+        req.open('POST', 'http://localhost:4321/api/portal-cookies', true);
+        req.setRequestHeader('Content-Type', 'application/json');
+        req.onload = function() {
+          try {
+            var j = JSON.parse(req.responseText);
+            sendResponse({ ok: !!(j && j.ok), error: j && j.error });
+          } catch (e) {
+            sendResponse({ ok: false, error: 'server_bad_response' });
+          }
+        };
+        req.onerror = function() {
+          sendResponse({ ok: false, error: 'server_unreachable — is server.js running on localhost:4321?' });
+        };
+        req.send(payload);
+      }
+    });
+    return true; // async
+  }
+
   // ── PORTAL API RELAY (dashboard → seller tab) ────────────────────────────
   if (msg.action === 'portal_get_orders' || msg.action === 'portal_get_listings' || msg.action === 'portal_list_product' || msg.action === 'portal_lookup_product' || msg.action === 'portal_update_price' || msg.action === 'portal_batch_update_prices') {
     chrome.tabs.query({}, function(tabs) {

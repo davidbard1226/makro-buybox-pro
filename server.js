@@ -86,6 +86,14 @@ function pushPriceToPortal(fsn, sku, sellingPrice, mrp) {
       let data = '';
       resp.on('data', chunk => data += chunk);
       resp.on('end', () => {
+        // Detect session expiry: portal redirects to login page (HTTP 3xx or "Found. Redirecting")
+        const isRedirect = resp.statusCode >= 300 && resp.statusCode < 400;
+        const looksLikeLogin = /Found\. Redirecting|referral_url|login/i.test(data);
+        if (isRedirect || looksLikeLogin) {
+          console.log(`[PricePush] ❌ ${sku}: SESSION EXPIRED (${resp.statusCode}) — refresh portal-cookies.json`);
+          reject(new Error('SESSION EXPIRED: portal session invalid — refresh cookies (log into seller.makro.co.za, then update portal-cookies.json)'));
+          return;
+        }
         try {
           const json = JSON.parse(data);
           if (json[sku] && json[sku].status === 'SUCCESS') {

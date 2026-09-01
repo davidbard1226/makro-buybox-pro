@@ -227,6 +227,18 @@
       });
     }
 
+    if (ev.data.type === 'REFRESH_PORTAL_SESSION') {
+      safe(function() {
+        chrome.runtime.sendMessage({ action: 'portal_refresh_session' }, function(resp) {
+          var err = chrome.runtime.lastError ? chrome.runtime.lastError.message
+                   : (resp && resp.error) || null;
+          window.postMessage({ type: 'REFRESH_PORTAL_SESSION_RESULT', ok: !!(resp && resp.ok), error: err }, '*');
+          if (chrome.runtime.lastError) return;
+          console.log('[Bridge] Portal session refresh:', resp);
+        });
+      });
+    }
+
     if (ev.data.type === 'RESUME_AFTER_CHALLENGE') {
       safe(function() {
         chrome.runtime.sendMessage({ action: 'resume_after_challenge' }, function(resp) {
