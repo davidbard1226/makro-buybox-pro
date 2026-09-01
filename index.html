@@ -2288,6 +2288,7 @@ window.addEventListener('message', function(ev) {
   if (d.type === 'REFRESH_PORTAL_SESSION_RESULT') {
     var btn = document.getElementById('refreshSessionBtn');
     if (btn) { btn.disabled = false; btn.textContent = '🔄 Refresh Portal Session'; }
+    if (window._refreshSessionTimer) { clearTimeout(window._refreshSessionTimer); window._refreshSessionTimer = null; }
     if (d.ok) {
       log('success', '✅ Portal session refreshed — new cookies saved to server');
     } else {
@@ -3085,6 +3086,13 @@ function refreshPortalSession() {
   var btn = document.getElementById('refreshSessionBtn');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Refreshing...'; }
   log('info', '🔄 Refreshing portal session — capturing cookies from seller.makro.co.za tab...');
+  // Safety timeout: if the extension never answers (old extension version,
+  // no bridge), reset the button after 15s instead of hanging forever.
+  if (window._refreshSessionTimer) clearTimeout(window._refreshSessionTimer);
+  window._refreshSessionTimer = setTimeout(function() {
+    if (btn) { btn.disabled = false; btn.textContent = '🔄 Refresh Portal Session'; }
+    log('error', '❌ No response from extension — reload the extension (chrome://extensions → reload Makro BuyBox Pro) and try again');
+  }, 15000);
   try {
     window.postMessage({ type: 'REFRESH_PORTAL_SESSION' }, '*');
   } catch(e) {
