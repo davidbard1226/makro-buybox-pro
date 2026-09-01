@@ -2117,6 +2117,11 @@ let extensionId = null;
 // so NEW products scraped for the first time still get costs from the backup file.
 let serverCostMap = {};
 
+// Global URL → real FSN map from the backup file. Lets handleQueueProgress resolve
+// a scrape result (which may only carry the product URL) to its real FSN for cost
+// matching, even when the scraper can't extract the FSN from the product page.
+let serverUrlToFsn = {};
+
 // ============================================================
 // ORDER & INVOICE STORAGE
 // ============================================================
@@ -2965,12 +2970,15 @@ async function syncCostsFromExistingProducts() {
         if (data.ok && data.costs) {
           // Save to global so handleQueueProgress can use it for NEW products
           serverCostMap = data.costs;
+          if (data.urlToFsn) serverUrlToFsn = data.urlToFsn;
           // Cache in localStorage so costs survive even if server is down later
           try { localStorage.setItem('bbp_server_costs', JSON.stringify(data.costs)); } catch(e) {}
+          try { localStorage.setItem('bbp_server_urlfsn', JSON.stringify(data.urlToFsn || {})); } catch(e) {}
           Object.keys(data.costs).forEach(function(key) {
             if (!costLookup[key]) costLookup[key] = data.costs[key];
           });
-          console.log('[init] Loaded ' + Object.keys(data.costs).length + ' costs from server backup');
+          console.log('[init] Loaded ' + Object.keys(data.costs).length + ' costs + ' +
+            Object.keys(serverUrlToFsn).length + ' url→fsn from server backup');
         }
       }
     } catch(e) {
@@ -2984,6 +2992,8 @@ async function syncCostsFromExistingProducts() {
           });
           console.log('[init] Server down — used ' + Object.keys(serverCostMap).length + ' cached costs from localStorage');
         }
+        var cachedUrl = localStorage.getItem('bbp_server_urlfsn');
+        if (cachedUrl) serverUrlToFsn = JSON.parse(cachedUrl);
       } catch(e2) {}
       console.log('[init] Server cost fetch failed (server not running?)');
     }
@@ -3538,19 +3548,27 @@ async function handleQueueProgress(d) {
     // The scraper can send an itm... URL slug as fsn (from data-item-id) when it
     // can't find the real FSN. An itm... slug is NOT a real FSN and won't match
     // any cost/listing. Resolve it to the real FSN by URL match against existing
-    // products, or clear it so the real FSN can be found via listings/sellers.
+    // products or the backup's url→fsn map, or clear it so listings/sellers
+    // matching can find the real FSN.
     if (p.fsn && /^itm/i.test(p.fsn)) {
       var realFsn = '';
       try {
         var byUrl = state.products.find(function(x) { return x.url === p.url && x.fsn && !/^itm/i.test(x.fsn); });
         if (byUrl) realFsn = byUrl.fsn;
       } catch(e) {}
+      if (!realFsn && serverUrlToFsn[p.url]) realFsn = serverUrlToFsn[p.url];
       if (realFsn) {
         p.fsn = realFsn;
         console.log('[scrape] Resolved itm slug → real FSN ' + realFsn + ' for ' + String(p.title || '').slice(0, 30));
       } else {
         p.fsn = '';  // clear bogus slug so listings/sellers matching can find the real FSN
       }
+    }
+    // If the scraper couldn't extract any FSN, try to resolve it from the backup's
+    // url→fsn map (the product page may not expose the FSN in the DOM).
+    if (!p.fsn && p.url && serverUrlToFsn[p.url]) {
+      p.fsn = serverUrlToFsn[p.url];
+      console.log('[scrape] Resolved FSN from backup url→fsn: ' + p.fsn + ' for ' + String(p.title || '').slice(0, 30));
     }
     // Lazy-load server costs if init's async fetch hasn't completed yet (or failed).
     // This guarantees NEW products still get costs from the backup file even if the
@@ -3562,7 +3580,9 @@ async function handleQueueProgress(d) {
           var _d = await _r.json();
           if (_d.ok && _d.costs) {
             serverCostMap = _d.costs;
+            if (_d.urlToFsn) serverUrlToFsn = _d.urlToFsn;
             try { localStorage.setItem('bbp_server_costs', JSON.stringify(_d.costs)); } catch(e) {}
+            try { localStorage.setItem('bbp_server_urlfsn', JSON.stringify(_d.urlToFsn || {})); } catch(e) {}
             console.log('[scrape] Lazy-loaded ' + Object.keys(serverCostMap).length + ' costs from server');
           }
         }
@@ -3574,6 +3594,8 @@ async function handleQueueProgress(d) {
             serverCostMap = JSON.parse(_cached);
             console.log('[scrape] Server down — used ' + Object.keys(serverCostMap).length + ' cached costs');
           }
+          var _cachedUrl = localStorage.getItem('bbp_server_urlfsn');
+          if (_cachedUrl) serverUrlToFsn = JSON.parse(_cachedUrl);
         } catch(e2) {}
         console.log('[scrape] Server cost fetch failed:', e.message);
       }

@@ -147,16 +147,23 @@ const server = http.createServer((req, res) => {
             : backup.data.makro_buybox_v2)
         : [];
       const costs = {};
+      const urlToFsn = {};
       prods.forEach(function(p) {
         if (p.cost_price > 0) {
           if (p.fsn) costs[p.fsn] = p.cost_price;
           if (p.fsn) costs[p.fsn.slice(0, 15)] = p.cost_price;
           if (p.sku) costs[p.sku] = p.cost_price;
         }
+        // Build URL → real FSN map so the dashboard can resolve a scrape result
+        // (which may only have the product URL) to its real FSN for cost matching.
+        if (p.url && p.fsn && !/^itm/i.test(p.fsn)) {
+          urlToFsn[p.url] = p.fsn;
+        }
       });
-      console.log('[Costs] Loaded ' + Object.keys(costs).length + ' cost entries from ' + files[0]);
+      console.log('[Costs] Loaded ' + Object.keys(costs).length + ' cost entries + ' +
+        Object.keys(urlToFsn).length + ' url→fsn from ' + files[0]);
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: true, costs: costs, source: files[0] }));
+      res.end(JSON.stringify({ ok: true, costs: costs, urlToFsn: urlToFsn, source: files[0] }));
     } catch (e) {
       console.log('[Costs] Error:', e.message);
       res.writeHead(200, { 'Content-Type': 'application/json' });
