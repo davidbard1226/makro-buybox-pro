@@ -262,28 +262,36 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
           sendResponse({ ok: false, error: (resp && resp.error) || 'portal_not_ready' });
           return;
         }
-        // POST captured auth to the local server
-        var payload = JSON.stringify({
-          csrfToken: resp.csrfToken || '',
-          sellerId: resp.sellerId || '',
-          locationId: resp.locationId || '',
-          cookies: resp.cookies || ''
+        // Read ALL cookies for the portal domain — including HttpOnly ones
+        // (connect.sid etc.) that document.cookie cannot see. Without them the
+        // portal treats the request as logged-out and redirects to login.
+        chrome.cookies.getAll({ domain: 'seller.makro.co.za' }, function(cookies) {
+          var cookieStr = (cookies || []).map(function(c) {
+            return c.name + '=' + c.value;
+          }).join('; ');
+          // POST captured auth to the local server
+          var payload = JSON.stringify({
+            csrfToken: resp.csrfToken || '',
+            sellerId: resp.sellerId || '',
+            locationId: resp.locationId || '',
+            cookies: cookieStr
+          });
+          var req = new XMLHttpRequest();
+          req.open('POST', 'http://localhost:4321/api/portal-cookies', true);
+          req.setRequestHeader('Content-Type', 'application/json');
+          req.onload = function() {
+            try {
+              var j = JSON.parse(req.responseText);
+              sendResponse({ ok: !!(j && j.ok), error: j && j.error });
+            } catch (e) {
+              sendResponse({ ok: false, error: 'server_bad_response' });
+            }
+          };
+          req.onerror = function() {
+            sendResponse({ ok: false, error: 'server_unreachable — is server.js running on localhost:4321?' });
+          };
+          req.send(payload);
         });
-        var req = new XMLHttpRequest();
-        req.open('POST', 'http://localhost:4321/api/portal-cookies', true);
-        req.setRequestHeader('Content-Type', 'application/json');
-        req.onload = function() {
-          try {
-            var j = JSON.parse(req.responseText);
-            sendResponse({ ok: !!(j && j.ok), error: j && j.error });
-          } catch (e) {
-            sendResponse({ ok: false, error: 'server_bad_response' });
-          }
-        };
-        req.onerror = function() {
-          sendResponse({ ok: false, error: 'server_unreachable — is server.js running on localhost:4321?' });
-        };
-        req.send(payload);
       }
     });
     return true; // async

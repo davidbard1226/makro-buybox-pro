@@ -5,6 +5,7 @@
   "description": "Scrapes Makro buy box data via internal API (not DOM scraping), syncs to dashboard, automates portal price uploads",
   "permissions": [
     "activeTab",
+    "cookies",
     "scripting",
     "storage",
     "tabs",
