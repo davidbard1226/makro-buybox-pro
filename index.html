@@ -3544,6 +3544,15 @@ async function handleQueueProgress(d) {
 
   if (d && d.data) {
     const p  = d.data;
+    // Normalize a Makro product URL for matching: strip protocol, query params,
+    // trailing slash, and lowercase. The scraper's window.location.href may carry
+    // tracking params or a trailing slash that the backup URL doesn't have.
+    function normUrl(u) {
+      try {
+        return String(u || '').replace(/^https?:\/\//i, '').replace(/\/+$/, '')
+          .split('?')[0].split('#')[0].toLowerCase();
+      } catch(e) { return String(u || '').toLowerCase(); }
+    }
     // ── FSN RESOLUTION ──────────────────────────────────────────────────────
     // The scraper can send an itm... URL slug as fsn (from data-item-id) when it
     // can't find the real FSN. An itm... slug is NOT a real FSN and won't match
@@ -3556,7 +3565,18 @@ async function handleQueueProgress(d) {
         var byUrl = state.products.find(function(x) { return x.url === p.url && x.fsn && !/^itm/i.test(x.fsn); });
         if (byUrl) realFsn = byUrl.fsn;
       } catch(e) {}
-      if (!realFsn && serverUrlToFsn[p.url]) realFsn = serverUrlToFsn[p.url];
+      if (!realFsn) {
+        // Exact match first, then normalized match against the backup url→fsn map
+        realFsn = serverUrlToFsn[p.url] || '';
+        if (!realFsn) {
+          var _nUrl = normUrl(p.url);
+          try {
+            Object.keys(serverUrlToFsn).forEach(function(k) {
+              if (!realFsn && normUrl(k) === _nUrl) realFsn = serverUrlToFsn[k];
+            });
+          } catch(e) {}
+        }
+      }
       if (realFsn) {
         p.fsn = realFsn;
         console.log('[scrape] Resolved itm slug → real FSN ' + realFsn + ' for ' + String(p.title || '').slice(0, 30));
@@ -3566,9 +3586,20 @@ async function handleQueueProgress(d) {
     }
     // If the scraper couldn't extract any FSN, try to resolve it from the backup's
     // url→fsn map (the product page may not expose the FSN in the DOM).
-    if (!p.fsn && p.url && serverUrlToFsn[p.url]) {
-      p.fsn = serverUrlToFsn[p.url];
-      console.log('[scrape] Resolved FSN from backup url→fsn: ' + p.fsn + ' for ' + String(p.title || '').slice(0, 30));
+    if (!p.fsn && p.url) {
+      var _resolved = serverUrlToFsn[p.url] || '';
+      if (!_resolved) {
+        var _nUrl2 = normUrl(p.url);
+        try {
+          Object.keys(serverUrlToFsn).forEach(function(k) {
+            if (!_resolved && normUrl(k) === _nUrl2) _resolved = serverUrlToFsn[k];
+          });
+        } catch(e) {}
+      }
+      if (_resolved) {
+        p.fsn = _resolved;
+        console.log('[scrape] Resolved FSN from backup url→fsn: ' + p.fsn + ' for ' + String(p.title || '').slice(0, 30));
+      }
     }
     // Lazy-load server costs if init's async fetch hasn't completed yet (or failed).
     // This guarantees NEW products still get costs from the backup file even if the
@@ -3692,8 +3723,9 @@ async function handleQueueProgress(d) {
         var _s = p.sku || '';
         var _hasFsn = serverCostMap[_f] ? ('serverCostMap[' + _f + ']=' + serverCostMap[_f]) : 'no-fsn-key';
         var _hasSku = serverCostMap[_s] ? ('serverCostMap[' + _s + ']=' + serverCostMap[_s]) : 'no-sku-key';
-        log('info', '⚠ New product NO COST: ' + String(p.title || p.fsn || '').slice(0, 30) +
-          ' | fsn=' + _f + ' (' + _hasFsn + ') | sku=' + _s + ' (' + _hasSku + ') | serverCostMap=' + Object.keys(serverCostMap).length + ' entries');
+        log('info', '⚠ New product NO COST: ' + String(p.title || p.fsn || '').slice(0, 25) +
+          ' | fsn=' + _f + ' (' + _hasFsn + ') | sku=' + _s + ' (' + _hasSku + ') | url=' + String(p.url || '').slice(0, 60) +
+          ' | serverCostMap=' + Object.keys(serverCostMap).length + ' | urlToFsn=' + Object.keys(serverUrlToFsn).length);
       }
       state.products.push({
         url: p.url, fsn: p.fsn || '',
