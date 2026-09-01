@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -3940,109 +3940,50 @@ function maybeAutoPushPrices() {
     var succeeded = 0, failed = 0, errors = [];
     var idx = 0;
 
-    // Build the request list
-    var reqs = withSku.map(function(p) {
+    function pushNext() {
+      if (idx >= withSku.length) {
+        var color = failed === 0 ? '#00e5a0' : '#ffd60a';
+        addAutoPushLogEntry({
+          level: failed === 0 ? 'push' : 'error',
+          msg: '✅ Auto-push complete: ' + succeeded + ' pushed, ' + failed + ' failed' +
+               (errors.length ? ' — ' + errors.slice(0, 3).join('; ') : '')
+        });
+        log(failed === 0 ? 'ok' : 'error', '🤖 Auto-push (API): ' + succeeded + ' ok, ' + failed + ' failed');
+        return;
+      }
+      var p = withSku[idx];
       var newPrice = p.pending_price || p.new_price || p.buybox_price;
-      return {
+      idx++;
+
+      var req = {
         fsn: p.fsn,
         skuId: p.sku,
         sellingPrice: newPrice,
         mrp: p.mrp || newPrice,
         listingState: 'ACTIVE',
         serviceProfile: 'NON_FBF',
-        pickPackSla: 2,
-        _title: (p.title || p.fsn || '').substring(0, 40),
-        _price: newPrice
+        pickPackSla: 2
       };
-    });
 
-    // ── PREFER EXTENSION (browser context, uses credentials:include — works
-    //    even when server cookies are stale). Fall back to server if the
-    //    extension is offline or the portal tab isn't open. ──
-    function pushViaExtension() {
-      return new Promise(function(resolve) {
-        if (!state.extReady) { resolve({ ok: false, error: 'extension_offline' }); return; }
-        var timer = setTimeout(function() { resolve({ ok: false, error: 'extension_timeout' }); }, 30000);
-        window._pushResultHandler = function(d) {
-          clearTimeout(timer);
-          resolve({ ok: d.ok, error: d.error, results: d.results });
-        };
-        log('info', '  📤 Sending push to extension (browser session)...');
-        window.postMessage({ type: 'BATCH_UPDATE_PRICES', items: reqs }, '*');
+      portalApiCall('portal_update_price', req).then(function() {
+        succeeded++;
+        log('ok', '  ✅ [' + idx + '/' + withSku.length + '] ' + (p.title || p.fsn).substring(0, 40) + ' → R' + newPrice.toFixed(2));
+        setTimeout(pushNext, 600);
+      }).catch(function(e) {
+        failed++;
+        errors.push(p.fsn + ': ' + e.message);
+        log('error', '  ❌ [' + idx + '/' + withSku.length + '] ' + p.fsn + ': ' + e.message);
+        setTimeout(pushNext, 600);
       });
     }
 
-    function pushViaServer() {
-      return new Promise(function(resolve) {
-        var body = reqs.map(function(r) {
-          return { fsn: r.fsn, sku: r.skuId, price: r.sellingPrice, mrp: r.mrp };
-        });
-        fetch('http://localhost:4321/api/push-prices', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body)
-        }).then(function(r) { return r.json(); })
-          .then(function(data) {
-            if (data.ok) resolve({ ok: true, results: data.results || [] });
-            else resolve({ ok: false, error: data.error || 'server error' });
-          })
-          .catch(function(e) { resolve({ ok: false, error: 'server_unreachable: ' + (e.message || e) }); });
-      });
-    }
-
-    pushViaExtension().then(function(extRes) {
-      if (extRes.ok) {
-        // Extension succeeded — report per-item
-        (extRes.results || []).forEach(function(r, i) {
-          if (r && r.ok) {
-            succeeded++;
-            log('ok', '  ✅ [' + (i+1) + '/' + reqs.length + '] ' + reqs[i]._title + ' → R' + reqs[i]._price.toFixed(2));
-          } else {
-            failed++;
-            errors.push((reqs[i].fsn || '') + ': ' + ((r && r.error) || 'failed'));
-            log('error', '  ❌ [' + (i+1) + '/' + reqs.length + '] ' + (reqs[i].fsn || '') + ': ' + ((r && r.error) || 'failed'));
-          }
-        });
-        finishPush();
-      } else {
-        // Extension unavailable — fall back to server
-        log('info', '  ⚠ Extension push unavailable (' + extRes.error + ') — falling back to server...');
-        pushViaServer().then(function(srvRes) {
-          if (srvRes.ok) {
-            (srvRes.results || []).forEach(function(r, i) {
-              if (r && r.ok) {
-                succeeded++;
-                log('ok', '  ✅ [' + (i+1) + '/' + reqs.length + '] ' + reqs[i]._title + ' → R' + reqs[i]._price.toFixed(2));
-              } else {
-                failed++;
-                errors.push((reqs[i].fsn || '') + ': ' + ((r && r.error) || 'failed'));
-                log('error', '  ❌ [' + (i+1) + '/' + reqs.length + '] ' + (reqs[i].fsn || '') + ': ' + ((r && r.error) || 'failed'));
-              }
-            });
-          } else {
-            failed = reqs.length;
-            errors.push(extRes.error + '; ' + srvRes.error);
-            log('error', '  ❌ Auto-push failed: ' + srvRes.error);
-          }
-          finishPush();
-        });
-      }
-    });
-
-    function finishPush() {
-      var color = failed === 0 ? '#00e5a0' : '#ffd60a';
-      addAutoPushLogEntry({
-        level: failed === 0 ? 'push' : 'error',
-        msg: '✅ Auto-push complete: ' + succeeded + ' pushed, ' + failed + ' failed' +
-             (errors.length ? ' — ' + errors.slice(0, 3).join('; ') : '')
-      });
-      log(failed === 0 ? 'ok' : 'error', '🤖 Auto-push (API): ' + succeeded + ' ok, ' + failed + ' failed');
-    }
+    pushNext();
   } catch(e) {
     addAutoPushLogEntry({ level: 'error', msg: 'Auto-push error: ' + e.message });
     log('error', '🤖 Auto-push error: ' + e.message);
   }
 }
+
 
 function handleBulkResults(d) { /* legacy compat */ }
 
