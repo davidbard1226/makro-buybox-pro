@@ -2113,6 +2113,10 @@ let state = {
 
 let extensionId = null;
 
+// Global cost lookup populated from server at init. Used by handleQueueProgress
+// so NEW products scraped for the first time still get costs from the backup file.
+let serverCostMap = {};
+
 // ============================================================
 // ORDER & INVOICE STORAGE
 // ============================================================
@@ -2939,9 +2943,11 @@ function restampSkusFromListings() {
 
 // Sync cost_price from products that have it to products that don't, using
 // FSN and SKU matching. Runs at startup so costs survive hard refreshes.
-function syncCostsFromExistingProducts() {
+// Also fetches costs from the local server (latest backup file) if available.
+async function syncCostsFromExistingProducts() {
+  var filled = 0;
   try {
-    // Build lookup: FSN → cost, SKU → cost (from products that HAVE a cost)
+    // Step 1: Build lookup from existing products in memory
     var costLookup = {};
     state.products.forEach(function(p) {
       if (p.cost_price > 0) {
@@ -2950,10 +2956,26 @@ function syncCostsFromExistingProducts() {
         if (p.sku) costLookup[p.sku] = p.cost_price;
       }
     });
+
+    // Step 2: Fetch costs from local server (reads latest backup file)
+    try {
+      var resp = await fetch('http://localhost:4321/api/costs', { cache: 'no-store' });
+      if (resp.ok) {
+        var data = await resp.json();
+        if (data.ok && data.costs) {
+          // Save to global so handleQueueProgress can use it for NEW products
+          serverCostMap = data.costs;
+          Object.keys(data.costs).forEach(function(key) {
+            if (!costLookup[key]) costLookup[key] = data.costs[key];
+          });
+          console.log('[init] Loaded ' + Object.keys(data.costs).length + ' costs from server backup');
+        }
+      }
+    } catch(e) { console.log('[init] Server cost fetch failed (server not running?)'); }
+
+    // Step 3: Apply to products missing cost
     var keys = Object.keys(costLookup);
     if (!keys.length) return 0;
-    // Apply to products missing cost
-    var filled = 0;
     state.products.forEach(function(p) {
       if (p.cost_price > 0) return;
       var cost = costLookup[p.fsn] || costLookup[p.fsn && p.fsn.slice(0, 15)]
@@ -2967,8 +2989,8 @@ function syncCostsFromExistingProducts() {
       }
     });
     if (filled > 0) saveProducts();
-    return filled;
-  } catch(e) { return 0; }
+  } catch(e) {}
+  return filled;
 }
 
 // Current-state match numbers (used by pulls and on load).
@@ -3520,6 +3542,12 @@ function handleQueueProgress(d) {
         costMap[ep.sku] = ep.cost_price;
       }
     }); } catch(e) {}
+    // Merge server backup costs (loaded at init) so NEW products get costs too
+    try {
+      Object.keys(serverCostMap).forEach(function(k) {
+        if (!costMap[k]) costMap[k] = serverCostMap[k];
+      });
+    } catch(e) {}
     const seller = p.buyBoxSeller || 'Unknown Seller';
     const price  = parseFloat(p.buyBoxPrice) || 0;
     const myName = getMySellerName().toLowerCase().trim();
@@ -3561,7 +3589,10 @@ function handleQueueProgress(d) {
           var lb = listingsMap[p.fsn] || listingsMap[p.fsn && p.fsn.slice(0, 15)] || {};
           costBackfill = lb.cost_price || 0;
         }
-        if (costBackfill > 0) existing.cost_price = costBackfill;
+        if (costBackfill > 0) {
+          existing.cost_price = costBackfill;
+          log('info', '💰 Backfilled cost R' + costBackfill + ' for ' + String(existing.title || existing.fsn || '').slice(0, 35));
+        }
       }
       if (p.sellers && p.sellers.length) existing.sellers = p.sellers;
       existing.history      = existing.history || [];
@@ -3572,6 +3603,11 @@ function handleQueueProgress(d) {
       var listingMatch2 = listingsMap[p.fsn] || listingsMap[p.fsn && p.fsn.slice(0, 15)] || {};
       var newCost = costMap[p.fsn] || costMap[p.fsn && p.fsn.slice(0, 15)]
         || costMap[p.sku] || listingMatch2.cost_price || 0;
+      if (newCost > 0) {
+        log('info', '💰 New product cost R' + newCost + ' for ' + String(p.title || p.fsn || '').slice(0, 35));
+      } else {
+        log('info', '⚠ New product NO COST: ' + String(p.title || p.fsn || '').slice(0, 40));
+      }
       state.products.push({
         url: p.url, fsn: p.fsn || '',
         // Never store the itm... URL slug as a SKU — it gets cleared later and
@@ -6736,8 +6772,10 @@ document.addEventListener('scroll', function() {
   restampSkusFromListings();
 
   // Sync costs between products — fills missing costs from products that have them
-  var costSynced = syncCostsFromExistingProducts();
-  if (costSynced > 0) console.log('[init] Synced cost for ' + costSynced + ' product(s) from existing data');
+  // (async — fire and forget, but log when done so user can verify in console)
+  syncCostsFromExistingProducts().then(function(costSynced) {
+    console.log('[init] Cost sync complete: filled ' + costSynced + ' product(s), serverCostMap has ' + Object.keys(serverCostMap).length + ' entries');
+  });
 
   // Auto-fetch scraper data from local server
   autoFetchScraperData();

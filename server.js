@@ -127,6 +127,44 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // API: Get costs from latest backup file (FSN → cost, SKU → cost)
+  if (req.url === '/api/costs') {
+    try {
+      const downloadsDir = path.join(process.env.USERPROFILE || '', 'Downloads');
+      const files = fs.readdirSync(downloadsDir)
+        .filter(f => f.startsWith('makro-backup-') && f.endsWith('.json'))
+        .sort().reverse();
+      if (!files.length) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, costs: {} }));
+        return;
+      }
+      const backupPath = path.join(downloadsDir, files[0]);
+      const backup = JSON.parse(fs.readFileSync(backupPath, 'utf8'));
+      const prods = (backup.data && backup.data.makro_buybox_v2)
+        ? (typeof backup.data.makro_buybox_v2 === 'string'
+            ? JSON.parse(backup.data.makro_buybox_v2)
+            : backup.data.makro_buybox_v2)
+        : [];
+      const costs = {};
+      prods.forEach(function(p) {
+        if (p.cost_price > 0) {
+          if (p.fsn) costs[p.fsn] = p.cost_price;
+          if (p.fsn) costs[p.fsn.slice(0, 15)] = p.cost_price;
+          if (p.sku) costs[p.sku] = p.cost_price;
+        }
+      });
+      console.log('[Costs] Loaded ' + Object.keys(costs).length + ' cost entries from ' + files[0]);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, costs: costs, source: files[0] }));
+    } catch (e) {
+      console.log('[Costs] Error:', e.message);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: e.message }));
+    }
+    return;
+  }
+
   // API: trigger a scrape on demand (does NOT run on an internal timer —
   // scheduling is handled by the Windows Task Scheduler task already set up,
   // so we don't duplicate that here and double up requests to Makro)
