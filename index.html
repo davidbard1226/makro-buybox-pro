@@ -3534,6 +3534,24 @@ async function handleQueueProgress(d) {
 
   if (d && d.data) {
     const p  = d.data;
+    // ── FSN RESOLUTION ──────────────────────────────────────────────────────
+    // The scraper can send an itm... URL slug as fsn (from data-item-id) when it
+    // can't find the real FSN. An itm... slug is NOT a real FSN and won't match
+    // any cost/listing. Resolve it to the real FSN by URL match against existing
+    // products, or clear it so the real FSN can be found via listings/sellers.
+    if (p.fsn && /^itm/i.test(p.fsn)) {
+      var realFsn = '';
+      try {
+        var byUrl = state.products.find(function(x) { return x.url === p.url && x.fsn && !/^itm/i.test(x.fsn); });
+        if (byUrl) realFsn = byUrl.fsn;
+      } catch(e) {}
+      if (realFsn) {
+        p.fsn = realFsn;
+        console.log('[scrape] Resolved itm slug → real FSN ' + realFsn + ' for ' + String(p.title || '').slice(0, 30));
+      } else {
+        p.fsn = '';  // clear bogus slug so listings/sellers matching can find the real FSN
+      }
+    }
     // Lazy-load server costs if init's async fetch hasn't completed yet (or failed).
     // This guarantees NEW products still get costs from the backup file even if the
     // user starts scraping before the init fetch resolves.

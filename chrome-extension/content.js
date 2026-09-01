@@ -169,6 +169,14 @@
   function scrapeProduct() {
     return scrapeProductDom().then(function(data) {
       console.log('[BuyBox v5] DOM result:', data.buyBoxPrice, data.buyBoxSeller, 'fsn:', data.fsn);
+      // If no real FSN from DOM, try the sellers URL pid as a last resort
+      if (!data.fsn && data.sellersUrl) {
+        var pidM = data.sellersUrl.match(/[?&]pid=([A-Z0-9]{8,})/i);
+        if (pidM && !/^itm/i.test(pidM[1])) {
+          data.fsn = pidM[1].toUpperCase();
+          console.log('[BuyBox v5] FSN from sellers URL:', data.fsn);
+        }
+      }
       if (!data.fsn) return data;
       return fetchSellersApi(data.fsn).then(function(sellers) {
         if (sellers && sellers.length) {
@@ -230,12 +238,29 @@
         }
       }
 
-      // 3. data-* attributes on product container
+      // 3. Sellers link — the /sellers?pid=XXXX URL carries the REAL FSN (pid).
+      //    This is the most reliable source on the product page and is checked
+      //    before the data-* attributes (which often hold the itm... slug).
+      if (!data.fsn) {
+        var sl = document.querySelector('a[href*="/sellers?pid="]') ||
+                 document.querySelector('a[href*="sellers"][href*="pid="]') ||
+                 document.querySelector('[class*="seller"][href*="pid"]');
+        if (sl) {
+          var pidM = sl.href.match(/[?&]pid=([A-Z0-9]{8,})/i);
+          if (pidM && !/^itm/i.test(pidM[1])) data.fsn = pidM[1].toUpperCase();
+        }
+      }
+
+      // 4. data-* attributes on product container
+      // NOTE: data-item-id often holds the itm... URL slug, NOT the real FSN.
+      // Real FSNs are uppercase alphanumeric (e.g. PRNH5YM8QETSKU8D). We must
+      // reject itm... slugs here or the product gets a bogus FSN and loses its
+      // cost match (no cost → autoReprice skips → prices go stale).
       if (!data.fsn) {
         const el = document.querySelector('[data-fsn],[data-pid],[data-product-id],[data-item-id]');
         if (el) {
           const val = (el.dataset.fsn || el.dataset.pid || el.dataset.productId || el.dataset.itemId || '').trim();
-          if (/^[A-Z0-9]{8,}$/i.test(val)) data.fsn = val.toUpperCase();
+          if (/^[A-Z0-9]{8,}$/i.test(val) && !/^itm/i.test(val)) data.fsn = val.toUpperCase();
         }
       }
 
@@ -244,7 +269,7 @@
         const canonical = document.querySelector('link[rel="canonical"]');
         if (canonical) {
           const m = canonical.href.match(/[?&]pid=([A-Z0-9]{8,})/i);
-          if (m) data.fsn = m[1].toUpperCase();
+          if (m && !/^itm/i.test(m[1])) data.fsn = m[1].toUpperCase();
         }
       }
 
