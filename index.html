@@ -2937,6 +2937,40 @@ function restampSkusFromListings() {
   } catch(e) { return 0; }
 }
 
+// Sync cost_price from products that have it to products that don't, using
+// FSN and SKU matching. Runs at startup so costs survive hard refreshes.
+function syncCostsFromExistingProducts() {
+  try {
+    // Build lookup: FSN → cost, SKU → cost (from products that HAVE a cost)
+    var costLookup = {};
+    state.products.forEach(function(p) {
+      if (p.cost_price > 0) {
+        if (p.fsn) costLookup[p.fsn] = p.cost_price;
+        if (p.fsn) costLookup[p.fsn.slice(0, 15)] = p.cost_price;
+        if (p.sku) costLookup[p.sku] = p.cost_price;
+      }
+    });
+    var keys = Object.keys(costLookup);
+    if (!keys.length) return 0;
+    // Apply to products missing cost
+    var filled = 0;
+    state.products.forEach(function(p) {
+      if (p.cost_price > 0) return;
+      var cost = costLookup[p.fsn] || costLookup[p.fsn && p.fsn.slice(0, 15)]
+        || costLookup[p.sku] || 0;
+      if (cost > 0) {
+        p.cost_price = cost;
+        if (!p.min_price || p.min_price <= 0) {
+          p.min_price = calcMinViablePrice(cost, getProductProfitPct(p));
+        }
+        filled++;
+      }
+    });
+    if (filled > 0) saveProducts();
+    return filled;
+  } catch(e) { return 0; }
+}
+
 // Current-state match numbers (used by pulls and on load).
 function computeMatchReport(listingsCount) {
   return {
@@ -3473,6 +3507,19 @@ function handleQueueProgress(d) {
       var short = l.fsn.slice(0, 15);
       if (!listingsMap[short]) listingsMap[short] = l;
     }); } catch(e) {}
+    // Also build cost map from existing scraper products (makro_buybox_v2 has cost_price
+    // from previous sessions — listings from S_listing XLS don't have cost field)
+    const costMap = {};
+    try { state.products.forEach(function(ep) {
+      if (ep.fsn && ep.cost_price > 0) {
+        costMap[ep.fsn] = ep.cost_price;
+        var short2 = ep.fsn.slice(0, 15);
+        if (!costMap[short2]) costMap[short2] = ep.cost_price;
+      }
+      if (ep.sku && ep.cost_price > 0) {
+        costMap[ep.sku] = ep.cost_price;
+      }
+    }); } catch(e) {}
     const seller = p.buyBoxSeller || 'Unknown Seller';
     const price  = parseFloat(p.buyBoxPrice) || 0;
     const myName = getMySellerName().toLowerCase().trim();
@@ -3505,10 +3552,15 @@ function handleQueueProgress(d) {
         var skuBackfill = p.sku || (listingsMap[p.fsn] || listingsMap[p.fsn && p.fsn.slice(0, 15)] || {}).sku || '';
         if (skuBackfill && !/^itm/i.test(skuBackfill)) existing.sku = skuBackfill;
       }
-      // Backfill cost_price from saved listings — scraper products without cost
-      // can't reprice (autoReprice skips them). Carry cost from imported data.
+      // Backfill cost_price — scraper products without cost can't reprice.
+      // Check: existing products (from previous sessions) → listings → SKU match
       if (!existing.cost_price || existing.cost_price <= 0) {
-        var costBackfill = (listingsMap[p.fsn] || listingsMap[p.fsn && p.fsn.slice(0, 15)] || {}).cost_price || 0;
+        var costBackfill = costMap[p.fsn] || costMap[p.fsn && p.fsn.slice(0, 15)]
+          || costMap[p.sku] || 0;
+        if (!costBackfill) {
+          var lb = listingsMap[p.fsn] || listingsMap[p.fsn && p.fsn.slice(0, 15)] || {};
+          costBackfill = lb.cost_price || 0;
+        }
         if (costBackfill > 0) existing.cost_price = costBackfill;
       }
       if (p.sellers && p.sellers.length) existing.sellers = p.sellers;
@@ -3516,8 +3568,10 @@ function handleQueueProgress(d) {
       existing.history.push({ price, seller, status, myPrice: (listingsMap[p.fsn]||{}).myPrice || 0, ts: new Date().toISOString() });
       if (existing.history.length > 30) existing.history.shift();
     } else {
-      // Get cost from listings if available
+      // Get cost from existing products or listings if available
       var listingMatch2 = listingsMap[p.fsn] || listingsMap[p.fsn && p.fsn.slice(0, 15)] || {};
+      var newCost = costMap[p.fsn] || costMap[p.fsn && p.fsn.slice(0, 15)]
+        || costMap[p.sku] || listingMatch2.cost_price || 0;
       state.products.push({
         url: p.url, fsn: p.fsn || '',
         // Never store the itm... URL slug as a SKU — it gets cleared later and
@@ -3525,7 +3579,7 @@ function handleQueueProgress(d) {
         // real SKU from the scrape or the saved listings (exact or 15-char prefix).
         sku: (p.sku && !/^itm/i.test(p.sku)) ? p.sku : listingMatch2.sku || '',
         title: p.title || p.url, buybox_price: price,
-        cost_price: listingMatch2.cost_price || 0,
+        cost_price: newCost,
         seller, status, lastChecked: new Date().toISOString(),
         sellers: p.sellers || [],
         history: [{ price, seller, status, myPrice: listingMatch2.myPrice || 0, ts: new Date().toISOString() }]
@@ -6681,6 +6735,10 @@ document.addEventListener('scroll', function() {
   // Re-stamp SKUs from saved listings so matched SKUs survive hard refreshes
   restampSkusFromListings();
 
+  // Sync costs between products — fills missing costs from products that have them
+  var costSynced = syncCostsFromExistingProducts();
+  if (costSynced > 0) console.log('[init] Synced cost for ' + costSynced + ' product(s) from existing data');
+
   // Auto-fetch scraper data from local server
   autoFetchScraperData();
 
@@ -7791,7 +7849,8 @@ function portalApiCall(action, req) {
       else reject(new Error(data.error || 'Server error'));
     })
     .catch(function(e) {
-      reject(new Error('Cannot reach server — run: node server.js'));
+      console.error('[portalApiCall] fetch failed:', e.message || e);
+      reject(new Error('Cannot reach server (' + (e.message || e) + ') — run: node server.js'));
     });
   });
 }

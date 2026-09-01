@@ -108,6 +108,18 @@ function pushPriceToPortal(fsn, sku, sellingPrice, mrp) {
 }
 
 const server = http.createServer((req, res) => {
+  // CORS headers — dashboard runs on github.io, needs cross-origin access
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  // Handle preflight OPTIONS
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
   // API: Get sellers data
   if (req.url === '/api/sellers') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
