@@ -2297,6 +2297,11 @@ window.addEventListener('message', function(ev) {
         log('info', '👉 Open https://seller.makro.co.za in a tab and log in, then click Refresh Portal Session again');
       }
     }
+    if (window._refreshSessionResolve) {
+      var r = window._refreshSessionResolve;
+      window._refreshSessionResolve = null;
+      r(d.ok);
+    }
     return;
   }
 
@@ -3089,23 +3094,29 @@ function pingExtension() {
 
 // Refresh portal session: ask the extension to capture fresh cookies + CSRF
 // from the logged-in seller.makro.co.za tab and POST them to the server.
-function refreshPortalSession() {
-  var btn = document.getElementById('refreshSessionBtn');
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Refreshing...'; }
-  log('info', '🔄 Refreshing portal session — capturing cookies from seller.makro.co.za tab...');
-  // Safety timeout: if the extension never answers (old extension version,
-  // no bridge), reset the button after 15s instead of hanging forever.
-  if (window._refreshSessionTimer) clearTimeout(window._refreshSessionTimer);
-  window._refreshSessionTimer = setTimeout(function() {
-    if (btn) { btn.disabled = false; btn.textContent = '🔄 Refresh Portal Session'; }
-    log('error', '❌ No response from extension — reload the extension (chrome://extensions → reload Makro BuyBox Pro) and try again');
-  }, 15000);
-  try {
-    window.postMessage({ type: 'REFRESH_PORTAL_SESSION' }, '*');
-  } catch(e) {
-    if (btn) { btn.disabled = false; btn.textContent = '🔄 Refresh Portal Session'; }
-    log('error', '❌ Could not send refresh request: ' + e.message);
-  }
+// Returns a Promise. When silent=true (auto-refresh before push), failures
+// are logged quietly and the promise resolves anyway so the push proceeds.
+function refreshPortalSession(silent) {
+  return new Promise(function(resolve) {
+    var btn = document.getElementById('refreshSessionBtn');
+    if (btn && !silent) { btn.disabled = true; btn.textContent = '⏳ Refreshing...'; }
+    if (!silent) log('info', '🔄 Refreshing portal session — capturing cookies from seller.makro.co.za tab...');
+    // Safety timeout: if the extension never answers (old extension version,
+    // no bridge), reset the button after 15s instead of hanging forever.
+    if (window._refreshSessionTimer) clearTimeout(window._refreshSessionTimer);
+    window._refreshSessionTimer = setTimeout(function() {
+      if (btn && !silent) { btn.disabled = false; btn.textContent = '🔄 Refresh Portal Session'; }
+      if (!silent) log('error', '❌ No response from extension — reload the extension (chrome://extensions → reload Makro BuyBox Pro) and try again');
+      resolve(false);
+    }, silent ? 8000 : 15000);
+    try {
+      window.postMessage({ type: 'REFRESH_PORTAL_SESSION' }, '*');
+    } catch(e) {
+      if (btn && !silent) { btn.disabled = false; btn.textContent = '🔄 Refresh Portal Session'; }
+      if (!silent) log('error', '❌ Could not send refresh request: ' + e.message);
+      resolve(false);
+    }
+  });
 }
 
 // ============================================================
@@ -3934,6 +3945,24 @@ function maybeAutoPushPrices() {
       return;
     }
 
+    // ── AUTO-REFRESH SESSION FIRST ──
+    // Ask the extension to capture fresh cookies (incl. HttpOnly connect.sid)
+    // from the logged-in seller tab and save them to the server, so the push
+    // below never hits SESSION EXPIRED. Waits up to 8s, then pushes anyway.
+    log('info', '🔄 Auto-refreshing portal session before push...');
+    refreshPortalSession(true).then(function() {
+      doPush(withSku);
+    }).catch(function() {
+      doPush(withSku);
+    });
+  } catch(e) {
+    addAutoPushLogEntry({ level: 'error', msg: 'Auto-push error: ' + e.message });
+    log('error', '🤖 Auto-push error: ' + e.message);
+  }
+}
+
+function doPush(withSku) {
+  try {
     log('info', '🤖 Auto-push (API): pushing ' + withSku.length + ' price(s) directly to portal...');
     addAutoPushLogEntry({ level: 'push', msg: '🚀 Auto-pushing ' + withSku.length + ' price(s) directly via API (no XLS)...' });
 
