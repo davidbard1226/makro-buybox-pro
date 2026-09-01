@@ -3819,9 +3819,8 @@ async function handleQueueProgress(d) {
     }
 
     log(isWin ? 'ok' : 'err',
-      (isWin ? '✓ WIN ' : '✗ LOSE') + ' | R' + price.toFixed(2) + ' | ' + seller.slice(0,30) +
-      ' | ' + (p.title||'').slice(0,35) +
-      (isWin && p.min_price > 0 && price < p.min_price ? ' ⚠ SELLING AT LOSS (min R' + p.min_price + ')' : ''));
+      (isWin ? '✓ WIN ' : '✗ LOSE ') + (p.title||'').slice(0,40) + ' · ' + fmtR(price) + ' · ' + seller.slice(0,25) +
+      (isWin && p.min_price > 0 && price < p.min_price ? ' ⚠ SELLING AT LOSS (min ' + fmtR(p.min_price) + ')' : ''));
 
     updateProductCount();
     renderProducts();
@@ -4184,6 +4183,12 @@ function roundPrice(p) {
   return Math.round(p);
 }
 
+// Display helper: format a price with thousands separators, e.g. 33754 → "R33,754"
+function fmtR(p) {
+  if (p == null || isNaN(p)) return '—';
+  return 'R' + Number(p).toLocaleString('en-ZA', { maximumFractionDigits: 2 });
+}
+
 // ── AUTO REPRICE ──────────────────────────────────────────────────────────
 // Called after every scrape. Beats competitor by configured amount, never below min_price.
 // Updates the listing's myPrice and flags product as pending upload.
@@ -4262,7 +4267,7 @@ function autoReprice(prod) {
   // scrape's buybox data is stale or wrong (Makro API lag). Raising to "beat"
   // it would push us above the competitor and lose the box (e.g. R33979 → R34151).
   if (listing && listing.myPrice > 0 && targetPrice > listing.myPrice) {
-    log('info', '⏭ Skipped reprice: buybox R' + roundPrice(buybox) + ' > our R' + listing.myPrice + ' — already winning');
+    log('info', '⏭ Already winning: ' + (prod.title || prod.fsn || '').slice(0, 45) + ' — our ' + fmtR(listing.myPrice) + ' beats buybox ' + fmtR(buybox));
     return;
   }
   var changed = false;
@@ -4281,15 +4286,15 @@ function autoReprice(prod) {
     // Show in scrape log
     var atFloor = targetPrice === minPrice;
     log('info',
-      '💰 Auto-repriced: R' + roundPrice(buybox) + ' → R' + targetPrice +
-      (atFloor ? ' ⚠ AT FLOOR (min R' + minPrice + ')' : ' (beat by R' + getAutoBeatAmount() + ')')
+      '💰 Repriced: ' + (prod.title || prod.fsn || '').slice(0, 45) + ' → ' + fmtR(targetPrice) +
+      (atFloor ? ' ⚠ AT FLOOR (min ' + fmtR(minPrice) + ')' : ' (was ' + fmtR(buybox) + ', beat by R' + getAutoBeatAmount() + ')')
     );
     // Update pending upload badge
     updatePendingBadge();
   } else if (listing && listing.myPrice > 0 && listing.myPrice === targetPrice && rawTarget < minPrice) {
     // Can't beat the buybox without going below the min floor — explain the skip
     // instead of staying silent (was confusing: product loses but never repriced).
-    log('info', '⏭ Skipped reprice: beat price R' + rawTarget + ' below min R' + minPrice + ' — staying at floor R' + targetPrice);
+    log('info', '⏭ Can\'t beat: ' + (prod.title || prod.fsn || '').slice(0, 45) + ' — beat price ' + fmtR(rawTarget) + ' below min ' + fmtR(minPrice) + ', staying at floor ' + fmtR(targetPrice));
   }
 }
 
@@ -8609,16 +8614,25 @@ function renderPriceLog() {
     var d = new Date(e.ts).toLocaleString();
     var sc = e.status === 'win' ? 'var(--accent)' : e.status === 'lose' ? '#ff4d6d' : 'var(--muted)';
     var si = e.status === 'win' ? '✓' : e.status === 'lose' ? '✗' : '?';
+    // Change column: pending (repriced to) vs my price — show the delta
+    var changeHtml = '—';
+    if (e.pending_price && e.my_price) {
+      var delta = Number(e.pending_price) - Number(e.my_price);
+      var dCol = delta < 0 ? '#00e5a0' : delta > 0 ? '#ff9500' : 'var(--muted)';
+      changeHtml = '<span style="color:' + dCol + ';font-family:monospace">' +
+        (delta < 0 ? '▼' : delta > 0 ? '▲' : '•') + ' ' + fmtR(Math.abs(delta)) + '</span>';
+    }
     return '<tr><td style="padding:7px 10px;color:var(--muted);white-space:nowrap;font-size:11px">' + d + '</td>' +
       '<td style="padding:7px 10px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml(e.title||'') + '">' + escHtml((e.title||e.fsn||'').slice(0,40)) + '</td>' +
       '<td style="padding:7px 10px;font-family:monospace;font-size:11px;color:#818cf8">' + escHtml(e.sku||'—') + '</td>' +
       '<td style="padding:7px 10px;color:' + sc + ';font-weight:700">' + si + ' ' + (e.status||'?').toUpperCase() + '</td>' +
-      '<td style="padding:7px 10px;font-family:monospace">R' + (e.buybox_price||0).toFixed(2) + '</td>' +
-      '<td style="padding:7px 10px;font-family:monospace;color:#60a5fa">' + (e.my_price ? 'R' + Number(e.my_price).toFixed(2) : '—') + '</td>' +
-      '<td style="padding:7px 10px;font-family:monospace;color:var(--accent3)">' + (e.pending_price ? 'R' + e.pending_price : '—') + '</td>' +
+      '<td style="padding:7px 10px;font-family:monospace">' + fmtR(e.buybox_price) + '</td>' +
+      '<td style="padding:7px 10px;font-family:monospace;color:#60a5fa">' + (e.my_price ? fmtR(e.my_price) : '—') + '</td>' +
+      '<td style="padding:7px 10px;font-family:monospace;color:var(--accent3)">' + (e.pending_price ? fmtR(e.pending_price) : '—') + '</td>' +
+      '<td style="padding:7px 10px;font-family:monospace;font-size:11px">' + changeHtml + '</td>' +
       '<td style="padding:7px 10px;color:var(--muted);font-size:11px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml((e.seller||'').slice(0,25)) + '</td></tr>';
   }).join('');
-  var hdr = ['Time','Product','SKU','Status','BuyBox R','My Price','Repriced To','Competitor'].map(function(h) {
+  var hdr = ['Time','Product','SKU','Status','BuyBox','My Price','Repriced To','Change','Competitor'].map(function(h) {
     return '<th style="padding:7px 10px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap">' + h + '</th>';
   }).join('');
   el.innerHTML = '<table style="width:100%;border-collapse:collapse">' +
@@ -8629,10 +8643,15 @@ function renderPriceLog() {
 function exportPriceLog() {
   var log = getPriceLog();
   if (!log.length) { alert('No log entries yet.'); return; }
-  var csv = 'Time,Product,SKU,Status,BuyBox Price,My Price,Repriced To,Competitor\n' +
+  var csv = 'Time,Product,SKU,Status,BuyBox Price,My Price,Repriced To,Change,Competitor\n' +
     log.map(function(e) {
+      var change = '';
+      if (e.pending_price && e.my_price) {
+        var delta = Number(e.pending_price) - Number(e.my_price);
+        change = (delta < 0 ? '-' : delta > 0 ? '+' : '') + Math.abs(delta);
+      }
       return [new Date(e.ts).toLocaleString(), e.title||'', e.sku||'', e.status||'',
-              e.buybox_price||'', e.my_price||'', e.pending_price||'', e.seller||'']
+              e.buybox_price||'', e.my_price||'', e.pending_price||'', change, e.seller||'']
         .map(function(v){ return '"' + String(v).replace(/"/g,'""') + '"'; }).join(',');
     }).join('\n');
   var a = document.createElement('a');
@@ -8690,8 +8709,8 @@ function renderAutoPushLog() {
           '<td style="padding:4px 8px;font-family:monospace;font-size:11px;color:#818cf8;white-space:nowrap">' + escHtml(c.fsn || '—') + '</td>' +
           '<td style="padding:4px 8px;font-family:monospace;font-size:11px;color:var(--muted);white-space:nowrap">' + escHtml(c.sku || '—') + '</td>' +
           '<td style="padding:4px 8px;font-size:11px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml(c.title || '') + '">' + escHtml((c.title || '').slice(0, 60)) + '</td>' +
-          '<td style="padding:4px 8px;font-family:monospace;font-size:11px;color:#ff9500;white-space:nowrap">R' + Number(c.oldPrice).toFixed(2) + '</td>' +
-          '<td style="padding:4px 8px;font-family:monospace;font-size:11px;color:var(--accent);white-space:nowrap">→ R' + Number(c.newPrice).toFixed(2) + '</td></tr>';
+          '<td style="padding:4px 8px;font-family:monospace;font-size:11px;color:#ff9500;white-space:nowrap">' + fmtR(c.oldPrice) + '</td>' +
+          '<td style="padding:4px 8px;font-family:monospace;font-size:11px;color:var(--accent);white-space:nowrap">→ ' + fmtR(c.newPrice) + '</td></tr>';
       }).join('');
       detailHtml = '<tr><td colspan="3" style="padding:2px 10px 10px 10px">' +
         '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;margin-top:4px">' +
