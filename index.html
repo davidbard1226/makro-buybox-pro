@@ -3962,11 +3962,12 @@ function maybeAutoPushPrices() {
     function pushViaExtension() {
       return new Promise(function(resolve) {
         if (!state.extReady) { resolve({ ok: false, error: 'extension_offline' }); return; }
-        var timer = setTimeout(function() { resolve({ ok: false, error: 'extension_timeout' }); }, 20000);
+        var timer = setTimeout(function() { resolve({ ok: false, error: 'extension_timeout' }); }, 30000);
         window._pushResultHandler = function(d) {
           clearTimeout(timer);
           resolve({ ok: d.ok, error: d.error, results: d.results });
         };
+        log('info', '  📤 Sending push to extension (browser session)...');
         window.postMessage({ type: 'BATCH_UPDATE_PRICES', items: reqs }, '*');
       });
     }

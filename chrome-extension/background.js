@@ -313,13 +313,13 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
         sendResponse({ ok: false, error: 'no_portal_tab' });
         return;
       }
-      chrome.tabs.sendMessage(portalTab.id, { action: msg.action, req: msg.req }, function(resp) {
+      chrome.tabs.sendMessage(portalTab.id, { action: msg.action, req: msg.req, items: msg.items }, function(resp) {
         if (chrome.runtime.lastError) {
           // Content script not injected (e.g. portal tab was opened before the
           // extension was reloaded). Inject portal_api.js on demand, retry once.
           injectPortalApi(portalTab.id, function(ok) {
             if (!ok) { sendResponse({ ok: false, error: 'portal_not_ready' }); return; }
-            chrome.tabs.sendMessage(portalTab.id, { action: msg.action, req: msg.req }, function(resp2) {
+            chrome.tabs.sendMessage(portalTab.id, { action: msg.action, req: msg.req, items: msg.items }, function(resp2) {
               if (chrome.runtime.lastError) { sendResponse({ ok: false, error: 'portal_not_ready' }); return; }
               sendResponse(resp2);
             });
