@@ -2965,13 +2965,28 @@ async function syncCostsFromExistingProducts() {
         if (data.ok && data.costs) {
           // Save to global so handleQueueProgress can use it for NEW products
           serverCostMap = data.costs;
+          // Cache in localStorage so costs survive even if server is down later
+          try { localStorage.setItem('bbp_server_costs', JSON.stringify(data.costs)); } catch(e) {}
           Object.keys(data.costs).forEach(function(key) {
             if (!costLookup[key]) costLookup[key] = data.costs[key];
           });
           console.log('[init] Loaded ' + Object.keys(data.costs).length + ' costs from server backup');
         }
       }
-    } catch(e) { console.log('[init] Server cost fetch failed (server not running?)'); }
+    } catch(e) {
+      // Server unreachable — fall back to cached costs from a previous successful fetch
+      try {
+        var cached = localStorage.getItem('bbp_server_costs');
+        if (cached) {
+          serverCostMap = JSON.parse(cached);
+          Object.keys(serverCostMap).forEach(function(key) {
+            if (!costLookup[key]) costLookup[key] = serverCostMap[key];
+          });
+          console.log('[init] Server down — used ' + Object.keys(serverCostMap).length + ' cached costs from localStorage');
+        }
+      } catch(e2) {}
+      console.log('[init] Server cost fetch failed (server not running?)');
+    }
 
     // Step 3: Apply to products missing cost
     var keys = Object.keys(costLookup);
@@ -3513,12 +3528,38 @@ function stopScraping() {
 }
 
 // Called by bridge when background reports a page was scraped
-function handleQueueProgress(d) {
+async function handleQueueProgress(d) {
   scrapeIdx++;
   updateProgress(scrapeIdx, scrapeQueue.length);
 
   if (d && d.data) {
     const p  = d.data;
+    // Lazy-load server costs if init's async fetch hasn't completed yet (or failed).
+    // This guarantees NEW products still get costs from the backup file even if the
+    // user starts scraping before the init fetch resolves.
+    if (!Object.keys(serverCostMap).length) {
+      try {
+        var _r = await fetch('http://localhost:4321/api/costs', { cache: 'no-store' });
+        if (_r.ok) {
+          var _d = await _r.json();
+          if (_d.ok && _d.costs) {
+            serverCostMap = _d.costs;
+            try { localStorage.setItem('bbp_server_costs', JSON.stringify(_d.costs)); } catch(e) {}
+            console.log('[scrape] Lazy-loaded ' + Object.keys(serverCostMap).length + ' costs from server');
+          }
+        }
+      } catch(e) {
+        // Server unreachable — fall back to cached costs
+        try {
+          var _cached = localStorage.getItem('bbp_server_costs');
+          if (_cached) {
+            serverCostMap = JSON.parse(_cached);
+            console.log('[scrape] Server down — used ' + Object.keys(serverCostMap).length + ' cached costs');
+          }
+        } catch(e2) {}
+        console.log('[scrape] Server cost fetch failed:', e.message);
+      }
+    }
     // Build listings lookup for myPrice (was missing → ReferenceError crashed
     // every scrape result and silently dropped the product). Prefix-aware so a
     // 15-char pid still matches a full 22-char FSN in the S_listing XLS.
@@ -3606,7 +3647,13 @@ function handleQueueProgress(d) {
       if (newCost > 0) {
         log('info', '💰 New product cost R' + newCost + ' for ' + String(p.title || p.fsn || '').slice(0, 35));
       } else {
-        log('info', '⚠ New product NO COST: ' + String(p.title || p.fsn || '').slice(0, 40));
+        // Diagnostic: show what we have so we can see why the match failed
+        var _f = p.fsn || '';
+        var _s = p.sku || '';
+        var _hasFsn = serverCostMap[_f] ? ('serverCostMap[' + _f + ']=' + serverCostMap[_f]) : 'no-fsn-key';
+        var _hasSku = serverCostMap[_s] ? ('serverCostMap[' + _s + ']=' + serverCostMap[_s]) : 'no-sku-key';
+        log('info', '⚠ New product NO COST: ' + String(p.title || p.fsn || '').slice(0, 30) +
+          ' | fsn=' + _f + ' (' + _hasFsn + ') | sku=' + _s + ' (' + _hasSku + ') | serverCostMap=' + Object.keys(serverCostMap).length + ' entries');
       }
       state.products.push({
         url: p.url, fsn: p.fsn || '',
