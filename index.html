@@ -881,7 +881,6 @@
             <input type="file" id="listingsFileInput" accept=".xls,.xlsx,.csv" style="display:none" onchange="importListings(this)">
           </label>
           <button class="btn-secondary" id="pullListingsBtn" style="width:auto;padding:8px 16px;color:#00e5a0;border-color:rgba(0,229,160,0.3)" onclick="pullPortalListings()" title="Pull your live listings (price, stock, status) straight from the Makro Seller Portal — no S_listing export needed. Requires extension + logged-in portal tab.">🔄 Pull Live Listings</button>
-          <button class="btn-secondary" id="addAllListingsBtn" style="width:auto;padding:8px 16px;color:#00e5a0;border-color:rgba(0,229,160,0.3)" onclick="addAllListingsToProducts()" title="Create a dashboard product for every live portal listing not yet tracked (uses the last Pull Live Listings data). Adds FSN + SKU + working URL so you can track all products.">➕ Add All to Products</button>
           <button class="btn-secondary" style="width:auto;padding:8px 16px;color:#ff9500;border-color:rgba(255,149,0,0.4)" onclick="openListOnMakroModal()" title="Create a NEW listing on the Makro catalog for a product you don't yet sell (latch-on). WRITES to the live portal — test on one product first.">🚀 List on Makro</button>
           <label class="btn-secondary" style="width:auto;padding:8px 16px;cursor:pointer;color:#60a5fd;border-color:rgba(96,165,250,0.4)" title="Import products from Wherehouse multi-channel CSV export">
             📦 Import Multi-Channel Products
@@ -2296,8 +2295,6 @@ window.addEventListener('message', function(ev) {
       log('error', '❌ Portal session refresh failed: ' + (d.error || 'unknown error'));
       if (d.error === 'no_portal_tab') {
         log('info', '👉 Open https://seller.makro.co.za in a tab and log in, then click Refresh Portal Session again');
-      } else if (d.error && d.error.indexOf('portal_session_expired') === 0) {
-        log('info', '👉 The portal tab is logged out — log into seller.makro.co.za, then click Refresh Portal Session again');
       }
     }
     if (window._refreshSessionResolve) {
@@ -2941,62 +2938,6 @@ function applyListingsData(listings, counts) {
   showImportBanner(msg, '#00e5a0');
 }
 
-// ── Add every pulled listing as a tracked product (FSN + SKU + URL) ──
-// Reads the saved makro_listings (from the last Pull Live Listings) and creates
-// a dashboard product for each listing that isn't already tracked. Matching uses
-// the same convention as applyListingsData: exact FSN first, then 15-char prefix.
-function addAllListingsToProducts() {
-  var raw = localStorage.getItem('makro_listings');
-  if (!raw) {
-    alert('No pulled listings found.\n\nClick 🔄 Pull Live Listings first (requires extension + logged-in portal tab).');
-    return;
-  }
-  var listings;
-  try { listings = JSON.parse(raw); } catch (e) { listings = []; }
-  if (!listings || !listings.length) {
-    alert('No pulled listings found.\n\nClick 🔄 Pull Live Listings first (requires extension + logged-in portal tab).');
-    return;
-  }
-
-  // Existing FSN set (exact + 15-char prefix, same as applyListingsData)
-  var seen = {};
-  state.products.forEach(function(p) {
-    if (p.fsn) {
-      seen[p.fsn] = true;
-      seen[p.fsn.slice(0, 15)] = true;
-    }
-  });
-
-  var added = 0, skipped = 0;
-  listings.forEach(function(l) {
-    if (!l.fsn) return;
-    if (seen[l.fsn] || seen[l.fsn.slice(0, 15)]) { skipped++; return; }
-    // Same stub shape as addProductFromSearch, but pre-filled with FSN/SKU/title
-    // and a working URL: makro search by FSN redirects to the product page.
-    var stub = {
-      url: 'https://www.makro.co.za/search?q=' + encodeURIComponent(l.fsn),
-      fsn: l.fsn,
-      sku: l.sku || '',
-      title: l.title || l.fsn,
-      buybox_price: 0, seller: '', status: 'unknown',
-      lastChecked: null, history: []
-    };
-    state.products.push(stub);
-    seen[l.fsn] = true;
-    seen[l.fsn.slice(0, 15)] = true;
-    added++;
-  });
-
-  if (added > 0) {
-    saveProducts();
-    renderProducts();
-    renderDashboard();
-    updateProductCount();
-  }
-  showImportBanner('➕ Added ' + added + ' product(s) from live listings' +
-    (skipped > 0 ? ' (' + skipped + ' already tracked)' : '') + '.', '#00e5a0');
-}
-
 // Re-stamp SKUs onto products from the saved listings on every load — so a
 // hard refresh can never wipe matched SKUs (same persistence as orders).
 function restampSkusFromListings() {
@@ -3166,7 +3107,6 @@ function refreshPortalSession(silent) {
     window._refreshSessionTimer = setTimeout(function() {
       if (btn && !silent) { btn.disabled = false; btn.textContent = '🔄 Refresh Portal Session'; }
       if (!silent) log('error', '❌ No response from extension — reload the extension (chrome://extensions → reload Makro BuyBox Pro) and try again');
-      else log('warn', '⚠ Auto session refresh timed out (extension offline / no portal tab) — pushing with existing cookies; may hit SESSION EXPIRED');
       resolve(false);
     }, silent ? 8000 : 15000);
     try {
@@ -3879,8 +3819,9 @@ async function handleQueueProgress(d) {
     }
 
     log(isWin ? 'ok' : 'err',
-      (isWin ? '✓ WIN ' : '✗ LOSE ') + (p.title||'').slice(0,40) + ' · ' + fmtR(price) + ' · ' + seller.slice(0,25) +
-      (isWin && p.min_price > 0 && price < p.min_price ? ' ⚠ SELLING AT LOSS (min ' + fmtR(p.min_price) + ')' : ''));
+      (isWin ? '✓ WIN ' : '✗ LOSE') + ' | R' + price.toFixed(2) + ' | ' + seller.slice(0,30) +
+      ' | ' + (p.title||'').slice(0,35) +
+      (isWin && p.min_price > 0 && price < p.min_price ? ' ⚠ SELLING AT LOSS (min R' + p.min_price + ')' : ''));
 
     updateProductCount();
     renderProducts();
@@ -4009,11 +3950,9 @@ function maybeAutoPushPrices() {
     // from the logged-in seller tab and save them to the server, so the push
     // below never hits SESSION EXPIRED. Waits up to 8s, then pushes anyway.
     log('info', '🔄 Auto-refreshing portal session before push...');
-    refreshPortalSession(true).then(function(ok) {
-      if (!ok) addAutoPushLogEntry({ level: 'warn', msg: '⚠ Auto session refresh failed — pushing with existing cookies; may hit SESSION EXPIRED' });
+    refreshPortalSession(true).then(function() {
       doPush(withSku);
     }).catch(function() {
-      addAutoPushLogEntry({ level: 'warn', msg: '⚠ Auto session refresh failed — pushing with existing cookies; may hit SESSION EXPIRED' });
       doPush(withSku);
     });
   } catch(e) {
@@ -4245,12 +4184,6 @@ function roundPrice(p) {
   return Math.round(p);
 }
 
-// Display helper: format a price with thousands separators, e.g. 33754 → "R33,754"
-function fmtR(p) {
-  if (p == null || isNaN(p)) return '—';
-  return 'R' + Number(p).toLocaleString('en-ZA', { maximumFractionDigits: 2 });
-}
-
 // ── AUTO REPRICE ──────────────────────────────────────────────────────────
 // Called after every scrape. Beats competitor by configured amount, never below min_price.
 // Updates the listing's myPrice and flags product as pending upload.
@@ -4329,7 +4262,7 @@ function autoReprice(prod) {
   // scrape's buybox data is stale or wrong (Makro API lag). Raising to "beat"
   // it would push us above the competitor and lose the box (e.g. R33979 → R34151).
   if (listing && listing.myPrice > 0 && targetPrice > listing.myPrice) {
-    log('info', '⏭ Already winning: ' + (prod.title || prod.fsn || '').slice(0, 45) + ' — our ' + fmtR(listing.myPrice) + ' beats buybox ' + fmtR(buybox));
+    log('info', '⏭ Skipped reprice: buybox R' + roundPrice(buybox) + ' > our R' + listing.myPrice + ' — already winning');
     return;
   }
   var changed = false;
@@ -4348,15 +4281,15 @@ function autoReprice(prod) {
     // Show in scrape log
     var atFloor = targetPrice === minPrice;
     log('info',
-      '💰 Repriced: ' + (prod.title || prod.fsn || '').slice(0, 45) + ' → ' + fmtR(targetPrice) +
-      (atFloor ? ' ⚠ AT FLOOR (min ' + fmtR(minPrice) + ')' : ' (was ' + fmtR(buybox) + ', beat by R' + getAutoBeatAmount() + ')')
+      '💰 Auto-repriced: R' + roundPrice(buybox) + ' → R' + targetPrice +
+      (atFloor ? ' ⚠ AT FLOOR (min R' + minPrice + ')' : ' (beat by R' + getAutoBeatAmount() + ')')
     );
     // Update pending upload badge
     updatePendingBadge();
   } else if (listing && listing.myPrice > 0 && listing.myPrice === targetPrice && rawTarget < minPrice) {
     // Can't beat the buybox without going below the min floor — explain the skip
     // instead of staying silent (was confusing: product loses but never repriced).
-    log('info', '⏭ Can\'t beat: ' + (prod.title || prod.fsn || '').slice(0, 45) + ' — beat price ' + fmtR(rawTarget) + ' below min ' + fmtR(minPrice) + ', staying at floor ' + fmtR(targetPrice));
+    log('info', '⏭ Skipped reprice: beat price R' + rawTarget + ' below min R' + minPrice + ' — staying at floor R' + targetPrice);
   }
 }
 
@@ -8676,25 +8609,16 @@ function renderPriceLog() {
     var d = new Date(e.ts).toLocaleString();
     var sc = e.status === 'win' ? 'var(--accent)' : e.status === 'lose' ? '#ff4d6d' : 'var(--muted)';
     var si = e.status === 'win' ? '✓' : e.status === 'lose' ? '✗' : '?';
-    // Change column: pending (repriced to) vs my price — show the delta
-    var changeHtml = '—';
-    if (e.pending_price && e.my_price) {
-      var delta = Number(e.pending_price) - Number(e.my_price);
-      var dCol = delta < 0 ? '#00e5a0' : delta > 0 ? '#ff9500' : 'var(--muted)';
-      changeHtml = '<span style="color:' + dCol + ';font-family:monospace">' +
-        (delta < 0 ? '▼' : delta > 0 ? '▲' : '•') + ' ' + fmtR(Math.abs(delta)) + '</span>';
-    }
     return '<tr><td style="padding:7px 10px;color:var(--muted);white-space:nowrap;font-size:11px">' + d + '</td>' +
       '<td style="padding:7px 10px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml(e.title||'') + '">' + escHtml((e.title||e.fsn||'').slice(0,40)) + '</td>' +
       '<td style="padding:7px 10px;font-family:monospace;font-size:11px;color:#818cf8">' + escHtml(e.sku||'—') + '</td>' +
       '<td style="padding:7px 10px;color:' + sc + ';font-weight:700">' + si + ' ' + (e.status||'?').toUpperCase() + '</td>' +
-      '<td style="padding:7px 10px;font-family:monospace">' + fmtR(e.buybox_price) + '</td>' +
-      '<td style="padding:7px 10px;font-family:monospace;color:#60a5fa">' + (e.my_price ? fmtR(e.my_price) : '—') + '</td>' +
-      '<td style="padding:7px 10px;font-family:monospace;color:var(--accent3)">' + (e.pending_price ? fmtR(e.pending_price) : '—') + '</td>' +
-      '<td style="padding:7px 10px;font-family:monospace;font-size:11px">' + changeHtml + '</td>' +
+      '<td style="padding:7px 10px;font-family:monospace">R' + (e.buybox_price||0).toFixed(2) + '</td>' +
+      '<td style="padding:7px 10px;font-family:monospace;color:#60a5fa">' + (e.my_price ? 'R' + Number(e.my_price).toFixed(2) : '—') + '</td>' +
+      '<td style="padding:7px 10px;font-family:monospace;color:var(--accent3)">' + (e.pending_price ? 'R' + e.pending_price : '—') + '</td>' +
       '<td style="padding:7px 10px;color:var(--muted);font-size:11px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml((e.seller||'').slice(0,25)) + '</td></tr>';
   }).join('');
-  var hdr = ['Time','Product','SKU','Status','BuyBox','My Price','Repriced To','Change','Competitor'].map(function(h) {
+  var hdr = ['Time','Product','SKU','Status','BuyBox R','My Price','Repriced To','Competitor'].map(function(h) {
     return '<th style="padding:7px 10px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap">' + h + '</th>';
   }).join('');
   el.innerHTML = '<table style="width:100%;border-collapse:collapse">' +
@@ -8705,15 +8629,10 @@ function renderPriceLog() {
 function exportPriceLog() {
   var log = getPriceLog();
   if (!log.length) { alert('No log entries yet.'); return; }
-  var csv = 'Time,Product,SKU,Status,BuyBox Price,My Price,Repriced To,Change,Competitor\n' +
+  var csv = 'Time,Product,SKU,Status,BuyBox Price,My Price,Repriced To,Competitor\n' +
     log.map(function(e) {
-      var change = '';
-      if (e.pending_price && e.my_price) {
-        var delta = Number(e.pending_price) - Number(e.my_price);
-        change = (delta < 0 ? '-' : delta > 0 ? '+' : '') + Math.abs(delta);
-      }
       return [new Date(e.ts).toLocaleString(), e.title||'', e.sku||'', e.status||'',
-              e.buybox_price||'', e.my_price||'', e.pending_price||'', change, e.seller||'']
+              e.buybox_price||'', e.my_price||'', e.pending_price||'', e.seller||'']
         .map(function(v){ return '"' + String(v).replace(/"/g,'""') + '"'; }).join(',');
     }).join('\n');
   var a = document.createElement('a');
@@ -8771,8 +8690,8 @@ function renderAutoPushLog() {
           '<td style="padding:4px 8px;font-family:monospace;font-size:11px;color:#818cf8;white-space:nowrap">' + escHtml(c.fsn || '—') + '</td>' +
           '<td style="padding:4px 8px;font-family:monospace;font-size:11px;color:var(--muted);white-space:nowrap">' + escHtml(c.sku || '—') + '</td>' +
           '<td style="padding:4px 8px;font-size:11px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml(c.title || '') + '">' + escHtml((c.title || '').slice(0, 60)) + '</td>' +
-          '<td style="padding:4px 8px;font-family:monospace;font-size:11px;color:#ff9500;white-space:nowrap">' + fmtR(c.oldPrice) + '</td>' +
-          '<td style="padding:4px 8px;font-family:monospace;font-size:11px;color:var(--accent);white-space:nowrap">→ ' + fmtR(c.newPrice) + '</td></tr>';
+          '<td style="padding:4px 8px;font-family:monospace;font-size:11px;color:#ff9500;white-space:nowrap">R' + Number(c.oldPrice).toFixed(2) + '</td>' +
+          '<td style="padding:4px 8px;font-family:monospace;font-size:11px;color:var(--accent);white-space:nowrap">→ R' + Number(c.newPrice).toFixed(2) + '</td></tr>';
       }).join('');
       detailHtml = '<tr><td colspan="3" style="padding:2px 10px 10px 10px">' +
         '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;margin-top:4px">' +

@@ -272,11 +272,9 @@ const server = http.createServer((req, res) => {
         const existing = JSON.parse(fs.readFileSync(cookieFile, 'utf8'));
         const updated = { ...existing, ...data };
         fs.writeFileSync(cookieFile, JSON.stringify(updated, null, 2));
-        console.log('[PortalCookies] ✅ Saved fresh cookies (' + new Date().toLocaleTimeString() + ') — csrf:' + (data.csrfToken ? 'yes' : 'no') + ', cookieLen:' + (data.cookies ? data.cookies.length : 0));
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true }));
       } catch (e) {
-        console.log('[PortalCookies] ❌ Save failed: ' + e.message);
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: false, error: e.message }));
       }

@@ -320,31 +320,6 @@
     return { result: j, skuId: skuId, fsn: fsn, price: price };
   }
 
-  // ── SESSION VERIFICATION ─────────────────────────────────────────────────
-  // A logged-out portal tab still has stale tokens in localStorage.__appData
-  // and stale cookies in document.cookie — capturing them "succeeds" but saves
-  // dead auth, so every push then dies with SESSION EXPIRED. Verify the session
-  // is actually alive with one lightweight authenticated call before saving.
-  // Uses listingsDataForStates (the same proven endpoint the pull uses) with a
-  // tiny batch — a dead session makes the portal return a non-2xx (404), which
-  // napi() turns into a thrown error → verifySession resolves false.
-  function verifySession() {
-    const auth = readAppData();
-    if (!auth.csrfToken || !auth.sellerId) return Promise.resolve(false);
-    return napi('/napi/listing/listingsDataForStates', {
-      method: 'POST',
-      body: {
-        search_text: '',
-        search_filters: { internal_state: 'ACTIVE' },
-        column: {
-          sort: { column_name: 'demand_weight', sort_by: 'DESC' },
-          pagination: { batch_no: 0, batch_size: 1 }
-        }
-      }
-    }).then(function() { return true; })
-      .catch(function() { return false; });
-  }
-
   // ── MESSAGE HANDLER ───────────────────────────────────────────────────────
   chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
     if (msg.action === 'portal_refresh_session') {
@@ -356,16 +331,8 @@
         sendResponse({ ok: false, error: 'Could not capture session — reload the portal page and try again.' });
         return;
       }
-      // Only save cookies if the session is actually alive — a logged-out tab
-      // would otherwise save dead auth and every push would hit SESSION EXPIRED.
-      verifySession().then(function(alive) {
-        if (!alive) {
-          sendResponse({ ok: false, error: 'portal_session_expired — log into seller.makro.co.za and try again.' });
-          return;
-        }
-        sendResponse({ ok: true, csrfToken: auth.csrfToken, sellerId: auth.sellerId, locationId: auth.locationId, cookies: cookies });
-      });
-      return true; // async
+      sendResponse({ ok: true, csrfToken: auth.csrfToken, sellerId: auth.sellerId, locationId: auth.locationId, cookies: cookies });
+      return;
     }
 
     if (msg.action === 'portal_get_orders') {
