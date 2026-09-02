@@ -320,6 +320,19 @@
     return { result: j, skuId: skuId, fsn: fsn, price: price };
   }
 
+  // ── SESSION VERIFICATION ─────────────────────────────────────────────────
+  // A logged-out portal tab still has stale tokens in localStorage.__appData
+  // and stale cookies in document.cookie — capturing them "succeeds" but saves
+  // dead auth, so every push then dies with SESSION EXPIRED. Verify the session
+  // is actually alive with one lightweight authenticated call before saving.
+  function verifySession() {
+    const auth = readAppData();
+    if (!auth.csrfToken || !auth.sellerId) return Promise.resolve(false);
+    return napi('/napi/my-orders/state-counts?state=seller_easyship&serviceProfile=seller-fulfilled&sellerId=' + auth.sellerId)
+      .then(function() { return true; })
+      .catch(function() { return false; });
+  }
+
   // ── MESSAGE HANDLER ───────────────────────────────────────────────────────
   chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
     if (msg.action === 'portal_refresh_session') {
@@ -331,8 +344,16 @@
         sendResponse({ ok: false, error: 'Could not capture session — reload the portal page and try again.' });
         return;
       }
-      sendResponse({ ok: true, csrfToken: auth.csrfToken, sellerId: auth.sellerId, locationId: auth.locationId, cookies: cookies });
-      return;
+      // Only save cookies if the session is actually alive — a logged-out tab
+      // would otherwise save dead auth and every push would hit SESSION EXPIRED.
+      verifySession().then(function(alive) {
+        if (!alive) {
+          sendResponse({ ok: false, error: 'portal_session_expired — log into seller.makro.co.za and try again.' });
+          return;
+        }
+        sendResponse({ ok: true, csrfToken: auth.csrfToken, sellerId: auth.sellerId, locationId: auth.locationId, cookies: cookies });
+      });
+      return true; // async
     }
 
     if (msg.action === 'portal_get_orders') {

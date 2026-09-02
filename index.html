@@ -2296,6 +2296,8 @@ window.addEventListener('message', function(ev) {
       log('error', '❌ Portal session refresh failed: ' + (d.error || 'unknown error'));
       if (d.error === 'no_portal_tab') {
         log('info', '👉 Open https://seller.makro.co.za in a tab and log in, then click Refresh Portal Session again');
+      } else if (d.error && d.error.indexOf('portal_session_expired') === 0) {
+        log('info', '👉 The portal tab is logged out — log into seller.makro.co.za, then click Refresh Portal Session again');
       }
     }
     if (window._refreshSessionResolve) {
@@ -3164,6 +3166,7 @@ function refreshPortalSession(silent) {
     window._refreshSessionTimer = setTimeout(function() {
       if (btn && !silent) { btn.disabled = false; btn.textContent = '🔄 Refresh Portal Session'; }
       if (!silent) log('error', '❌ No response from extension — reload the extension (chrome://extensions → reload Makro BuyBox Pro) and try again');
+      else log('warn', '⚠ Auto session refresh timed out (extension offline / no portal tab) — pushing with existing cookies; may hit SESSION EXPIRED');
       resolve(false);
     }, silent ? 8000 : 15000);
     try {
@@ -4006,9 +4009,11 @@ function maybeAutoPushPrices() {
     // from the logged-in seller tab and save them to the server, so the push
     // below never hits SESSION EXPIRED. Waits up to 8s, then pushes anyway.
     log('info', '🔄 Auto-refreshing portal session before push...');
-    refreshPortalSession(true).then(function() {
+    refreshPortalSession(true).then(function(ok) {
+      if (!ok) addAutoPushLogEntry({ level: 'warn', msg: '⚠ Auto session refresh failed — pushing with existing cookies; may hit SESSION EXPIRED' });
       doPush(withSku);
     }).catch(function() {
+      addAutoPushLogEntry({ level: 'warn', msg: '⚠ Auto session refresh failed — pushing with existing cookies; may hit SESSION EXPIRED' });
       doPush(withSku);
     });
   } catch(e) {
