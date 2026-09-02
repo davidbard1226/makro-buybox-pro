@@ -1140,6 +1140,20 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
             </div>
 
             <div class="config-field">
+              <label>🎯 Watchlist by Seller</label>
+              <div style="display:flex;gap:4px;margin-bottom:6px">
+                <select class="config-input" id="sellerWatchlistSelect" style="flex:1" onchange="updateSellerWatchlistCount()"></select>
+              </div>
+              <div id="sellerWatchlistCount" style="font-size:10px;color:var(--muted);margin-bottom:6px"></div>
+              <button class="action-btn" onclick="addSellerWatchlist()" style="white-space:nowrap">➕ Add All to Watchlist</button>
+              <div style="font-size:10px;color:var(--muted);line-height:1.5;margin-top:4px">
+                Pick a seller from the list (shows how many products they currently win the buybox on), then click
+                <b style="color:var(--text)">Add All to Watchlist</b> to batch-add every product that seller is winning.
+                Great for focusing on a competitor that changes prices often, instead of watching all 100+ products.
+              </div>
+            </div>
+
+            <div class="config-field">
               <label>✈️ Telegram Alerts</label>
               <input class="config-input" id="tgBotToken" placeholder="Bot Token — from @BotFather" style="margin-bottom:6px"
                 oninput="saveTgSettings()" onchange="saveTgSettings()">
@@ -7044,6 +7058,7 @@ document.addEventListener('scroll', function() {
 
   // Load 10-min watchlist
   renderWatchlist();
+  populateSellerWatchlist();
 
   // Load saved seller name
   const savedSeller = localStorage.getItem(SELLER_KEY);
@@ -9707,9 +9722,68 @@ function removeFromWatchlist(idx) {
   renderWatchlist();
   applyAutoScrape();
 }
+
+// ── WATCHLIST BY SELLER ───────────────────────────────────────────────────
+// Populate the seller dropdown with every seller currently winning the buybox
+// (from state.products), showing how many products each wins. Lets the user
+// batch-add all products a chosen seller is winning to the 10-min watchlist.
+function populateSellerWatchlist() {
+  var sel = document.getElementById('sellerWatchlistSelect');
+  if (!sel) return;
+  var prev = sel.value;
+  var sellers = {};
+  state.products.forEach(function(p) {
+    var s = (p.seller || '').trim();
+    if (s && s !== 'Unknown Seller') sellers[s] = (sellers[s] || 0) + 1;
+  });
+  var names = Object.keys(sellers).sort(function(a,b){ return a.toLowerCase().localeCompare(b.toLowerCase()); });
+  var html = '<option value="">— Select a seller —</option>';
+  names.forEach(function(s) {
+    html += '<option value="' + escHtml(s) + '">' + escHtml(s) + ' (' + sellers[s] + ')</option>';
+  });
+  sel.innerHTML = html;
+  if (prev && sellers[prev]) sel.value = prev;
+  updateSellerWatchlistCount();
+}
+
+function updateSellerWatchlistCount() {
+  var sel = document.getElementById('sellerWatchlistSelect');
+  var el = document.getElementById('sellerWatchlistCount');
+  if (!sel || !el) return;
+  var seller = (sel.value || '').trim();
+  if (!seller) { el.textContent = ''; return; }
+  var count = state.products.filter(function(p) {
+    return (p.seller || '').trim().toLowerCase() === seller.toLowerCase();
+  }).length;
+  el.textContent = count + ' product(s) where ' + seller + ' currently wins the buybox.';
+}
+
+function addSellerWatchlist() {
+  var sel = document.getElementById('sellerWatchlistSelect');
+  if (!sel) return;
+  var seller = (sel.value || '').trim();
+  if (!seller) { alert('Pick a seller from the dropdown first.'); return; }
+  var matches = state.products.filter(function(p) {
+    return (p.seller || '').trim().toLowerCase() === seller.toLowerCase();
+  });
+  if (!matches.length) { alert('No products found for ' + seller + '.'); return; }
+
+  var added = 0, skipped = 0;
+  matches.forEach(function(p) {
+    var url = p.url || ('https://www.makro.co.za/search?q=' + encodeURIComponent(p.fsn || ''));
+    if (!url) { skipped++; return; }
+    if (addToWatchlist(url, p.fsn, p.title)) added++; else skipped++;
+  });
+  log('info', '🎯 Added ' + added + ' product(s) where ' + seller + ' wins buybox to watchlist' +
+    (skipped > 0 ? ' (' + skipped + ' already in list)' : '') + '.');
+  renderWatchlist();
+  applyAutoScrape();
+}
+
 function renderWatchlist() {
   var el = document.getElementById('watchlistList');
   if (!el) return;
+  populateSellerWatchlist();
   var list = getWatchlist();
   if (!list.length) {
     el.innerHTML = '<div style="font-size:10px;color:var(--muted)">Watchlist empty — paste a product URL above or click ⭐ on any product row.</div>';
