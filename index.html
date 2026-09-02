@@ -1154,6 +1154,27 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
             </div>
 
             <div class="config-field">
+              <label>⚡ Fast Track (1–5 min)</label>
+              <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+                <label style="font-size:12px;color:var(--text)">Interval:</label>
+                <select id="fastTrackInterval" onchange="saveFastTrackInterval()" style="background:var(--card);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:12px">
+                  <option value="1">Every 1 min</option>
+                  <option value="2" selected>Every 2 min</option>
+                  <option value="3">Every 3 min</option>
+                  <option value="4">Every 4 min</option>
+                  <option value="5">Every 5 min</option>
+                </select>
+              </div>
+              <div id="fastTrackStatus" style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.6"></div>
+              <div style="font-size:10px;color:var(--muted);line-height:1.5">
+                Click the <b style="color:var(--text)">⚡</b> button on any product row to fast-track it. Fast-tracked
+                products are scraped every <b style="color:var(--text)">1–5 min</b> (above) so you react instantly when
+                an active competitor changes price. All other products keep the normal schedule. Keep it to
+                <b style="color:var(--text)">10–20 products</b> to avoid hitting Makro too hard.
+              </div>
+            </div>
+
+            <div class="config-field">
               <label>✈️ Telegram Alerts</label>
               <input class="config-input" id="tgBotToken" placeholder="Bot Token — from @BotFather" style="margin-bottom:6px"
                 oninput="saveTgSettings()" onchange="saveTgSettings()">
@@ -4954,6 +4975,7 @@ function renderProducts() {
       <td style="font-size:10px;color:var(--muted);white-space:nowrap">${t}</td>
       <td style="display:flex;gap:2px;white-space:nowrap">
         <button class="action-btn" style="font-size:10px;padding:1px 3px;${inWatchlist(p) ? 'color:#ffd60a;border-color:#ffd60a66' : ''}" onclick="toggleWatchlistFromProduct(${realIdx})" title="${inWatchlist(p) ? 'Remove from 10-min watchlist' : 'Add to 10-min watchlist'}">⭐</button>
+        <button class="action-btn" style="font-size:10px;padding:1px 3px;${inFastTrack(p) ? 'color:#00e5a0;border-color:#00e5a066' : ''}" onclick="toggleFastTrackFromProduct(${realIdx})" title="${inFastTrack(p) ? 'Remove from fast track (1-5 min)' : 'Add to fast track (1-5 min)'}">⚡</button>
         <button class="action-btn" style="font-size:10px;padding:1px 3px" onclick="openPushModal(${realIdx})" title="Push new price to seller portal">🚀</button>
         <button class="action-btn" style="font-size:10px;padding:1px 3px" onclick="syncCostForProduct(${realIdx})" title="Sync cost price from supplier sheets (by SKU)">💲</button>
         <button class="action-btn" style="font-size:10px;padding:1px 3px" onclick="showHistory(${realIdx})" title="Price history">📈</button>
@@ -7059,6 +7081,15 @@ document.addEventListener('scroll', function() {
   // Load 10-min watchlist
   renderWatchlist();
   populateSellerWatchlist();
+
+  // Load ⚡ Fast Track (interval + status + start timer)
+  var ftSel = document.getElementById('fastTrackInterval');
+  if (ftSel) {
+    var savedFt = localStorage.getItem('bbp_fasttrack_interval');
+    if (savedFt && ['1','2','3','4','5'].indexOf(savedFt) !== -1) ftSel.value = savedFt;
+  }
+  updateFastTrackStatus();
+  applyFastTrack();
 
   // Load saved seller name
   const savedSeller = localStorage.getItem(SELLER_KEY);
@@ -9832,6 +9863,107 @@ function toggleWatchlistFromProduct(idx) {
   }
 }
 
+// ── ⚡ FAST TRACK (1–5 min) ────────────────────────────────────────────────
+// Fast-tracked products are scraped on a separate aggressive timer (1–5 min)
+// so the user can react instantly when an active competitor changes price.
+// bbp_fasttrack = JSON array of { url, fsn, name }. Fast-track products are
+// excluded from the normal auto-scrape queue to avoid double-scraping.
+function getFastTrack() {
+  try { return JSON.parse(localStorage.getItem('bbp_fasttrack') || '[]'); } catch(e) { return []; }
+}
+function saveFastTrack(list) {
+  localStorage.setItem('bbp_fasttrack', JSON.stringify(list));
+}
+function fastTrackActive() {
+  return getFastTrack().length > 0;
+}
+function fastTrackUrls() {
+  var seen = {};
+  return getFastTrack().map(function(w){ return (w.url || '').trim(); })
+    .filter(function(u){ return u && !seen[u] && (seen[u] = 1); });
+}
+function inFastTrack(p) {
+  var list = getFastTrack();
+  if (!list.length) return false;
+  return list.some(function(w) {
+    if (p.fsn && w.fsn && (p.fsn === w.fsn || p.fsn.indexOf(w.fsn) === 0 || w.fsn.indexOf(p.fsn) === 0)) return true;
+    if (p.url && w.url && (p.url === w.url || p.url.indexOf(w.url) === 0 || w.url.indexOf(p.url) === 0)) return true;
+    return false;
+  });
+}
+function isFastTrackProduct(p) {
+  if (!fastTrackActive()) return false;
+  return inFastTrack(p);
+}
+function addToFastTrack(url, fsn, name) {
+  var clean = (url || '').trim();
+  if (!clean) return false;
+  var list = getFastTrack();
+  var dup = list.some(function(w) {
+    return (clean && w.url && (w.url === clean || w.url.indexOf(clean) === 0 || clean.indexOf(w.url) === 0)) ||
+           (fsn && w.fsn && (w.fsn === fsn || w.fsn.indexOf(fsn) === 0 || fsn.indexOf(w.fsn) === 0));
+  });
+  if (dup) return false;
+  list.push({ url: clean, fsn: (fsn || '').trim(), name: (name || '').trim() });
+  saveFastTrack(list);
+  updateFastTrackStatus();
+  applyFastTrack();
+  return true;
+}
+function removeFromFastTrack(idx) {
+  var list = getFastTrack();
+  if (idx >= 0 && idx < list.length) list.splice(idx, 1);
+  saveFastTrack(list);
+  updateFastTrackStatus();
+  applyFastTrack();
+}
+function toggleFastTrackFromProduct(idx) {
+  var p = state.products[idx];
+  if (!p) return;
+  if (inFastTrack(p)) {
+    var list = getFastTrack();
+    var i = list.findIndex(function(w) {
+      return (p.fsn && w.fsn && (p.fsn === w.fsn || p.fsn.indexOf(w.fsn) === 0 || w.fsn.indexOf(p.fsn) === 0)) ||
+             (p.url && w.url && (p.url === w.url || p.url.indexOf(w.url) === 0 || w.url.indexOf(p.url) === 0));
+    });
+    removeFromFastTrack(i);
+    log('info', '⚡ Removed from fast track: ' + (p.title || p.fsn || p.url));
+  } else {
+    var count = getFastTrack().length;
+    if (count >= 25) {
+      alert('You have ' + count + ' products on fast track. Scraping more than ~25 every 1–5 min can trigger Makro bot protection and get you blocked. Remove some first.');
+      return;
+    }
+    addToFastTrack(p.url, p.fsn, p.title);
+    log('info', '⚡ Added to fast track (1–5 min): ' + (p.title || p.fsn || p.url));
+  }
+}
+function getFastTrackInterval() {
+  var sel = document.getElementById('fastTrackInterval');
+  var v = parseInt(sel ? sel.value : 2);
+  if (isNaN(v) || v < 1) v = 2;
+  if (v > 5) v = 5;
+  return v;
+}
+function saveFastTrackInterval() {
+  var v = getFastTrackInterval();
+  localStorage.setItem('bbp_fasttrack_interval', v.toString());
+  updateFastTrackStatus();
+  applyFastTrack();
+}
+function updateFastTrackStatus() {
+  var el = document.getElementById('fastTrackStatus');
+  if (!el) return;
+  var list = getFastTrack();
+  var mins = getFastTrackInterval();
+  if (!list.length) {
+    el.innerHTML = '<span style="color:var(--muted)">No products on fast track. Click ⚡ on a product row to add it.</span>';
+    return;
+  }
+  var warn = list.length > 25 ? ' <span style="color:#ff4d6d">⚠ ' + list.length + ' is a lot — risk of bot-blocking.</span>' : '';
+  el.innerHTML = '<span style="color:var(--accent)">⚡ ' + list.length + ' product(s) on fast track — scraped every ' + mins + ' min</span>' + warn;
+}
+
 
 // Save auto beat amount setting
 function saveAutoBeatAmount() {
@@ -10031,6 +10163,14 @@ function buildAutoScrapeQueue() {
     urls = losses.concat(unknown).concat(wins).map(function(p){ return p.url; });
   }
 
+  // Exclude fast-track products from the normal queue — they're scraped by the
+  // separate fast-track timer (1–5 min) so they're never double-scraped.
+  var ft = getFastTrack();
+  if (ft.length) {
+    var ftUrls = fastTrackUrls();
+    urls = urls.filter(function(u){ return ftUrls.indexOf(u) === -1; });
+  }
+
   return urls.filter(function(u, i, a){ return u && a.indexOf(u) === i; }); // dedupe
 }
 
@@ -10167,6 +10307,50 @@ function applyAutoScrape() {
     nextRun = Date.now() + mins * 60000;
     showStatus(nextRun);
   }, mins * 60000);
+}
+
+// ── ⚡ FAST TRACK TIMER ────────────────────────────────────────────────────
+// Separate aggressive timer (1–5 min) that scrapes ONLY the fast-tracked
+// products. Runs independently of the normal auto-scrape schedule so the user
+// can react instantly when an active competitor changes price. Fast-track
+// products are excluded from the normal queue (see buildAutoScrapeQueue).
+var _fastTrackTimer = null;
+function applyFastTrack() {
+  if (_fastTrackTimer) { clearInterval(_fastTrackTimer); _fastTrackTimer = null; }
+  var list = getFastTrack();
+  if (!list.length) return; // nothing fast-tracked — no timer needed
+
+  var mins = getFastTrackInterval();
+  var ftUrls = fastTrackUrls();
+
+  function runFastTrack() {
+    // Don't run if a scrape cycle is already in progress (either normal or fast-track)
+    if (state.scraping) {
+      log('info', '⚡ Fast-track tick skipped — a scrape cycle is already running.');
+      return;
+    }
+    if (!state.extReady) {
+      log('info', '⚡ Fast-track skipped — extension offline.');
+      return;
+    }
+    var urls = fastTrackUrls();
+    if (!urls.length) return;
+    log('info', '⚡ Fast-track scrape — ' + urls.length + ' product(s) every ' + mins + ' min.');
+    document.getElementById('urlInput').value = urls.join('\n');
+    var concurrency = parseInt(localStorage.getItem('scrape_parallel') || (document.getElementById('scrapeParallel')||{}).value || '5');
+    window.postMessage({ type: 'START_QUEUE', urls: urls, concurrency: concurrency }, '*');
+    scrapeQueue = urls; scrapeIdx = 0; state.scraping = true;
+    _autoPushFired = false; // allow one auto-push at the end of this fast-track cycle
+    _chaseFired = false;
+    _chaseRound = 0;
+    document.getElementById('progressSection').style.display = 'block';
+    updateProgress(0, urls.length);
+    switchTab('scraper');
+  }
+
+  // Run once immediately if there are fast-track products, then on the interval
+  runFastTrack();
+  _fastTrackTimer = setInterval(runFastTrack, mins * 60000);
 }
 
 function openPortalUpload() {
