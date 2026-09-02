@@ -228,6 +228,10 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
   // ── REFRESH PORTAL SESSION (dashboard button) ───────────────────────────
   // Capture fresh cookies + CSRF from the logged-in seller tab and POST them
   // to the local server so /api/push-price keeps working after session expiry.
+  // Robust version: reads ALL cookies (incl. HttpOnly connect.sid) directly via
+  // chrome.cookies.getAll, and pulls the CSRF token from the page's
+  // localStorage.__appData via executeScript. Does NOT depend on the content
+  // script's document.cookie (which can't see HttpOnly cookies).
   if (msg.action === 'portal_refresh_session') {
     chrome.tabs.query({}, function(tabs) {
       var portalTab = null;
@@ -242,38 +246,40 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
         sendResponse({ ok: false, error: 'no_portal_tab' });
         return;
       }
-      chrome.tabs.sendMessage(portalTab.id, { action: 'portal_refresh_session' }, function(resp) {
-        if (chrome.runtime.lastError) {
-          // Content script not injected — inject portal_api.js on demand, retry once
-          injectPortalApi(portalTab.id, function(ok) {
-            if (!ok) { sendResponse({ ok: false, error: 'portal_not_ready' }); return; }
-            chrome.tabs.sendMessage(portalTab.id, { action: 'portal_refresh_session' }, function(resp2) {
-              if (chrome.runtime.lastError) { sendResponse({ ok: false, error: 'portal_not_ready' }); return; }
-              finishRefresh(resp2);
-            });
-          });
+      // Read ALL cookies for the portal domain — including HttpOnly ones
+      // (connect.sid etc.) that document.cookie cannot see.
+      chrome.cookies.getAll({ domain: 'seller.makro.co.za' }, function(cookies) {
+        var cookieStr = (cookies || []).map(function(c) {
+          return c.name + '=' + c.value;
+        }).join('; ');
+        if (!cookieStr) {
+          sendResponse({ ok: false, error: 'no_cookies — log into seller.makro.co.za first' });
           return;
         }
-        finishRefresh(resp);
-      });
-
-      function finishRefresh(resp) {
-        if (!resp || !resp.ok) {
-          sendResponse({ ok: false, error: (resp && resp.error) || 'portal_not_ready' });
-          return;
-        }
-        // Read ALL cookies for the portal domain — including HttpOnly ones
-        // (connect.sid etc.) that document.cookie cannot see. Without them the
-        // portal treats the request as logged-out and redirects to login.
-        chrome.cookies.getAll({ domain: 'seller.makro.co.za' }, function(cookies) {
-          var cookieStr = (cookies || []).map(function(c) {
-            return c.name + '=' + c.value;
-          }).join('; ');
+        // Pull CSRF + sellerId + locationId from the page's localStorage.__appData
+        chrome.scripting.executeScript({
+          target: { tabId: portalTab.id },
+          func: function() {
+            try {
+              var d = JSON.parse(localStorage.getItem('__appData') || '{}');
+              return {
+                csrfToken: (d.sellerConfig && d.sellerConfig.csrfToken) || '',
+                sellerId: (d.sellerConfig && d.sellerConfig.sellerId) || '',
+                locationId: d['X-LOCATION-ID'] || ''
+              };
+            } catch(e) { return { csrfToken: '', sellerId: '', locationId: '' }; }
+          }
+        }, function(results) {
+          var auth = (results && results[0] && results[0].result) || {};
+          if (!auth.csrfToken) {
+            sendResponse({ ok: false, error: 'no_csrf — reload the portal page and log in' });
+            return;
+          }
           // POST captured auth to the local server
           var payload = JSON.stringify({
-            csrfToken: resp.csrfToken || '',
-            sellerId: resp.sellerId || '',
-            locationId: resp.locationId || '',
+            csrfToken: auth.csrfToken,
+            sellerId: auth.sellerId,
+            locationId: auth.locationId,
             cookies: cookieStr
           });
           var req = new XMLHttpRequest();
@@ -292,7 +298,7 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
           };
           req.send(payload);
         });
-      }
+      });
     });
     return true; // async
   }
