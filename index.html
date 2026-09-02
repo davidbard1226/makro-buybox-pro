@@ -881,6 +881,7 @@
             <input type="file" id="listingsFileInput" accept=".xls,.xlsx,.csv" style="display:none" onchange="importListings(this)">
           </label>
           <button class="btn-secondary" id="pullListingsBtn" style="width:auto;padding:8px 16px;color:#00e5a0;border-color:rgba(0,229,160,0.3)" onclick="pullPortalListings()" title="Pull your live listings (price, stock, status) straight from the Makro Seller Portal — no S_listing export needed. Requires extension + logged-in portal tab.">🔄 Pull Live Listings</button>
+          <button class="btn-secondary" id="addAllListingsBtn" style="width:auto;padding:8px 16px;color:#00e5a0;border-color:rgba(0,229,160,0.3)" onclick="addAllListingsToProducts()" title="Create a dashboard product for every live portal listing not yet tracked (uses the last Pull Live Listings data). Adds FSN + SKU + working URL so you can track all products.">➕ Add All to Products</button>
           <button class="btn-secondary" style="width:auto;padding:8px 16px;color:#ff9500;border-color:rgba(255,149,0,0.4)" onclick="openListOnMakroModal()" title="Create a NEW listing on the Makro catalog for a product you don't yet sell (latch-on). WRITES to the live portal — test on one product first.">🚀 List on Makro</button>
           <label class="btn-secondary" style="width:auto;padding:8px 16px;cursor:pointer;color:#60a5fd;border-color:rgba(96,165,250,0.4)" title="Import products from Wherehouse multi-channel CSV export">
             📦 Import Multi-Channel Products
@@ -2936,6 +2937,62 @@ function applyListingsData(listings, counts) {
     (skuCount > 0 ? ', matched ' + skuCount + ' SKU(s)' : '') +
     (basePriceFixed > 0 ? ', auto-raised ' + basePriceFixed + ' Base Price(s) to Max Price' : '') + '.';
   showImportBanner(msg, '#00e5a0');
+}
+
+// ── Add every pulled listing as a tracked product (FSN + SKU + URL) ──
+// Reads the saved makro_listings (from the last Pull Live Listings) and creates
+// a dashboard product for each listing that isn't already tracked. Matching uses
+// the same convention as applyListingsData: exact FSN first, then 15-char prefix.
+function addAllListingsToProducts() {
+  var raw = localStorage.getItem('makro_listings');
+  if (!raw) {
+    alert('No pulled listings found.\n\nClick 🔄 Pull Live Listings first (requires extension + logged-in portal tab).');
+    return;
+  }
+  var listings;
+  try { listings = JSON.parse(raw); } catch (e) { listings = []; }
+  if (!listings || !listings.length) {
+    alert('No pulled listings found.\n\nClick 🔄 Pull Live Listings first (requires extension + logged-in portal tab).');
+    return;
+  }
+
+  // Existing FSN set (exact + 15-char prefix, same as applyListingsData)
+  var seen = {};
+  state.products.forEach(function(p) {
+    if (p.fsn) {
+      seen[p.fsn] = true;
+      seen[p.fsn.slice(0, 15)] = true;
+    }
+  });
+
+  var added = 0, skipped = 0;
+  listings.forEach(function(l) {
+    if (!l.fsn) return;
+    if (seen[l.fsn] || seen[l.fsn.slice(0, 15)]) { skipped++; return; }
+    // Same stub shape as addProductFromSearch, but pre-filled with FSN/SKU/title
+    // and a working URL: makro search by FSN redirects to the product page.
+    var stub = {
+      url: 'https://www.makro.co.za/search?q=' + encodeURIComponent(l.fsn),
+      fsn: l.fsn,
+      sku: l.sku || '',
+      title: l.title || l.fsn,
+      buybox_price: 0, seller: '', status: 'unknown',
+      lastChecked: null, history: []
+    };
+    state.products.push(stub);
+    seen[l.fsn] = true;
+    seen[l.fsn.slice(0, 15)] = true;
+    added++;
+  });
+
+  if (added > 0) {
+    saveProducts();
+    renderProducts();
+    renderDashboard();
+    updateProductCount();
+  }
+  showImportBanner('➕ Added ' + added + ' product(s) from live listings' +
+    (skipped > 0 ? ' (' + skipped + ' already tracked)' : '') + '.', '#00e5a0');
 }
 
 // Re-stamp SKUs onto products from the saved listings on every load — so a
