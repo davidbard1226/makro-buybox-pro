@@ -3536,9 +3536,20 @@ function importPricesFromSheet(input) {
       }
 
       // Apply updates
-      var priceUpdated = 0, stockUpdated = 0, costUpdated = 0;
+      var priceUpdated = 0, stockUpdated = 0, costUpdated = 0, raiseBlocked = 0;
       updates.forEach(function(u) {
         if (u.newPrice > 0) {
+          // ── NEVER-RAISE GUARD on XLS import ─────────────────────────────
+          // The S_listing XLS carries the CURRENT portal price, which can be
+          // HIGHER than what we're tracking. Setting it as pending would push a
+          // RAISE at the next auto-push and flip us WIN→LOSE. Refuse raises
+          // unless the explicit "raise wins" opt-in is on.
+          var impListing = findListingByFsn(u.product.fsn);
+          var impCur = impListing && impListing.myPrice > 0 ? impListing.myPrice : (u.oldPrice || 0);
+          if (impCur > 0 && u.newPrice > impCur && localStorage.getItem('bbp_raise_wins') !== '1') {
+            raiseBlocked++;
+            return;
+          }
           u.product.pending_price = u.newPrice;
           u.product.pending_updated = new Date().toISOString();
           priceUpdated++;
@@ -3561,6 +3572,7 @@ function importPricesFromSheet(input) {
       // Build result message
       var msg = '✅ Imported ' + updates.length + ' price updates from sheet!';
       if (priceUpdated) msg += '<br>📊 ' + priceUpdated + ' prices set as pending';
+      if (raiseBlocked) msg += '<br><span style="color:#ff9500">⛔ ' + raiseBlocked + ' price(s) REFUSED (would RAISE above current — would lose buybox)</span>';
       if (stockUpdated) msg += '<br>📦 ' + stockUpdated + ' stock levels updated';
       if (costUpdated) msg += '<br>💰 ' + costUpdated + ' cost prices updated';
       if (notFound > 0) msg += '<br><span style="color:#ff9500">⚠ ' + notFound + ' rows — no matching product found</span>';
@@ -4096,13 +4108,19 @@ function doPush(withSku) {
       // current listing price, that is a RAISE — and a raise is what flips us
       // WIN→LOSE (we go above the competitor). Refuse it unless the explicit
       // "raise wins" opt-in is on. Drops (beating the buybox) are always allowed.
+      // Also refuse any price ABOVE the buybox — pushing above the buybox is
+      // never a "beat", it's a guaranteed loss.
       var curListing = findListingByFsn(p.fsn);
-      if (curListing && curListing.myPrice > 0 && newPrice > curListing.myPrice &&
-          localStorage.getItem('bbp_raise_wins') !== '1') {
+      var curPrice = curListing && curListing.myPrice > 0 ? curListing.myPrice : 0;
+      var buyboxNow = p.buybox_price > 0 ? p.buybox_price : 0;
+      var isRaise = curPrice > 0 && newPrice > curPrice;
+      var aboveBuybox = buyboxNow > 0 && newPrice > buyboxNow;
+      if ((isRaise || aboveBuybox) && localStorage.getItem('bbp_raise_wins') !== '1') {
         log('error', '  ⛔ [' + idx + '/' + withSku.length + '] ' + (p.title || p.fsn).substring(0, 40) +
-            ' — REFUSED to RAISE R' + curListing.myPrice + ' → R' + newPrice + ' (would lose buybox)');
+            ' — REFUSED to RAISE R' + (curPrice || '?') + ' → R' + newPrice +
+            (aboveBuybox ? ' (above buybox R' + buyboxNow + ')' : '') + ' (would lose buybox)');
         failed++;
-        errors.push(p.fsn + ': refused raise R' + curListing.myPrice + '→R' + newPrice);
+        errors.push(p.fsn + ': refused raise R' + (curPrice || '?') + '→R' + newPrice);
         setTimeout(pushNext, 600);
         return;
       }
@@ -4387,6 +4405,17 @@ function autoReprice(prod) {
   // it would push us above the competitor and lose the box (e.g. R33979 → R34151).
   if (listing && listing.myPrice > 0 && targetPrice > listing.myPrice) {
     log('info', '⏭ Skipped reprice: buybox R' + roundPrice(buybox) + ' > our R' + listing.myPrice + ' — already winning');
+    // Clear any stale pending_price left over from a prior XLS import or scrape.
+    // Otherwise a leftover raise (e.g. R30450 → R30478 from an old import) would
+    // still get pushed at cycle end and flip us WIN→LOSE.
+    if (prod.pending_price != null) {
+      var stalePending = prod.pending_price;
+      prod.pending_price = null;
+      prod.pending_updated = null;
+      saveProducts();
+      updatePendingBadge();
+      log('info', '🧹 Cleared stale pending price R' + stalePending + ' for ' + String(prod.title || prod.fsn || '').slice(0, 35));
+    }
     return;
   }
   var changed = false;
