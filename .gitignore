@@ -2,3 +2,4 @@
 .browser-profile-test/
 node_modules/
 *.log
+portal-cookies.json
