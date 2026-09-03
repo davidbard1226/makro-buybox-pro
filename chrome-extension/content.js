@@ -188,8 +188,17 @@
           // same product, which made the tool miss lowering opportunities.)
           var winner = sellers[0];
           console.log('[BuyBox v5] API override:', winner.seller, 'R' + winner.price, 'selected:', winner.selected);
-          data.buyBoxPrice = winner.price;
+          // Use the seller NAME from the API (for win/lose detection), but keep
+          // the LOWEST price between the API and the DOM. The API's finalPrice
+          // can be the RRP (e.g. R40000) instead of the real selling price
+          // (e.g. R33959, "15% off"); the DOM lowest price is the true selling
+          // price, so we never let the API push the buybox UP to the RRP.
           data.buyBoxSeller = winner.seller;
+          if (data.buyBoxPrice > 0 && winner.price > 0) {
+            data.buyBoxPrice = Math.min(data.buyBoxPrice, winner.price);
+          } else if (winner.price > 0) {
+            data.buyBoxPrice = winner.price;
+          }
           data.hasBuyBox = true;
           data.sellers = sellers;
           data.sellersCount = sellers.length;
@@ -293,27 +302,28 @@
       if (h1) data.title = h1.innerText.trim();
       if (!data.title) data.title = document.title.replace(/\s*[-|].*$/,'').trim();
 
-      // ── PRICE: use exact user selector first ─────────────────────────────
-      // Full path ends at: div.Xaaq-1._16Jk6d
+      // ── PRICE: always take the LOWEST price on the page ─────────────────
+      // The RRP (list price, e.g. R40000) is always HIGHER than the real
+      // selling price (e.g. R33959, "15% off"). The buybox is the lowest price,
+      // so we must use the minimum of ALL price-like elements — never trust a
+      // single selector that might grab the RRP instead of the selling price.
+      const candidates = [];
+      // Exact selector (may hold the selling price OR the RRP — include it)
       const exactEl = document.querySelector('div.Xaaq-1._16Jk6d');
       if (exactEl) {
         const p = extractPrice(exactEl.innerText);
-        if (p) data.buyBoxPrice = p;
+        if (p && p > 10) candidates.push(p);
       }
-
-      // Fallback: scan all price-looking elements, take the LOWEST that looks like a real price
-      if (!data.buyBoxPrice) {
-        const candidates = [];
-        document.querySelectorAll('[class*="Xaaq"],[class*="price"],[class*="Price"],[class*="amount"],[class*="cost"],[class*="dyC4"],[class*="CEmi"]').forEach(el => {
-          if (el.children.length > 2) return;
-          const txt = (el.innerText || '').trim();
-          // Only try lines that contain "R" or look like a rand amount
-          if (!/R\s*[\d,. ]+/i.test(txt)) return;
-          const p = extractPrice(txt);
-          if (p && p > 10) candidates.push(p); // ignore implausibly small values
-        });
-        if (candidates.length) data.buyBoxPrice = Math.min(...candidates);
-      }
+      // Scan all price-looking elements, collect every plausible price
+      document.querySelectorAll('[class*="Xaaq"],[class*="price"],[class*="Price"],[class*="amount"],[class*="cost"],[class*="dyC4"],[class*="CEmi"]').forEach(el => {
+        if (el.children.length > 2) return;
+        const txt = (el.innerText || '').trim();
+        // Only try lines that contain "R" or look like a rand amount
+        if (!/R\s*[\d,. ]+/i.test(txt)) return;
+        const p = extractPrice(txt);
+        if (p && p > 10) candidates.push(p); // ignore implausibly small values
+      });
+      if (candidates.length) data.buyBoxPrice = Math.min(...candidates);
 
       // ── SELLER ────────────────────────────────────────────────────────────
       const seller = extractSeller();
