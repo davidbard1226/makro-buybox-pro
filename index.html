@@ -4090,6 +4090,23 @@ function doPush(withSku) {
       var newPrice = p.pending_price || p.new_price || p.buybox_price;
       idx++;
 
+      // ── NEVER-RAISE GUARD (final choke point) ─────────────────────────────
+      // Every price push flows through here (autoReprice, XLS import, win-at-loss,
+      // fast-track, chase). If the price we're about to push is HIGHER than our
+      // current listing price, that is a RAISE — and a raise is what flips us
+      // WIN→LOSE (we go above the competitor). Refuse it unless the explicit
+      // "raise wins" opt-in is on. Drops (beating the buybox) are always allowed.
+      var curListing = findListingByFsn(p.fsn);
+      if (curListing && curListing.myPrice > 0 && newPrice > curListing.myPrice &&
+          localStorage.getItem('bbp_raise_wins') !== '1') {
+        log('error', '  ⛔ [' + idx + '/' + withSku.length + '] ' + (p.title || p.fsn).substring(0, 40) +
+            ' — REFUSED to RAISE R' + curListing.myPrice + ' → R' + newPrice + ' (would lose buybox)');
+        failed++;
+        errors.push(p.fsn + ': refused raise R' + curListing.myPrice + '→R' + newPrice);
+        setTimeout(pushNext, 600);
+        return;
+      }
+
       var req = {
         fsn: p.fsn,
         skuId: p.sku,
@@ -7784,10 +7801,11 @@ function generatePriceUpdate(autoMode) {
 
     // Priority 1: auto-repriced price (set by autoReprice after scrape)
     if (scraped.pending_price != null) {
-      // Defense-in-depth: never write a raise for a winning product unless the
-      // opt-in "raise wins" flag is on. autoReprice's win branch is the only
-      // legit raiser; a stale buybox must never push us above our own price.
-      if (scraped.status === 'win' && l.myPrice > 0 && scraped.pending_price > l.myPrice &&
+      // Defense-in-depth: NEVER write a raise (for win OR lose) unless the
+      // opt-in "raise wins" flag is on. A raise is what flips us WIN→LOSE (we
+      // go above the competitor). autoReprice's win branch is the only legit
+      // raiser; a stale buybox / stale listing price must never push us up.
+      if (l.myPrice > 0 && scraped.pending_price > l.myPrice &&
           localStorage.getItem('bbp_raise_wins') !== '1') {
         return;
       }
