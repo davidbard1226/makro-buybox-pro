@@ -4429,6 +4429,20 @@ function autoReprice(prod) {
         saveProducts();
         updatePendingBadge();
       }
+    } else if (prod.pending_price != null) {
+      // We're winning — clear any stale pending price that would be a RAISE
+      // (above our current price). A leftover pending from a prior cycle/import
+      // must never push us up and flip WIN→LOSE (e.g. 255MF manually set to
+      // R33395 to win; a stale pending R33754 must not be pushed).
+      var winCur = (findListingByFsn(prod.fsn) || {}).myPrice || 0;
+      if (winCur > 0 && prod.pending_price > winCur) {
+        var staleWin = prod.pending_price;
+        prod.pending_price = null;
+        prod.pending_updated = null;
+        saveProducts();
+        updatePendingBadge();
+        log('info', '🧹 Cleared stale pending R' + staleWin + ' for winning ' + String(prod.title || prod.fsn || '').slice(0, 35));
+      }
     }
     return;
   }
