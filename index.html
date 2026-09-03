@@ -4479,6 +4479,17 @@ function autoReprice(prod) {
   var listings = getListings();
   var listing = findListingByFsn(prod.fsn, listings);
 
+  // ── DIAGNOSTIC: show the full decision for a losing product ─────────────
+  // So we can see exactly why a product is (or isn't) being repriced: the
+  // buybox, our current price, the floor, the target, and the outcome.
+  log('info', '🔍 ' + String(prod.title || prod.fsn || '').slice(0, 30) +
+      ' | buybox R' + roundPrice(buybox) +
+      ' | my R' + (listing ? roundPrice(listing.myPrice) : '?') +
+      ' | floor R' + roundPrice(minPrice) +
+      ' | target R' + roundPrice(targetPrice) +
+      (listing && listing.myPrice > 0 && targetPrice > listing.myPrice ? ' → ALREADY WINNING (skip)' :
+       listing && listing.myPrice !== targetPrice ? ' → WILL LOWER' : ' → no change'));
+
   // ── NEVER RAISE IN THE LOSE BRANCH ──────────────────────────────────────
   // If the buybox is above our current price, we're already winning — the
   // scrape's buybox data is stale or wrong (Makro API lag). Raising to "beat"
