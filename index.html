@@ -3657,29 +3657,67 @@ function startScraping() {
   const configSeller = document.getElementById('sellerNameConfig').value.trim();
   if (configSeller) document.getElementById('sellerNameInput').value = configSeller;
 
-  scrapeQueue = [...urls];
-  scrapeIdx   = 0;
-  state.scraping = true;
-  state.stopRequested = false;
-  _autoPushFired = false; // new cycle → allow one auto-push at the end
-  _chaseFired = false;    // new cycle → allow one lost-buybox chase
-  _chaseRound = 0;
-  resetCycleTouched();    // new cycle → only push products scraped in THIS cycle
-
+  // ── AUTO-SYNC LIVE PRICES BEFORE SCRAPING ────────────────────────────────
+  // The tool's "My Price" can go stale vs the actual portal price (e.g. after a
+  // manual portal edit, or a price pushed by an older buggy build). If we reprice
+  // against a stale price we make wrong decisions (e.g. think we're winning when
+  // the portal actually has a higher price). Pull the live portal listings first
+  // so autoReprice uses the REAL current price. Best-effort with a timeout — if
+  // the pull fails we proceed with whatever we have.
   document.getElementById('startBtn').style.display = 'none';
   document.getElementById('stopBtn').style.display  = 'flex';
   document.getElementById('progressSection').style.display = 'block';
   clearLog();
-  log('info', '🚀 Human-mode queue started: ' + urls.length + ' URLs');
+  log('info', '🚀 Human-mode queue: ' + urls.length + ' URLs');
   log('info', 'Each product page will open in a foreground tab — fully bot-free.');
   log('info', 'Seller: ' + getMySellerName());
 
-  updateProgress(0, urls.length);
-
-  // Send queue to background service worker
   const concurrency = parseInt(document.getElementById('scrapeParallel').value) || 5;
   localStorage.setItem('scrape_parallel', concurrency);
-  window.postMessage({ type: 'START_QUEUE', urls: urls, concurrency: concurrency }, '*');
+  syncThenStartQueue(urls, concurrency, 'scrape');
+}
+
+// Awaitable wrapper around pullPortalListings(). Resolves true if listings were
+// pulled and applied, false on failure/timeout. Best-effort — never throws.
+function pullPortalListingsAwait(timeoutMs) {
+  return new Promise(function(resolve) {
+    if (!state.extReady) { resolve(false); return; }
+    var done = false;
+    var orig = window.handlePortalListings;
+    function finish(ok) {
+      if (done) return;
+      done = true;
+      if (orig) window.handlePortalListings = orig; // restore real handler
+      resolve(ok);
+    }
+    var timer = setTimeout(function() { finish(false); }, timeoutMs || 8000);
+    // Hook the existing PORTAL_LISTINGS handler to resolve when data arrives.
+    window.handlePortalListings = function(d) {
+      try { if (orig) orig(d); } catch(e) {}
+      finish(!!(d && d.ok));
+    };
+    try { pullPortalListings(); } catch(e) { finish(false); }
+  });
+}
+
+// Shared: sync live portal prices, then start a scrape queue. Used by the manual
+// start, the auto-scrape timer, fast-track, and chase so EVERY repricing cycle
+// runs against the real portal price (not a stale stored one). Best-effort sync.
+function syncThenStartQueue(urls, concurrency, label) {
+  log('info', '🔄 Syncing live portal prices before ' + label + '...');
+  pullPortalListingsAwait(8000).then(function(synced) {
+    if (synced) log('ok', '✅ Live portal prices synced — repricing against real prices.');
+    else log('info', '⚠ Live price sync skipped/failed — using stored prices.');
+    document.getElementById('urlInput').value = urls.join('\n');
+    window.postMessage({ type: 'START_QUEUE', urls: urls, concurrency: concurrency }, '*');
+    scrapeQueue = urls; scrapeIdx = 0; state.scraping = true;
+    _autoPushFired = false; // new cycle → allow one auto-push at the end
+    _chaseFired = false;    // new cycle → allow one lost-buybox chase
+    _chaseRound = 0;
+    resetCycleTouched();    // new cycle → only push products scraped in THIS cycle
+    document.getElementById('progressSection').style.display = 'block';
+    updateProgress(0, urls.length);
+  });
 }
 
 function stopScraping() {
@@ -4226,9 +4264,8 @@ function startChaseScrape(urls) {
   document.getElementById('progressSection').style.display = 'block';
   log('info', '🎯 Chase queue started: ' + urls.length + ' URLs (round ' + _chaseRound + ')');
 
-  updateProgress(0, urls.length);
   const concurrency = parseInt(localStorage.getItem('scrape_parallel') || '5');
-  window.postMessage({ type: 'START_QUEUE', urls: urls, concurrency: concurrency }, '*');
+  syncThenStartQueue(urls, concurrency, 'chase');
 }
 
 // ============================================================
@@ -10408,16 +10445,8 @@ function applyAutoScrape() {
     log('info', '🤖 Auto-scrape #' + _autoScrapeRun + ' started — ' + urls.length + ' products' +
       (mode === 'smart' ? ' (' + losses + ' losses first, then ' + wins + ' wins)' : ' [' + mode + ']'));
 
-    document.getElementById('urlInput').value = urls.join('\n');
     var concurrency = parseInt(localStorage.getItem('scrape_parallel') || (document.getElementById('scrapeParallel')||{}).value || '5');
-    window.postMessage({ type: 'START_QUEUE', urls: urls, concurrency: concurrency }, '*');
-    scrapeQueue = urls; scrapeIdx = 0; state.scraping = true;
-    _autoPushFired = false; // new auto-scrape cycle → allow one auto-push at the end
-    _chaseFired = false;    // new auto-scrape cycle → allow one lost-buybox chase
-    _chaseRound = 0;
-    resetCycleTouched();    // new auto-scrape cycle → only push products scraped in THIS cycle
-    document.getElementById('progressSection').style.display = 'block';
-    updateProgress(0, urls.length);
+    syncThenStartQueue(urls, concurrency, 'auto-scrape');
 
     // Switch to scraper tab so user can see progress
     switchTab('scraper');
@@ -10458,16 +10487,8 @@ function applyFastTrack() {
     var urls = fastTrackUrls();
     if (!urls.length) return;
     log('info', '⚡ Fast-track scrape — ' + urls.length + ' product(s) every ' + mins + ' min.');
-    document.getElementById('urlInput').value = urls.join('\n');
     var concurrency = parseInt(localStorage.getItem('scrape_parallel') || (document.getElementById('scrapeParallel')||{}).value || '5');
-    window.postMessage({ type: 'START_QUEUE', urls: urls, concurrency: concurrency }, '*');
-    scrapeQueue = urls; scrapeIdx = 0; state.scraping = true;
-    _autoPushFired = false; // allow one auto-push at the end of this fast-track cycle
-    _chaseFired = false;
-    _chaseRound = 0;
-    resetCycleTouched();    // fast-track cycle → only push the fast-track products scraped now
-    document.getElementById('progressSection').style.display = 'block';
-    updateProgress(0, urls.length);
+    syncThenStartQueue(urls, concurrency, 'fast-track');
     switchTab('scraper');
   }
 
