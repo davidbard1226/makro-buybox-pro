@@ -1164,8 +1164,10 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
                   <option value="4">Every 4 min</option>
                   <option value="5">Every 5 min</option>
                 </select>
+                <button class="action-btn" id="fastTrackPauseBtn" style="font-size:10px;color:#ffd60a;border-color:#ffd60a66" onclick="toggleFastTrackPause()">⏸ Pause</button>
               </div>
               <div id="fastTrackStatus" style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.6"></div>
+              <div id="fastTrackList" style="margin-bottom:6px"></div>
               <div style="font-size:10px;color:var(--muted);line-height:1.5">
                 Click the <b style="color:var(--text)">⚡</b> button on any product row to fast-track it. Fast-tracked
                 products are scraped every <b style="color:var(--text)">1–5 min</b> (above) so you react instantly when
@@ -3650,6 +3652,7 @@ function startScraping() {
   _autoPushFired = false; // new cycle → allow one auto-push at the end
   _chaseFired = false;    // new cycle → allow one lost-buybox chase
   _chaseRound = 0;
+  resetCycleTouched();    // new cycle → only push products scraped in THIS cycle
 
   document.getElementById('startBtn').style.display = 'none';
   document.getElementById('stopBtn').style.display  = 'flex';
@@ -3885,6 +3888,10 @@ async function handleQueueProgress(d) {
     var prod = existing || state.products[state.products.length - 1];
     autoReprice(prod);
 
+    // Record this product as touched by the current cycle so the auto-push at
+    // cycle end only pushes products that were actually scraped now.
+    markCycleTouched(prod.fsn);
+
     // ── PRICE LOG ENTRY ───────────────────────────────────────────────────
     var listingMatch = findListingByFsn(prod.fsn);
     addPriceLogEntry({
@@ -4024,9 +4031,16 @@ function maybeAutoPushPrices() {
     if (_autoPushFired) return;
     _autoPushFired = true;
 
-    var pending = state.products.filter(function(p){ return p.pending_price != null && isScopedProduct(p); });
+    // Only push products that were actually scraped in THIS cycle. Without this,
+    // a fast-track scrape of 3 products would sweep up every pending price left
+    // over from the normal 4-hour run (isScopedProduct returns true for all when
+    // no watchlist/test mode is active).
+    var pending = state.products.filter(function(p){
+      return p.pending_price != null && isScopedProduct(p) &&
+             _cycleTouchedFsn.indexOf(p.fsn) !== -1;
+    });
     if (!pending.length) {
-      addAutoPushLogEntry({ level: 'skip', msg: 'No pending price changes after scrape — nothing to push.' });
+      addAutoPushLogEntry({ level: 'skip', msg: 'No pending price changes among the products scraped this cycle — nothing to push.' });
       return;
     }
 
@@ -4170,6 +4184,7 @@ function startChaseScrape(urls) {
   state.scraping = true;
   state.stopRequested = false;
   _autoPushFired = false; // chase cycle → allow one auto-push at its end
+  resetCycleTouched();    // chase cycle → only push products scraped in THIS cycle
 
   document.getElementById('startBtn').style.display = 'none';
   document.getElementById('stopBtn').style.display  = 'flex';
@@ -9639,6 +9654,15 @@ var _autoScrapeTimer = null;
 var _lastSellerSig = '';
 var _autoPushFired = false; // one auto-push per scrape cycle (finishScraping fires from multiple paths)
 var _autoScrapeRun = 0; // tracks cycle count
+// FSNs actually scraped in the CURRENT cycle. maybeAutoPushPrices() only pushes
+// products touched by THIS cycle, so a fast-track scrape of 3 products never
+// sweeps up pending prices left over from the normal 4-hour run.
+var _cycleTouchedFsn = [];
+function resetCycleTouched() { _cycleTouchedFsn = []; }
+function markCycleTouched(fsn) {
+  if (!fsn) return;
+  if (_cycleTouchedFsn.indexOf(fsn) === -1) _cycleTouchedFsn.push(fsn);
+}
 
 // ── SINGLE-PRODUCT TEST MODE ──────────────────────────────────────────────
 // Test ONE product end-to-end (scrape → reprice → push to portal) without
@@ -9956,12 +9980,58 @@ function updateFastTrackStatus() {
   if (!el) return;
   var list = getFastTrack();
   var mins = getFastTrackInterval();
+  var paused = fastTrackPaused();
   if (!list.length) {
     el.innerHTML = '<span style="color:var(--muted)">No products on fast track. Click ⚡ on a product row to add it.</span>';
-    return;
+  } else {
+    var warn = list.length > 25 ? ' <span style="color:#ff4d6d">⚠ ' + list.length + ' is a lot — risk of bot-blocking.</span>' : '';
+    var stateTxt = paused
+      ? '<span style="color:#ffd60a">⏸ PAUSED — not scraping</span>'
+      : '<span style="color:var(--accent)">▶ active — scraped every ' + mins + ' min</span>';
+    el.innerHTML = '<span style="color:var(--accent)">⚡ ' + list.length + ' product(s) on fast track</span> · ' + stateTxt + warn;
   }
-  var warn = list.length > 25 ? ' <span style="color:#ff4d6d">⚠ ' + list.length + ' is a lot — risk of bot-blocking.</span>' : '';
-  el.innerHTML = '<span style="color:var(--accent)">⚡ ' + list.length + ' product(s) on fast track — scraped every ' + mins + ' min</span>' + warn;
+  // Pause button label
+  var pb = document.getElementById('fastTrackPauseBtn');
+  if (pb) pb.textContent = paused ? '▶ Resume' : '⏸ Pause';
+  renderFastTrackList();
+}
+
+function fastTrackPaused() {
+  return localStorage.getItem('bbp_fasttrack_paused') === '1';
+}
+function toggleFastTrackPause() {
+  var paused = fastTrackPaused();
+  localStorage.setItem('bbp_fasttrack_paused', paused ? '0' : '1');
+  updateFastTrackStatus();
+  applyFastTrack();
+  log('info', paused ? '▶ Fast track resumed.' : '⏸ Fast track paused — no fast-track scraping until you resume.');
+}
+
+// Render the manage list of fast-tracked products with a delete button each.
+function renderFastTrackList() {
+  var el = document.getElementById('fastTrackList');
+  if (!el) return;
+  var list = getFastTrack();
+  if (!list.length) { el.innerHTML = ''; return; }
+  var rows = list.map(function(w, i) {
+    var name = (w.name || w.fsn || w.url || '').toString();
+    if (name.length > 42) name = name.slice(0, 42) + '…';
+    return '<div style="display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid var(--border);font-size:11px">' +
+      '<span style="flex:1;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml(w.url || '') + '">' + escHtml(name) + '</span>' +
+      '<button class="action-btn danger" style="font-size:10px;padding:1px 5px" onclick="removeFromFastTrack(' + i + ')" title="Remove from fast track">✕</button>' +
+    '</div>';
+  }).join('');
+  el.innerHTML = '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px">Fast-tracked products</div>' +
+    rows +
+    '<div style="margin-top:4px"><button class="action-btn danger" style="font-size:10px;padding:2px 8px" onclick="clearFastTrack()">🗑 Clear all</button></div>';
+}
+function clearFastTrack() {
+  if (!getFastTrack().length) return;
+  if (!confirm('Remove ALL products from fast track?')) return;
+  saveFastTrack([]);
+  updateFastTrackStatus();
+  applyFastTrack();
+  log('info', '⚡ Cleared all fast-track products.');
 }
 
 
@@ -10298,6 +10368,7 @@ function applyAutoScrape() {
     _autoPushFired = false; // new auto-scrape cycle → allow one auto-push at the end
     _chaseFired = false;    // new auto-scrape cycle → allow one lost-buybox chase
     _chaseRound = 0;
+    resetCycleTouched();    // new auto-scrape cycle → only push products scraped in THIS cycle
     document.getElementById('progressSection').style.display = 'block';
     updateProgress(0, urls.length);
 
@@ -10319,6 +10390,10 @@ function applyFastTrack() {
   if (_fastTrackTimer) { clearInterval(_fastTrackTimer); _fastTrackTimer = null; }
   var list = getFastTrack();
   if (!list.length) return; // nothing fast-tracked — no timer needed
+  if (fastTrackPaused()) {
+    log('info', '⏸ Fast track paused — timer stopped. Resume to scrape fast-track products.');
+    return;
+  }
 
   var mins = getFastTrackInterval();
   var ftUrls = fastTrackUrls();
@@ -10343,6 +10418,7 @@ function applyFastTrack() {
     _autoPushFired = false; // allow one auto-push at the end of this fast-track cycle
     _chaseFired = false;
     _chaseRound = 0;
+    resetCycleTouched();    // fast-track cycle → only push the fast-track products scraped now
     document.getElementById('progressSection').style.display = 'block';
     updateProgress(0, urls.length);
     switchTab('scraper');
