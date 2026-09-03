@@ -271,6 +271,7 @@
       </div>
       <div id="bbp-body">
         <div id="bbp-status" style="color:#6b7280;margin-bottom:6px;font-size:10px;line-height:1.4">Loading...</div>
+        <div id="bbp-note" style="display:none;background:#1a2e1a;border:1px solid #00e5a0;border-radius:4px;padding:5px 7px;margin-bottom:6px;font-size:10px;line-height:1.4;color:#00e5a0"></div>
         <div id="bbp-buttons" style="display:flex;flex-direction:column;gap:4px"></div>
       </div>
     `;
@@ -308,11 +309,21 @@
     if (!status || !buttons) return;
     buttons.innerHTML = '';
 
-    chrome.storage.local.get([FILE_KEY, NAME_KEY, STATUS_KEY], function(r) {
+    chrome.storage.local.get([FILE_KEY, NAME_KEY, STATUS_KEY, 'bbp_portal_note'], function(r) {
       if (chrome.runtime.lastError) return;
       const hasFile  = !!r[FILE_KEY];
       const filename = r[NAME_KEY] || 'price_update.xls';
       const lastStatus = r[STATUS_KEY];
+
+      // Show the live-site delay note if one was set recently (< 30 min)
+      const noteEl = document.getElementById('bbp-note');
+      const note = r.bbp_portal_note;
+      if (noteEl && note && note.msg && (Date.now() - note.ts) < 30 * 60 * 1000) {
+        noteEl.textContent = note.msg;
+        noteEl.style.display = 'block';
+      } else if (noteEl) {
+        noteEl.style.display = 'none';
+      }
 
       if (!hasFile) {
         status.innerHTML = '⚠️ No price file ready.<br>Go to dashboard → 💰 Price Updater first.';

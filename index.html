@@ -4422,6 +4422,27 @@ function autoReprice(prod) {
       log('info', '🧹 Winning by price (R' + priceWinMyPrice + ' ≤ buybox R' + roundPrice(buybox) +
           ') — cleared stale pending R' + staleWinPrice + ' for ' + String(prod.title || prod.fsn || '').slice(0, 35));
     }
+    // ── MAKRO LIVE-SITE DELAY NOTE ─────────────────────────────────────────
+    // We are winning the buybox by price (our portal price is at or below the
+    // buybox), but the live Makro site may still show a competitor as the
+    // buybox because Makro hasn't updated the live page yet. This is a known
+    // Makro-side delay on certain products at certain times — NOT a real loss.
+    // Log a clear note so the user (and the scraper) knows the portal is the
+    // source of truth and no action is needed.
+    var liveSeller = (prod.seller || '').trim();
+    var mySellerName = getMySellerName().toLowerCase().trim();
+    var liveShowsCompetitor = liveSeller && !(liveSeller.toLowerCase().includes(mySellerName) ||
+                                              mySellerName.includes(liveSeller.toLowerCase().slice(0, 6)));
+    if (liveShowsCompetitor) {
+      var delayNote = '⚠ Price updated — we\'re winning the buybox (portal R' + roundPrice(priceWinMyPrice) +
+          '), but Makro hasn\'t updated the live site yet (still shows ' + liveSeller +
+          ' R' + roundPrice(buybox) + '). No action needed.';
+      log('info', delayNote);
+      // Also show the note on the seller portal page (via the extension overlay)
+      try {
+        window.postMessage({ type: 'SET_PORTAL_NOTE', msg: delayNote }, '*');
+      } catch(e) {}
+    }
     return;
   }
 

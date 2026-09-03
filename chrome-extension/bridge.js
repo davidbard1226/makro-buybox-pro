@@ -308,6 +308,18 @@
 
     if (ev.data.type === 'REQUEST_EXTENSION') announce();
 
+    // ── SET PORTAL NOTE (dashboard → portal overlay) ────────────────────────
+    // The dashboard detects "we're winning the buybox but Makro hasn't updated
+    // the live site yet" and sends the note text here. We persist it to
+    // chrome.storage so portal.js can display it in the seller-portal overlay.
+    if (ev.data.type === 'SET_PORTAL_NOTE') {
+      safe(function() {
+        chrome.storage.local.set({ bbp_portal_note: { msg: ev.data.msg, ts: Date.now() } }, function() {
+          console.log('[Bridge] Portal note set:', ev.data.msg);
+        });
+      });
+    }
+
     // ── PORTAL API PULLS (dashboard → seller tab via background) ────────────
     if (ev.data.type === 'PORTAL_GET_ORDERS') {
       safe(function() {
