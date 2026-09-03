@@ -2691,6 +2691,11 @@ function handlePortalListings(d) {
     };
   }).filter(function(l) { return l.fsn; });
   applyListingsData(listings, d.counts);
+  // Notify any awaiting live-price sync (pullPortalListingsAwait) that the pull
+  // completed, so a scrape can proceed against the freshly-synced prices.
+  if (typeof window.__portalListingsSyncResolve === 'function') {
+    try { window.__portalListingsSyncResolve(!!d.ok); } catch(e) {}
+  }
 }
 
 // ============================================================
@@ -3679,23 +3684,20 @@ function startScraping() {
 
 // Awaitable wrapper around pullPortalListings(). Resolves true if listings were
 // pulled and applied, false on failure/timeout. Best-effort — never throws.
+// Uses a global resolver that handlePortalListings() calls when the pull lands,
+// so we don't have to (fragilely) replace the message handler.
 function pullPortalListingsAwait(timeoutMs) {
   return new Promise(function(resolve) {
     if (!state.extReady) { resolve(false); return; }
     var done = false;
-    var orig = window.handlePortalListings;
     function finish(ok) {
       if (done) return;
       done = true;
-      if (orig) window.handlePortalListings = orig; // restore real handler
+      window.__portalListingsSyncResolve = null; // clear resolver
       resolve(ok);
     }
     var timer = setTimeout(function() { finish(false); }, timeoutMs || 8000);
-    // Hook the existing PORTAL_LISTINGS handler to resolve when data arrives.
-    window.handlePortalListings = function(d) {
-      try { if (orig) orig(d); } catch(e) {}
-      finish(!!(d && d.ok));
-    };
+    window.__portalListingsSyncResolve = function(ok) { finish(ok); };
     try { pullPortalListings(); } catch(e) { finish(false); }
   });
 }
