@@ -4401,6 +4401,30 @@ function autoReprice(prod) {
     }
   }
   if (!buybox || buybox <= 0) return;         // no buybox data yet
+
+  // ── PRICE-BASED WIN GUARD (the "obvious answer") ─────────────────────────
+  // If our CURRENT price is at or below the buybox, we are ALREADY WINNING by
+  // price — regardless of what seller name the scraper reports (the seller
+  // attribution is unreliable and can wrongly say "Korvex" when we are actually
+  // the lowest). When we are winning, NEVER change the price: no raise, no
+  // lower, no pending. This is the single rule the user keeps asking for:
+  // "if I'm winning, don't change anything."
+  var priceWinListing = findListingByFsn(prod.fsn);
+  var priceWinMyPrice = priceWinListing && priceWinListing.myPrice > 0 ? priceWinListing.myPrice : 0;
+  if (priceWinMyPrice > 0 && priceWinMyPrice <= buybox) {
+    // We are winning by price. Clear any stale pending that would change us.
+    if (prod.pending_price != null) {
+      var staleWinPrice = prod.pending_price;
+      prod.pending_price = null;
+      prod.pending_updated = null;
+      saveProducts();
+      updatePendingBadge();
+      log('info', '🧹 Winning by price (R' + priceWinMyPrice + ' ≤ buybox R' + roundPrice(buybox) +
+          ') — cleared stale pending R' + staleWinPrice + ' for ' + String(prod.title || prod.fsn || '').slice(0, 35));
+    }
+    return;
+  }
+
   // Diagnostic: show which buybox source we're using (scraped vs tracker) so we
   // can confirm a stale tracker isn't overriding a correct fresh scrape.
   if (prod.trackerCheck && prod.trackerCheck.price > 0 && prod.trackerCheck.checkedAt &&
