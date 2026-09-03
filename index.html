@@ -4388,15 +4388,28 @@ function autoReprice(prod) {
   
   // NOTE: cooldown removed — every scrape may reprice immediately.
   
-  // Use tracker price (live) over scraper price (stale) when tracker is fresh (< 2 hours)
+  // Use the freshly-scraped buybox as authoritative. Only fall back to the
+  // tracker price if the scrape produced no buybox — a stale tracker price
+  // (e.g. an inflated MRP reading) must never override a correct fresh scrape,
+  // or we'd skip lowering a product that is actually losing (e.g. 255MF stuck
+  // at R33754 vs buybox R33396 because the tracker said R40000).
   var buybox = prod.buybox_price;
-  if (prod.trackerCheck && prod.trackerCheck.price > 0 && prod.trackerCheck.checkedAt) {
+  if ((!buybox || buybox <= 0) && prod.trackerCheck && prod.trackerCheck.price > 0 && prod.trackerCheck.checkedAt) {
     var trackerAge = Date.now() - new Date(prod.trackerCheck.checkedAt).getTime();
     if (trackerAge < 2 * 60 * 60 * 1000) {   // fresh within 2 hours
       buybox = prod.trackerCheck.price;
     }
   }
   if (!buybox || buybox <= 0) return;         // no buybox data yet
+  // Diagnostic: show which buybox source we're using (scraped vs tracker) so we
+  // can confirm a stale tracker isn't overriding a correct fresh scrape.
+  if (prod.trackerCheck && prod.trackerCheck.price > 0 && prod.trackerCheck.checkedAt &&
+      Date.now() - new Date(prod.trackerCheck.checkedAt).getTime() < 2 * 60 * 60 * 1000 &&
+      prod.buybox_price > 0 && prod.trackerCheck.price !== prod.buybox_price) {
+    log('info', '🔎 ' + String(prod.title || prod.fsn || '').slice(0, 30) +
+        ' — buybox R' + roundPrice(prod.buybox_price) + ' (scrape) vs tracker R' + roundPrice(prod.trackerCheck.price) +
+        ' → using R' + roundPrice(buybox));
+  }
   if (prod.status === 'win') {
     // Even when winning, check if we're selling below min price (at a loss)
     // If so, flag it as pending so generatePriceUpdate raises it to the floor.
@@ -8149,8 +8162,10 @@ function generateCsvFallback(autoMode) {
 
     var myPrice = t.myPrice || 0;
     var buybox  = scraped.buybox_price || 0;
-    // Use tracker price (live) over scraper price (stale) when fresh
-    if (scraped.trackerCheck && scraped.trackerCheck.price > 0 && scraped.trackerCheck.checkedAt) {
+    // Freshly-scraped buybox is authoritative; only fall back to the tracker
+    // price if the scrape produced no buybox (a stale tracker must never
+    // override a correct fresh scrape, or we'd skip lowering a losing product).
+    if ((!buybox || buybox <= 0) && scraped.trackerCheck && scraped.trackerCheck.price > 0 && scraped.trackerCheck.checkedAt) {
       var trackerAge = Date.now() - new Date(scraped.trackerCheck.checkedAt).getTime();
       if (trackerAge < 2 * 60 * 60 * 1000) buybox = scraped.trackerCheck.price;
     }
