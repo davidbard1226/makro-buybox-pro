@@ -319,14 +319,25 @@
         const p = extractPrice(exactEl.innerText);
         if (p && p > 10) candidates.push(p);
       }
-      // Scan all price-looking elements, collect every plausible price
+      // Scan all price-looking elements, collect every plausible price.
+      // IMPORTANT: the selling price is often bundled with extra text like
+      // "R 33,959.00\n15% off\nKorvex" — extractPrice() requires the WHOLE
+      // string to be a price, so it rejects the selling price and only the
+      // clean standalone RRP (R 40,000.00) matches. Instead of requiring a
+      // full-string match, we pull EVERY "R <amount>" out of the text and add
+      // each as a candidate, then take the minimum. This guarantees the real
+      // selling price (R33,959) is never missed just because it sits next to
+      // "15% off" or a seller name.
       document.querySelectorAll('[class*="Xaaq"],[class*="price"],[class*="Price"],[class*="amount"],[class*="cost"],[class*="dyC4"],[class*="CEmi"]').forEach(el => {
         if (el.children.length > 2) return;
         const txt = (el.innerText || '').trim();
-        // Only try lines that contain "R" or look like a rand amount
         if (!/R\s*[\d,. ]+/i.test(txt)) return;
-        const p = extractPrice(txt);
-        if (p && p > 10) candidates.push(p); // ignore implausibly small values
+        // Find every "R <amount>" in the text (handles "R 33,959.00 15% off")
+        const priceMatches = txt.match(/R\s*[\d][\d,. ]*/gi) || [];
+        for (const pm of priceMatches) {
+          const p = extractPrice(pm);
+          if (p && p > 10) candidates.push(p); // ignore implausibly small values
+        }
       });
       if (candidates.length) data.buyBoxPrice = Math.min(...candidates);
       // DIAGNOSTIC: show every price candidate found on the page so we can see
