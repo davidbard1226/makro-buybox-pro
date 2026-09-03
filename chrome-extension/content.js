@@ -180,6 +180,11 @@
       if (!data.fsn) return data;
       return fetchSellersApi(data.fsn).then(function(sellers) {
         if (sellers && sellers.length) {
+          // DIAGNOSTIC: dump the raw sellers so we can see the actual API data
+          // (prices, mrp, selected) and why the buybox reads as the RRP.
+          console.log('[BuyBox v5] RAW SELLERS:', JSON.stringify(sellers.map(function(s){
+            return { seller: s.seller, price: s.price, mrp: s.mrp, selected: s.selected };
+          })));
           // The buybox winner is ALWAYS the lowest-priced seller. The sellers
           // list is sorted ascending by price, so sellers[0] is the buybox.
           // (Preferring the API's `selected` flag was unreliable — it sometimes
@@ -324,6 +329,10 @@
         if (p && p > 10) candidates.push(p); // ignore implausibly small values
       });
       if (candidates.length) data.buyBoxPrice = Math.min(...candidates);
+      // DIAGNOSTIC: show every price candidate found on the page so we can see
+      // whether the RRP (R40000) is the only price present or the selling price
+      // (R33959) is being missed by the selectors.
+      console.log('[BuyBox v5] DOM PRICE CANDIDATES:', JSON.stringify(candidates), '→ buyBoxPrice:', data.buyBoxPrice);
 
       // ── SELLER ────────────────────────────────────────────────────────────
       const seller = extractSeller();
