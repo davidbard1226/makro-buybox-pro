@@ -38,11 +38,19 @@ function getScraperData() {
 
 // Read portal cookies from config file
 function getPortalCookies() {
+  const file = path.join(__dirname, 'portal-cookies.json');
+  let raw;
   try {
-    const file = path.join(__dirname, 'portal-cookies.json');
-    return JSON.parse(fs.readFileSync(file, 'utf8'));
+    raw = fs.readFileSync(file, 'utf8');
   } catch (e) {
     throw new Error('portal-cookies.json not found — copy portal-cookies.example.json and fill in your cookies');
+  }
+  // Strip UTF-8 BOM if present (some editors write it; JSON.parse rejects it)
+  if (raw.charCodeAt(0) === 0xFEFF) raw = raw.slice(1);
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    throw new Error('portal-cookies.json is not valid JSON: ' + e.message);
   }
 }
 
