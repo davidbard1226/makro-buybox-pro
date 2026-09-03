@@ -4142,6 +4142,22 @@ function doPush(withSku) {
       var newPrice = p.pending_price || p.new_price || p.buybox_price;
       idx++;
 
+      // ── NO-OP SKIP ─────────────────────────────────────────────────────────
+      // If the pending price equals our current listing price, there is no real
+      // change to push — pushing it is pointless and (if it's above the buybox)
+      // trips the NEVER-RAISE guard with a confusing error. Clear the stale
+      // pending and move on instead of counting it as a failed push.
+      var curListing = findListingByFsn(p.fsn);
+      var curPrice = curListing && curListing.myPrice > 0 ? curListing.myPrice : 0;
+      if (curPrice > 0 && newPrice === curPrice) {
+        log('info', '  ⏭ [' + idx + '/' + withSku.length + '] ' + (p.title || p.fsn).substring(0, 40) +
+            ' — no change (R' + newPrice + ' = current), skipping');
+        p.pending_price = null; p.pending_updated = null;
+        saveProducts(); updatePendingBadge();
+        setTimeout(pushNext, 300);
+        return;
+      }
+
       // ── NEVER-RAISE GUARD (final choke point) ─────────────────────────────
       // Every price push flows through here (autoReprice, XLS import, win-at-loss,
       // fast-track, chase). If the price we're about to push is HIGHER than our
@@ -4150,8 +4166,6 @@ function doPush(withSku) {
       // "raise wins" opt-in is on. Drops (beating the buybox) are always allowed.
       // Also refuse any price ABOVE the buybox — pushing above the buybox is
       // never a "beat", it's a guaranteed loss.
-      var curListing = findListingByFsn(p.fsn);
-      var curPrice = curListing && curListing.myPrice > 0 ? curListing.myPrice : 0;
       var buyboxNow = p.buybox_price > 0 ? p.buybox_price : 0;
       var isRaise = curPrice > 0 && newPrice > curPrice;
       var aboveBuybox = buyboxNow > 0 && newPrice > buyboxNow;
