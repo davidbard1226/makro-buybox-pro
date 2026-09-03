@@ -180,7 +180,13 @@
       if (!data.fsn) return data;
       return fetchSellersApi(data.fsn).then(function(sellers) {
         if (sellers && sellers.length) {
-          var winner = sellers.filter(function(s) { return s.selected; })[0] || sellers[0];
+          // The buybox winner is ALWAYS the lowest-priced seller. The sellers
+          // list is sorted ascending by price, so sellers[0] is the buybox.
+          // (Preferring the API's `selected` flag was unreliable — it sometimes
+          // pointed at a non-lowest seller, causing the buybox price to
+          // fluctuate wildly between scrapes, e.g. R33396 vs R40000 for the
+          // same product, which made the tool miss lowering opportunities.)
+          var winner = sellers[0];
           console.log('[BuyBox v5] API override:', winner.seller, 'R' + winner.price, 'selected:', winner.selected);
           data.buyBoxPrice = winner.price;
           data.buyBoxSeller = winner.seller;
