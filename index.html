@@ -4034,6 +4034,10 @@ function finishScraping() {
 
   // ── LOST-BUYBOX CHASE: re-scrape products we lost so we win back now. ──
   maybeChaseLostBuybox();
+
+  // ── QUEUED FAST-TRACK BATCHES: a batch whose timer fired while this cycle
+  // was running gets its turn now, so no batch is ever starved. ──
+  runNextPendingFastTrackBatch();
 }
 
 // ============================================================
@@ -4099,7 +4103,24 @@ function maybeAutoPushPrices() {
     }
 
     // ── DIRECT API PUSH (no XLS needed) ──
-    var withSku = pending.filter(function(p) { return p.fsn && p.sku; });
+    // Recover missing SKUs from the imported listings at push time: a product
+    // scraped without a SKU (the scraper only returns the itm... URL slug) still
+    // has its real SKU in the listings, so it must still be pushable. Without
+    // this, a fast-track batch that repriced 12 products would push only the
+    // handful that happened to carry a SKU — the rest never reach the portal.
+    var withSku = pending.filter(function(p) {
+      if (!p.fsn) return false;
+      if (p.sku && !/^itm/i.test(p.sku)) return true;
+      var listing = findListingByFsn(p.fsn);
+      if (listing && listing.sku) { p.sku = listing.sku; return true; }
+      return false;
+    });
+    var noSku = pending.filter(function(p) { return p.fsn && !p.sku; });
+    if (noSku.length) {
+      log('info', '⚠ ' + noSku.length + ' pending product(s) have no SKU (not found in imported listings) — skipped: ' +
+          noSku.slice(0, 3).map(function(p){ return String(p.title || p.fsn || '').slice(0, 30); }).join(', ') +
+          (noSku.length > 3 ? '…' : ''));
+    }
     if (!withSku.length) {
       addAutoPushLogEntry({ level: 'error', msg: '❌ Auto-push FAILED: ' + pending.length + ' pending products have no FSN/SKU. Import listings from the Products tab first.' });
       return;
@@ -10729,6 +10750,10 @@ function applyAutoScrape() {
 // can react instantly when an active competitor changes price. Fast-track
 // products are excluded from the normal queue (see buildAutoScrapeQueue).
 var _fastTrackTimers = {};
+// Batches whose timer fired while another scrape cycle was running. They are
+// queued here and run as soon as the current cycle finishes — otherwise a
+// 25-product batch that takes ~2 min would starve every other batch forever.
+var _pendingFastTrackBatches = [];
 
 // Run ONE batch's scrape cycle immediately. Used by the per-batch timers AND
 // the "▶ Scrape now" button so the user can always trigger a batch by hand.
@@ -10747,7 +10772,12 @@ function runFastTrackBatch(batchName) {
     return;
   }
   if (state.scraping) {
-    log('info', '⚡ Fast-track batch "' + batchName + '" tick skipped — a scrape cycle is already running.');
+    // Don't skip — QUEUE the batch so it runs right after the current cycle.
+    // With one scraper, a busy batch must never starve the others.
+    if (_pendingFastTrackBatches.indexOf(batchName) === -1) {
+      _pendingFastTrackBatches.push(batchName);
+      log('info', '⚡ Fast-track batch "' + batchName + '" queued — will run after the current cycle finishes.');
+    }
     return;
   }
   if (!state.extReady) {
@@ -10762,6 +10792,16 @@ function runFastTrackBatch(batchName) {
   var concurrency = parseInt(localStorage.getItem('scrape_parallel') || (document.getElementById('scrapeParallel')||{}).value || '5');
   syncThenStartQueue(urls, concurrency, 'fast-track');
   switchTab('scraper');
+}
+
+// Run the next queued fast-track batch, if any. Called at the end of every
+// scrape cycle (finishScraping) so queued batches always get their turn.
+function runNextPendingFastTrackBatch() {
+  if (state.scraping) return; // a chase or another batch already started
+  if (!_pendingFastTrackBatches.length) return;
+  var batchName = _pendingFastTrackBatches.shift();
+  log('info', '⚡ Running queued fast-track batch "' + batchName + '".');
+  runFastTrackBatch(batchName);
 }
 
 // Manual "▶ Scrape now" — runs the currently selected batch immediately.
