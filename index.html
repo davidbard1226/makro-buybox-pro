@@ -1165,6 +1165,7 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
                   <option value="5">Every 5 min</option>
                 </select>
                 <button class="action-btn" id="fastTrackPauseBtn" style="font-size:10px;color:#ffd60a;border-color:#ffd60a66" onclick="toggleFastTrackPause()">⏸ Pause</button>
+                <button class="action-btn" id="fastTrackScrapeNowBtn" style="font-size:10px;color:#00e5a0;border-color:#00e5a066" onclick="scrapeFastTrackNow()" title="Scrape the selected batch right now">▶ Scrape now</button>
               </div>
               <div id="fastTrackStatus" style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.6"></div>
               <div id="fastTrackList" style="margin-bottom:6px"></div>
@@ -10295,7 +10296,8 @@ function updateFastTrackStatus() {
     var stateTxt = paused
       ? '<span style="color:#ffd60a">⏸ PAUSED — not scraping</span>'
       : '<span style="color:var(--accent)">▶ active — scraped every ' + mins + ' min</span>';
-    el.innerHTML = '<span style="color:var(--accent)">⚡ Batch "' + escHtml(cur) + '": ' + list.length + ' product(s)</span> · ' + stateTxt + warn +
+    var offlineTxt = state.extReady ? '' : ' <span style="color:#ff4d6d">⚠ EXTENSION OFFLINE — nothing can scrape. Reload the extension (chrome://extensions → reload Makro BuyBox Pro) then F5 this page.</span>';
+    el.innerHTML = '<span style="color:var(--accent)">⚡ Batch "' + escHtml(cur) + '": ' + list.length + ' product(s)</span> · ' + stateTxt + warn + offlineTxt +
       '<br><span style="color:var(--muted)">' + names.length + ' batch(es), ' + total + ' product(s) total</span>';
   }
   // Pause button label
@@ -10727,6 +10729,49 @@ function applyAutoScrape() {
 // can react instantly when an active competitor changes price. Fast-track
 // products are excluded from the normal queue (see buildAutoScrapeQueue).
 var _fastTrackTimers = {};
+
+// Run ONE batch's scrape cycle immediately. Used by the per-batch timers AND
+// the "▶ Scrape now" button so the user can always trigger a batch by hand.
+function runFastTrackBatch(batchName) {
+  if (!batchName) return;
+  var b = getFastTrackBatches();
+  var batch = b[batchName];
+  if (!batch) return;
+  var products = batch.products || [];
+  if (!products.length) {
+    log('info', '⚡ Fast-track batch "' + batchName + '" is empty — nothing to scrape.');
+    return;
+  }
+  if (batch.paused) {
+    log('info', '⏸ Fast-track batch "' + batchName + '" paused — click Resume first.');
+    return;
+  }
+  if (state.scraping) {
+    log('info', '⚡ Fast-track batch "' + batchName + '" tick skipped — a scrape cycle is already running.');
+    return;
+  }
+  if (!state.extReady) {
+    log('info', '⚡ Fast-track batch "' + batchName + '" skipped — extension offline. Reload the extension (chrome://extensions → reload Makro BuyBox Pro) then F5 this page.');
+    return;
+  }
+  var mins = batch.interval || 2;
+  var urls = products.map(function(w){ return (w.url || '').trim(); })
+    .filter(function(u, i, a){ return u && a.indexOf(u) === i; });
+  if (!urls.length) return;
+  log('info', '⚡ Fast-track batch "' + batchName + '" — ' + urls.length + ' product(s) every ' + mins + ' min.');
+  var concurrency = parseInt(localStorage.getItem('scrape_parallel') || (document.getElementById('scrapeParallel')||{}).value || '5');
+  syncThenStartQueue(urls, concurrency, 'fast-track');
+  switchTab('scraper');
+}
+
+// Manual "▶ Scrape now" — runs the currently selected batch immediately.
+function scrapeFastTrackNow() {
+  var cur = getCurrentBatchName();
+  if (!cur) { alert('No fast-track batch selected. Create a batch first.'); return; }
+  log('info', '⚡ Manual scrape requested for batch "' + cur + '".');
+  runFastTrackBatch(cur);
+}
+
 function applyFastTrack() {
   // Clear all existing per-batch timers
   Object.keys(_fastTrackTimers).forEach(function(k) {
@@ -10746,29 +10791,10 @@ function applyFastTrack() {
       return;
     }
     var mins = batch.interval || 2;
-    var urls = products.map(function(w){ return (w.url || '').trim(); })
-      .filter(function(u, i, a){ return u && a.indexOf(u) === i; });
-    if (!urls.length) return;
-
-    function runFastTrackBatch() {
-      // Don't run if a scrape cycle is already in progress (either normal or fast-track)
-      if (state.scraping) {
-        log('info', '⚡ Fast-track batch "' + batchName + '" tick skipped — a scrape cycle is already running.');
-        return;
-      }
-      if (!state.extReady) {
-        log('info', '⚡ Fast-track batch "' + batchName + '" skipped — extension offline.');
-        return;
-      }
-      log('info', '⚡ Fast-track batch "' + batchName + '" — ' + urls.length + ' product(s) every ' + mins + ' min.');
-      var concurrency = parseInt(localStorage.getItem('scrape_parallel') || (document.getElementById('scrapeParallel')||{}).value || '5');
-      syncThenStartQueue(urls, concurrency, 'fast-track');
-      switchTab('scraper');
-    }
 
     // Run once immediately, then on the interval
-    runFastTrackBatch();
-    _fastTrackTimers[batchName] = setInterval(runFastTrackBatch, mins * 60000);
+    runFastTrackBatch(batchName);
+    _fastTrackTimers[batchName] = setInterval(function() { runFastTrackBatch(batchName); }, mins * 60000);
   });
 }
 
