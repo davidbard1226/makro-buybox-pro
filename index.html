@@ -10846,7 +10846,7 @@ function applyFastTrack() {
     // Don't run if a scrape cycle is already in progress (either normal or fast-track)
     if (state.scraping) {
       log('info', '⚡ Fast-track tick skipped — a scrape cycle is already running.');
-      setFastTrackLastRun('⏳ A scrape cycle is already running — fast-track tick skipped');
+      // Don't touch the panel — the in-flight cycle owns it (started/progress/done).
       return;
     }
     if (!state.extReady) {

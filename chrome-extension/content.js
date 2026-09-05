@@ -116,6 +116,10 @@
   // buybox winner AND the full seller list, no need to visit /sellers?pid=.
   function fetchSellersApi(pid) {
     console.log('[BuyBox v5] Calling sellers API for PID:', pid);
+    // 12s timeout — a hanging Makro response must never freeze the batch loop
+    // (no progress, no done → dashboard stuck on "scraping" forever).
+    var ctrl = new AbortController();
+    var timer = setTimeout(function() { ctrl.abort(); }, 12000);
     return fetch('/fccng/api/3/page/dynamic/product-sellers', {
       method: 'POST',
       headers: {
@@ -123,9 +127,11 @@
         'x-user-agent': navigator.userAgent + ' FKUA/website/42/website/Desktop'
       },
       credentials: 'include',
+      signal: ctrl.signal,
       body: JSON.stringify({ requestContext: { productId: pid }, locationContext: {} })
     })
       .then(function(r) {
+        clearTimeout(timer);
         console.log('[BuyBox v5] Sellers API response:', r.status, r.ok);
         if (!r.ok) throw new Error('HTTP ' + r.status);
         return r.json();
@@ -135,7 +141,7 @@
         console.log('[BuyBox v5] Parsed sellers:', sellers.length, sellers.map(function(s) { return s.seller + ' R' + s.price + (s.selected ? ' ★' : ''); }));
         return sellers;
       })
-      .catch(function(e) { console.warn('[BuyBox v5] Sellers API failed:', e.message); return null; });
+      .catch(function(e) { clearTimeout(timer); console.warn('[BuyBox v5] Sellers API failed:', e.message); return null; });
   }
 
   function parseSellersJson(data) {
