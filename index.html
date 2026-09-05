@@ -5091,7 +5091,7 @@ function renderProducts() {
         ${p.cost_price > 0
           ? `<div style="display:flex;align-items:center;gap:4px">
                <span style="font-family:'Space Mono',monospace;font-size:12px;color:#60a5fa">R ${p.cost_price.toFixed(0)}</span>
-               <span style="font-size:10px;color:var(--muted)">${p.cost_supplier||''}</span>
+               <span style="font-size:10px;color:var(--muted)">${p.cost_supplier||''}${p.cost_override ? ' 🔒' : ''}</span>
                <button class="action-btn" style="font-size:9px;padding:1px 5px" onclick="openEditModal(${realIdx})" title="Edit cost">✎</button>
              </div>`
           : `<button class="action-btn" style="font-size:10px;color:#60a5fa;border-color:#60a5fa44" onclick="openEditModal(${realIdx})">+ Enter Cost</button>`}
@@ -5611,6 +5611,9 @@ async function autoMatchCostsAfterImport() {
     var updated = 0;
     state.products.forEach(function(p) {
       if (!p.sku) return;
+      // User manually set this cost (cost_override) — never clobber it with a
+      // sheet match on listing pulls. They can still re-sync via the 💲 button.
+      if (p.cost_override) return;
       var match = lib.findCost(p.sku);
       if (match) {
         applyCostToProduct(p, match);
@@ -6223,6 +6226,7 @@ function saveEditModal() {
   if (!isNaN(cost) && cost > 0) {
     p.cost_price    = cost;
     p.cost_supplier = p.cost_supplier || 'Manual';
+    p.cost_override = true; // manual cost — auto-match on listing pulls must never overwrite it
     // Auto-recalc min price unless user provided one — using THIS product's pct
     if (!min) p.min_price = calcMinViablePrice(cost, pct / 100);
   }
