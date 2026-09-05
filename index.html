@@ -2477,6 +2477,7 @@ if (d.type === 'FASTTRACK_RESTORED') {
   if (d.type === 'FASTTRACK_API_STARTED') {
     // Bridge reports whether the background accepted the API batch scrape.
     if (d.ok) return; // started fine — progress events will follow
+    stopFtElapsedTicker();
     log('err', '⚠ Fast-track API scrape failed to start: ' + (d.error || 'unknown error'));
     setFastTrackLastRun('⚠ Failed to start: ' + (d.error || 'unknown error'), true);
     state.scraping = false;
@@ -2498,6 +2499,7 @@ if (d.type === 'FASTTRACK_RESTORED') {
   }
 
   if (d.type === 'FASTTRACK_API_PROGRESS') {
+    stopFtElapsedTicker();
     handleFastTrackApiResult(d.result, d.done, d.total);
     // Live progress in the Fast Track panel (DOM only — persisted on done)
     var ftEl = document.getElementById('fastTrackLastRun');
@@ -2506,6 +2508,7 @@ if (d.type === 'FASTTRACK_RESTORED') {
   }
 
   if (d.type === 'FASTTRACK_API_DONE') {
+    stopFtElapsedTicker();
     if (d.stopped) {
       // User hit Stop mid-batch — stopScraping() already finalized the UI;
       // just log what we got before the halt.
@@ -2524,8 +2527,9 @@ if (d.type === 'FASTTRACK_RESTORED') {
 
   if (d.type === 'FASTTRACK_API_STALLED') {
     // Background watchdog: the Makro tab accepted the batch but sent no
-    // progress for 30s (hanging sellers API / stale content script). Reset the
+    // progress for 15s (hanging sellers API / stale content script). Reset the
     // cycle so the next tick can retry, and show the diagnostic in the panel.
+    stopFtElapsedTicker();
     log('err', '⚠ ' + (d.message || 'Fast-track stalled — no progress from the Makro tab.'));
     setFastTrackLastRun('⚠ ' + (d.message || 'Fast-track stalled — no progress from the Makro tab.'), true);
     state.scraping = false;
@@ -10941,6 +10945,25 @@ function runFastTrackNow() {
 // "Done — N products" in the Fast Track panel).
 var _lastApiBatchCount = 0;
 
+// Live elapsed-seconds ticker for the API fast-track cycle. Between "started"
+// and the first progress event there can be a silent gap (Makro tab lookup,
+// content-script injection, first API call) — the ticker makes that gap
+// VISIBLE by updating the panel every second, so the user always sees the
+// cycle is alive instead of "nothing happening".
+var _ftElapsedTimer = null;
+function startFtElapsedTicker(total) {
+  stopFtElapsedTicker();
+  var t0 = Date.now();
+  _ftElapsedTimer = setInterval(function() {
+    var s = Math.floor((Date.now() - t0) / 1000);
+    var el = document.getElementById('fastTrackLastRun');
+    if (el) el.innerHTML = '<span style="color:var(--accent)">🚀 API scrape started — ' + total + ' product(s) via sellers API… ⏳ waiting for Makro tab (' + s + 's)</span>';
+  }, 1000);
+}
+function stopFtElapsedTicker() {
+  if (_ftElapsedTimer) { clearInterval(_ftElapsedTimer); _ftElapsedTimer = null; }
+}
+
 // Show the last fast-track run result right in the Fast Track panel (Dashboard
 // sidebar) so the user never has to hunt for the log on the Scraper tab.
 // Persisted to localStorage so it survives refreshes.
@@ -10964,6 +10987,7 @@ function startFastTrackApiScrape(fsns) {
   scrapeQueue = fsns; scrapeIdx = 0; state.scraping = true;
   document.getElementById('progressSection').style.display = 'block';
   updateProgress(0, fsns.length);
+  startFtElapsedTicker(fsns.length);
   window.postMessage({ type: 'FASTTRACK_API_SCRAPE', fsns: fsns, concurrency: 6 }, '*');
 }
 

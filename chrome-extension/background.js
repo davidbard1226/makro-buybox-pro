@@ -44,7 +44,7 @@ function isChallengeUrl(url) {
 // ── FAST-TRACK API WATCHDOG (module scope) ───────────────────────────────
 // If the Makro tab accepts a fast-track batch but then goes silent (hanging
 // sellers API, stale content script, challenge page), the dashboard would wait
-// forever. After 30s with no progress/done, tell the dashboard what's wrong so
+// forever. After 15s with no progress/done, tell the dashboard what's wrong so
 // it can show a diagnostic and reset instead of hanging silently.
 // NOTE: must live at module scope — inside the onMessage listener each message
 // invocation gets its own copy of the variable, so clearTimeout would never
@@ -55,9 +55,9 @@ function armFastTrackWatchdog() {
   fastTrackWatchdog = setTimeout(function() {
     notifyDashboard({
       action: 'fasttrack_api_stalled',
-      message: 'No progress from the Makro tab in 30s — the sellers API may be hanging or the content script is stale. Check the Makro tab is open and logged in, then reload the extension (chrome://extensions → ↻).'
+      message: 'No progress from the Makro tab in 15s — the sellers API may be hanging or the content script is stale. Check the Makro tab is open and logged in, then reload the extension (chrome://extensions → ↻).'
     });
-  }, 30000);
+  }, 15000);
 }
 function clearFastTrackWatchdog() {
   if (fastTrackWatchdog) { clearTimeout(fastTrackWatchdog); fastTrackWatchdog = null; }
