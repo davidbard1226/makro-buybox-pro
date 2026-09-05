@@ -8,6 +8,12 @@
   // (chrome.* APIs become undefined) — exit cleanly instead of throwing.
   if (!chrome.runtime || !chrome.runtime.id) return;
 
+  // Guard against double injection (manifest content script + on-demand
+  // executeScript from the background). The second injection exits immediately
+  // so we never register duplicate message listeners / worker loops.
+  if (window.__bbpContentLoaded) return;
+  window.__bbpContentLoaded = true;
+
   // Set by 'fasttrack_api_stop' — the batch worker loop checks it between
   // fetches and finalizes early with partial results.
   var fastTrackStopRequested = false;
@@ -511,6 +517,7 @@
   // ── MESSAGES ───────────────────────────────────────────────────────────────
   chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
     if (msg.action === 'ping') { sendResponse({ pong: true }); return true; }
+    if (msg.action === 'fasttrack_api_ping') { sendResponse({ version: 'v5-api', ok: true }); return true; }
     if (msg.action === 'scrape_now' || msg.action === 'SCRAPE_URL') {
       scrapeProduct().then(function(d) {
         saveProduct(d);

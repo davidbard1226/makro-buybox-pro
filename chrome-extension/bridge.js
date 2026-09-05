@@ -501,6 +501,9 @@
       if (msg.action === 'fasttrack_api_done') {
         window.postMessage({ type: 'FASTTRACK_API_DONE', results: msg.results || [], stopped: !!msg.stopped }, '*');
       }
+      if (msg.action === 'fasttrack_api_stalled') {
+        window.postMessage({ type: 'FASTTRACK_API_STALLED', message: msg.message }, '*');
+      }
     });
   });
 

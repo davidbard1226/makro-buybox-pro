@@ -2522,6 +2522,20 @@ if (d.type === 'FASTTRACK_RESTORED') {
     return;
   }
 
+  if (d.type === 'FASTTRACK_API_STALLED') {
+    // Background watchdog: the Makro tab accepted the batch but sent no
+    // progress for 30s (hanging sellers API / stale content script). Reset the
+    // cycle so the next tick can retry, and show the diagnostic in the panel.
+    log('err', '⚠ ' + (d.message || 'Fast-track stalled — no progress from the Makro tab.'));
+    setFastTrackLastRun('⚠ ' + (d.message || 'Fast-track stalled — no progress from the Makro tab.'), true);
+    state.scraping = false;
+    state.stopRequested = false;
+    document.getElementById('startBtn').style.display = 'flex';
+    document.getElementById('stopBtn').style.display  = 'none';
+    document.getElementById('progressSection').style.display = 'none';
+    return;
+  }
+
   if (d.type === 'SCRAPER_LOG') {
     log('info', d.msg || '');
     return;

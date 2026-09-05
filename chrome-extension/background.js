@@ -307,12 +307,53 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
   // Dashboard sends a list of FSNs; we find (or create) ONE Makro tab and ask
   // its content script to loop the sellers API for every FSN — no page loads.
   // Progress/done messages from the content script are relayed to the dashboard.
+
+  // Watchdog: if the Makro tab accepts the batch but then goes silent (hanging
+  // sellers API, stale content script, challenge page), the dashboard would
+  // wait forever. After 30s with no progress/done, tell the dashboard what's
+  // wrong so it can show a diagnostic and reset instead of hanging silently.
+  var fastTrackWatchdog = null;
+  function armFastTrackWatchdog() {
+    clearFastTrackWatchdog();
+    fastTrackWatchdog = setTimeout(function() {
+      notifyDashboard({
+        action: 'fasttrack_api_stalled',
+        message: 'No progress from the Makro tab in 30s — the sellers API may be hanging or the content script is stale. Check the Makro tab is open and logged in, then reload the extension (chrome://extensions → ↻).'
+      });
+    }, 30000);
+  }
+  function clearFastTrackWatchdog() {
+    if (fastTrackWatchdog) { clearTimeout(fastTrackWatchdog); fastTrackWatchdog = null; }
+  }
+
   if (msg.action === 'fasttrack_api_scrape') {
     var fsns = msg.fsns || [];
     if (!fsns.length) { sendResponse({ error: 'No FSNs' }); return true; }
     // Refuse if a page-load queue is mid-flight — the dashboard guards this
     // too, but never let the two scrape paths overlap in the background.
     if (active) { sendResponse({ error: 'Scraper already running — stop it first' }); return true; }
+
+    // Always (re)inject content.js into the Makro tab before dispatching:
+    // idempotent thanks to the __bbpContentLoaded guard, and guarantees the
+    // tab runs the CURRENT handler even if it was opened before the extension
+    // reload (otherwise a stale content script silently swallows the batch).
+    function dispatchBatch(tabId, cb) {
+      chrome.scripting.executeScript({
+        target: { tabId: tabId },
+        files: ['content.js']
+      }, function() {
+        if (chrome.runtime.lastError) { cb({ error: 'makro_tab_not_ready' }); return; }
+        chrome.tabs.sendMessage(tabId, {
+          action: 'fasttrack_api_scrape',
+          fsns: fsns,
+          concurrency: msg.concurrency || 6
+        }, function(resp) {
+          if (chrome.runtime.lastError) { cb({ error: 'makro_tab_not_ready' }); return; }
+          if (resp && resp.started) armFastTrackWatchdog();
+          cb(resp);
+        });
+      });
+    }
 
     chrome.tabs.query({}, function(tabs) {
       var makroTab = null;
@@ -324,29 +365,8 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
         }
       }
 
-      function sendBatch(tabId, cb) {
-        chrome.tabs.sendMessage(tabId, {
-          action: 'fasttrack_api_scrape',
-          fsns: fsns,
-          concurrency: msg.concurrency || 6
-        }, function(resp) {
-          if (chrome.runtime.lastError) { cb({ error: 'makro_tab_not_ready' }); return; }
-          cb(resp);
-        });
-      }
-
       if (makroTab) {
-        sendBatch(makroTab.id, function(resp) {
-          if (resp && resp.error === 'makro_tab_not_ready') {
-            // Content script not injected (tab opened before extension reload).
-            injectContentScript(makroTab.id, function(ok) {
-              if (!ok) { sendResponse({ error: 'makro_tab_not_ready' }); return; }
-              sendBatch(makroTab.id, sendResponse);
-            });
-            return;
-          }
-          sendResponse(resp);
-        });
+        dispatchBatch(makroTab.id, sendResponse);
       } else {
         // No Makro tab open — create one (homepage) and wait for it to load.
         chrome.tabs.create({ url: 'https://www.makro.co.za/', active: false }, function(tab) {
@@ -362,16 +382,7 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
               }
               if (t.status === 'complete' || tries > 20) {
                 clearInterval(waitTimer);
-                sendBatch(tab.id, function(resp) {
-                  if (resp && resp.error === 'makro_tab_not_ready') {
-                    injectContentScript(tab.id, function(ok) {
-                      if (!ok) { sendResponse({ error: 'makro_tab_not_ready' }); return; }
-                      sendBatch(tab.id, sendResponse);
-                    });
-                    return;
-                  }
-                  sendResponse(resp);
-                });
+                dispatchBatch(tab.id, sendResponse);
               }
             });
           }, 500);
@@ -399,11 +410,13 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
 
   // ── FAST-TRACK API: PROGRESS/DONE FROM CONTENT → DASHBOARD ───────────────
   if (msg.action === 'fasttrack_api_progress') {
+    clearFastTrackWatchdog();
     notifyDashboard({ action: 'fasttrack_api_progress', done: msg.done, total: msg.total, result: msg.result });
     sendResponse({ ok: true });
     return true;
   }
   if (msg.action === 'fasttrack_api_done') {
+    clearFastTrackWatchdog();
     notifyDashboard({ action: 'fasttrack_api_done', results: msg.results || [], stopped: !!msg.stopped });
     sendResponse({ ok: true });
     return true;
