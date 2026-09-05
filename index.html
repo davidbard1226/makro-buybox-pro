@@ -1163,6 +1163,7 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
                   <option value="3">Every 3 min</option>
                   <option value="4">Every 4 min</option>
                   <option value="5">Every 5 min</option>
+                  <option value="10">Every 10 min</option>
                 </select>
                 <button class="action-btn" id="fastTrackPauseBtn" style="font-size:10px;color:#ffd60a;border-color:#ffd60a66" onclick="toggleFastTrackPause()">⏸ Pause</button>
               </div>
@@ -10199,8 +10200,11 @@ function toggleFastTrackFromProduct(idx) {
   } else {
     var count = getFastTrack().length;
     if (count >= 25) {
-      alert('You have ' + count + ' products on fast track. Scraping more than ~25 every 1–5 min can trigger Makro bot protection and get you blocked. Remove some first.');
-      return;
+      // Soft warning, not a hard block — the user decides the bot-blocking risk.
+      // Longer intervals (5–10 min) are recommended for large lists.
+      if (!confirm('You have ' + count + ' products on fast track. Scraping more than ~25 every 1–5 min can trigger Makro bot protection and get you blocked.\n\nAdd anyway? (Tip: use a 5–10 min interval for large lists.)')) {
+        return;
+      }
     }
     addToFastTrack(p.url, p.fsn, p.title);
     log('info', '⚡ Added to fast track (1–5 min): ' + (p.title || p.fsn || p.url));
@@ -10210,7 +10214,7 @@ function getFastTrackInterval() {
   var sel = document.getElementById('fastTrackInterval');
   var v = parseInt(sel ? sel.value : 2);
   if (isNaN(v) || v < 1) v = 2;
-  if (v > 5) v = 5;
+  if (v > 10) v = 10;
   return v;
 }
 function saveFastTrackInterval() {
