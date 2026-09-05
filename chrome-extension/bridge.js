@@ -55,7 +55,9 @@
   // ── ANNOUNCE ──────────────────────────────────────────────────────────────
   function announce() {
     safe(function() {
-      window.postMessage({ type: 'MAKRO_EXTENSION_READY', extensionId: chrome.runtime.id }, '*');
+      var v = '?';
+      try { v = chrome.runtime.getManifest().version; } catch(e) {}
+      window.postMessage({ type: 'MAKRO_EXTENSION_READY', extensionId: chrome.runtime.id, version: v }, '*');
     });
   }
 

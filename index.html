@@ -2326,7 +2326,9 @@ window.addEventListener('message', function(ev) {
     if (!state.extReady) {
       state.extReady = true;
       extensionId = d.extensionId || null;
-      log('info', 'Extension connected' + (extensionId ? ' (id: ' + extensionId.slice(0,8) + '...)' : ''));
+      window.__bbpExtVersion = d.version || null;
+      var extVer = d.version ? ' v' + d.version : '';
+      log('info', 'Extension connected' + extVer + (extensionId ? ' (id: ' + extensionId.slice(0,8) + '...)' : ''));
     }
     setExtStatus(true);
     return;
@@ -3321,7 +3323,7 @@ function refreshPortalSession(silent) {
 function setExtStatus(online) {
   state.extReady = online;
   document.getElementById('extDot').className = 'ext-dot ' + (online ? 'green' : 'red');
-  document.getElementById('extLabel').textContent = online ? 'Extension connected' : 'Extension offline';
+  document.getElementById('extLabel').textContent = online ? ('Extension connected' + (extensionId ? ' v' + (window.__bbpExtVersion || '?') : '')) : 'Extension offline';
   document.getElementById('scraperDot').style.background = online ? 'var(--accent)' : 'var(--muted)';
   document.getElementById('scraperExtLabel').textContent = online ? '✓ Connected — ready to scrape' : 'Waiting for extension...';
   document.getElementById('startBtn').disabled = !online;
