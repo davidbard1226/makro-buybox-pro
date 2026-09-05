@@ -1170,6 +1170,7 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
                   <option value="10">Every 10 min</option>
                 </select>
                 <button class="action-btn" id="fastTrackPauseBtn" style="font-size:10px;color:#ffd60a;border-color:#ffd60a66" onclick="toggleFastTrackPause()">⏸ Pause</button>
+                <button class="action-btn" id="fastTrackSaveBtn" style="font-size:10px;color:#00e5a0;border-color:#00e5a066" onclick="saveFastTrackNow()" title="Save fast-track list to extension storage so it survives refreshes">💾 Save</button>
               </div>
               <div id="fastTrackStatus" style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.6"></div>
               <div id="fastTrackList" style="margin-bottom:6px"></div>
@@ -2325,6 +2326,15 @@ window.addEventListener('message', function(ev) {
       log('info', 'Extension connected' + (extensionId ? ' (id: ' + extensionId.slice(0,8) + '...)' : ''));
     }
     setExtStatus(true);
+    return;
+  }
+
+  if (d.type === 'FASTTRACK_RESTORED') {
+    // Bridge restored the fast-track list from chrome.storage after a refresh —
+    // re-render the panel and restart the timer with the restored list.
+    updateFastTrackStatus();
+    applyFastTrack();
+    log('info', '⚡ Fast track restored from extension storage (' + getFastTrack().length + ' product(s)).');
     return;
   }
 
@@ -10211,6 +10221,23 @@ function getFastTrack() {
 }
 function saveFastTrack(list) {
   localStorage.setItem('bbp_fasttrack', JSON.stringify(list));
+  // Auto-persist to extension chrome.storage so the list survives dashboard
+  // refreshes — the bridge restores it on load if localStorage is empty.
+  window.postMessage({
+    type: 'SAVE_FASTTRACK',
+    list: list,
+    interval: localStorage.getItem('bbp_fasttrack_interval') || null,
+    paused: localStorage.getItem('bbp_fasttrack_paused') || null
+  }, '*');
+}
+function saveFastTrackNow() {
+  saveFastTrack(getFastTrack());
+  var btn = document.getElementById('fastTrackSaveBtn');
+  if (btn) {
+    btn.textContent = '✓ Saved';
+    setTimeout(function() { btn.textContent = '💾 Save'; }, 2000);
+  }
+  log('info', '💾 Fast track saved to extension storage (' + getFastTrack().length + ' product(s)).');
 }
 function fastTrackActive() {
   return getFastTrack().length > 0;

@@ -59,6 +59,33 @@
     });
   }
 
+  // ── SYNC chrome.storage → dashboard localStorage (fast track) ─────────────
+  // The fast-track list lives in dashboard localStorage (bbp_fasttrack). Persist
+  // it to chrome.storage too so it survives dashboard refreshes and even
+  // localStorage clears. Restore only when the dashboard has NEVER set a list
+  // (null) — an empty array means the user deliberately cleared it.
+  function syncFastTrackToLocal() {
+    safe(function() {
+      chrome.storage.local.get(['bbp_fasttrack', 'bbp_fasttrack_interval', 'bbp_fasttrack_paused'], function(r) {
+        try {
+          if (chrome.runtime.lastError) return;
+          var restored = false;
+          if (localStorage.getItem('bbp_fasttrack') === null && r.bbp_fasttrack) {
+            localStorage.setItem('bbp_fasttrack', JSON.stringify(r.bbp_fasttrack));
+            restored = true;
+          }
+          if (localStorage.getItem('bbp_fasttrack_interval') === null && r.bbp_fasttrack_interval) {
+            localStorage.setItem('bbp_fasttrack_interval', r.bbp_fasttrack_interval);
+          }
+          if (localStorage.getItem('bbp_fasttrack_paused') === null && r.bbp_fasttrack_paused) {
+            localStorage.setItem('bbp_fasttrack_paused', r.bbp_fasttrack_paused);
+          }
+          if (restored) window.postMessage({ type: 'FASTTRACK_RESTORED' }, '*');
+        } catch(e) {}
+      });
+    });
+  }
+
   // ── SYNC chrome.storage → dashboard localStorage ──────────────────────────
   function getDeletedSet() {
     try { return JSON.parse(localStorage.getItem('makro_deleted') || '[]'); } catch(e) { return []; }
@@ -197,6 +224,21 @@
               console.log('[Bridge] bbp_auto_upload = true — portal.js will auto-upload.');
             });
           }
+        });
+      });
+    }
+
+    // ── SAVE FAST TRACK (dashboard → chrome.storage) ────────────────────────
+    // Dashboard persists its fast-track list (bbp_fasttrack + interval + pause)
+    // here so it survives dashboard refreshes and even localStorage clears.
+    if (ev.data.type === 'SAVE_FASTTRACK') {
+      safe(function() {
+        chrome.storage.local.set({
+          bbp_fasttrack: ev.data.list || [],
+          bbp_fasttrack_interval: ev.data.interval || null,
+          bbp_fasttrack_paused: ev.data.paused || null
+        }, function() {
+          console.log('[Bridge] Fast track saved to chrome.storage:', (ev.data.list || []).length, 'products');
         });
       });
     }
@@ -438,6 +480,7 @@
   // ── START ─────────────────────────────────────────────────────────────────
   announce();
   syncToLocalStorage();
+  syncFastTrackToLocal();
   announceInterval = setInterval(announce, 4000);
   syncInterval     = setInterval(syncToLocalStorage, 5000);
 
