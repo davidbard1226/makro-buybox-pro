@@ -650,6 +650,7 @@
     <div class="logo">
       <div class="logo-dot"></div>
       MAKRO BUYBOX PRO
+      <span id="versionBadge" style="font-size:9px;color:var(--muted);margin-left:8px;border:1px solid var(--border);padding:1px 6px;border-radius:8px;vertical-align:middle"></span>
     </div>
 
     <div class="seller-badge">
@@ -7411,6 +7412,17 @@ document.addEventListener('scroll', function() {
 // INIT
 // ============================================================
 (function init() {
+  // Version badge — shows the deployed version so we can confirm the dashboard
+  // is running the latest code. Reads the ?v= cache-buster from the URL when
+  // present (extension popup opens with one), else shows the build date.
+  try {
+    var vb = document.getElementById('versionBadge');
+    if (vb) {
+      var v = (location.search.match(/[?&]v=([^&]+)/) || [])[1] || '2026-09-05 23:20';
+      vb.textContent = 'v' + v;
+    }
+  } catch(e) {}
+
   loadProducts();
   renderNewOrders();
 

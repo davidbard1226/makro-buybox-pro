@@ -1,4 +1,7 @@
-const DASH = 'https://davidbard1226.github.io/makro-buybox-pro/';
+// Cache-busted dashboard URL — GitHub Pages caches the HTML for ~10 min, so a
+// plain URL keeps serving the OLD version no matter how many times the user
+// refreshes. The ?v= timestamp forces a fresh fetch on every open.
+const DASH = 'https://davidbard1226.github.io/makro-buybox-pro/?v=' + Date.now();
 let currentTabId = null;
 
 // ── LOAD STORAGE STATS ──────────────────────────────────────────────────────
@@ -100,6 +103,11 @@ document.getElementById('btn-scrape').addEventListener('click', function() {
 // ── DASHBOARD BUTTON ────────────────────────────────────────────────────────
 document.getElementById('btn-dashboard').addEventListener('click', function() {
   chrome.tabs.create({ url: DASH });
+});
+
+// Footer link uses the same cache-busted URL
+document.getElementById('link-dashboard').addEventListener('click', function() {
+  this.href = DASH;
 });
 
 // ── CLEAR BUTTON ─────────────────────────────────────────────────────────────
