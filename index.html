@@ -3767,6 +3767,7 @@ function pullPortalListingsAwait(timeoutMs) {
 // start, the auto-scrape timer, fast-track, and chase so EVERY repricing cycle
 // runs against the real portal price (not a stale stored one). Best-effort sync.
 function syncThenStartQueue(urls, concurrency, label) {
+  _lastCycleLabel = label;   // remember what kind of cycle this is (chase skips fast-track)
   log('info', '🔄 Syncing live portal prices before ' + label + '...');
   pullPortalListingsAwait(8000).then(function(synced) {
     if (synced) log('ok', '✅ Live portal prices synced — repricing against real prices.');
@@ -4315,6 +4316,8 @@ function handleBulkResults(d) { /* legacy compat */ }
 var _chaseFired = false;   // one chase per scrape cycle
 var _chaseRound = 0;       // how many chase rounds this cycle
 var _chaseMaxRounds = 3;   // safety cap — never chase forever
+var _chaseTimer = null;    // scheduled chase timeout (cancelled on fast-track pause)
+var _lastCycleLabel = 'scrape'; // label of the most recent queue cycle
 
 function getChaseDelayMs() {
   var v = parseInt(localStorage.getItem('bbp_chase_delay') || '45');
@@ -4329,6 +4332,7 @@ function maybeChaseLostBuybox() {
     var forced = localStorage.getItem('bbp_auto_push_enabled') === '1';
     if (getTestMode() || watchlistActive()) return; // scoped mode: no bulk chase — watchlist/test products only
     if (mode !== 'korvex' && !forced) return; // chase only makes sense with auto-push on
+    if (_lastCycleLabel === 'fast-track') return; // fast-track is a lightweight check — don't bulk-chase after it
     if (_chaseFired) return;                  // one chase per cycle
     if (_chaseRound >= _chaseMaxRounds) {
       log('info', '🛑 Chase max rounds reached (' + _chaseMaxRounds + ') — stopping.');
@@ -4353,7 +4357,7 @@ function maybeChaseLostBuybox() {
     // ONLY the lost products. The re-scrape re-runs autoReprice (idempotent —
     // if our price already beats the competitor, nothing changes; if they
     // dropped again, we beat them again) and finishScraping fires another push.
-    setTimeout(function() { startChaseScrape(urls); }, getChaseDelayMs());
+    _chaseTimer = setTimeout(function() { _chaseTimer = null; startChaseScrape(urls); }, getChaseDelayMs());
   } catch(e) {
     log('error', '🎯 Chase error: ' + e.message);
   }
@@ -10315,6 +10319,10 @@ function fastTrackPaused() {
 function toggleFastTrackPause() {
   var paused = fastTrackPaused();
   localStorage.setItem('bbp_fasttrack_paused', paused ? '0' : '1');
+  if (!paused) {
+    // Just paused — cancel any chase re-scrape already scheduled so nothing keeps running.
+    if (_chaseTimer) { clearTimeout(_chaseTimer); _chaseTimer = null; }
+  }
   updateFastTrackStatus();
   applyFastTrack();
   log('info', paused ? '▶ Fast track resumed.' : '⏸ Fast track paused — no fast-track scraping until you resume.');
@@ -10704,6 +10712,7 @@ function applyFastTrack() {
   var ftUrls = fastTrackUrls();
 
   function runFastTrack() {
+    if (fastTrackPaused()) return; // extra guard — pause stops everything fast-track
     // Don't run if a scrape cycle is already in progress (either normal or fast-track)
     if (state.scraping) {
       log('info', '⚡ Fast-track tick skipped — a scrape cycle is already running.');
