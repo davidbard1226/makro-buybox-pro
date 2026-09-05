@@ -4184,6 +4184,19 @@ function doPush(withSku) {
 
       portalApiCall('portal_update_price', req).then(function() {
         succeeded++;
+        // Portal accepted the price — NOW update myPrice to the real portal
+        // price and clear the pending (so the next scrape sees the true state
+        // and doesn't re-push or misjudge the buybox).
+        var pushedListings = getListings();
+        var pushedListing = findListingByFsn(p.fsn, pushedListings);
+        if (pushedListing) {
+          pushedListing.myPrice = newPrice;
+          safeSet('makro_listings', JSON.stringify(pushedListings));
+        }
+        p.pending_price = null;
+        p.pending_updated = null;
+        saveProducts();
+        updatePendingBadge();
         log('ok', '  ✅ [' + idx + '/' + withSku.length + '] ' + (p.title || p.fsn).substring(0, 40) + ' → R' + newPrice.toFixed(2));
         setTimeout(pushNext, 600);
       }).catch(function(e) {
@@ -4547,15 +4560,16 @@ function autoReprice(prod) {
     }
     return;
   }
+  // ── SET PENDING (DO NOT touch listing.myPrice) ─────────────────────────
+  // myPrice MUST stay the ACTUAL price on the portal. If we overwrite it with
+  // the target here, the win-guard on the next scrape pass sees "myPrice ==
+  // target" and thinks we already won → it clears the pending → the price is
+  // never pushed. myPrice is updated ONLY after a successful portal push.
   var changed = false;
-  if (listing) {
-    if (listing.myPrice !== targetPrice) {
-      listing.myPrice = targetPrice;
-      changed = true;
-    }
+  if (listing && listing.myPrice !== targetPrice) {
+    changed = true;
   }
   if (changed) {
-    safeSet('makro_listings', JSON.stringify(listings));
     // Mark product as pending price upload
     prod.pending_price    = targetPrice;
     prod.pending_updated  = new Date().toISOString();
