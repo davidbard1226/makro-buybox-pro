@@ -1170,6 +1170,7 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
                   <option value="10">Every 10 min</option>
                 </select>
                 <button class="action-btn" id="fastTrackPauseBtn" style="font-size:10px;color:#ffd60a;border-color:#ffd60a66" onclick="toggleFastTrackPause()">⏸ Pause</button>
+                <button class="action-btn" id="fastTrackRunNowBtn" style="font-size:10px;color:#818cf8;border-color:#818cf866" onclick="runFastTrackNow()" title="Scrape the fast-track list right now — no waiting for the timer">▶ Run now</button>
                 <button class="action-btn" id="fastTrackSaveBtn" style="font-size:10px;color:#00e5a0;border-color:#00e5a066" onclick="saveFastTrackNow()" title="Save fast-track list to extension storage so it survives refreshes">💾 Save</button>
               </div>
               <div id="fastTrackStatus" style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.6"></div>
@@ -10811,6 +10812,7 @@ function applyAutoScrape() {
 // can react instantly when an active competitor changes price. Fast-track
 // products are excluded from the normal queue (see buildAutoScrapeQueue).
 var _fastTrackTimer = null;
+var _runFastTrackNow = null; // latest runFastTrack closure — used by the ▶ Run now button
 function applyFastTrack() {
   if (_fastTrackTimer) { clearInterval(_fastTrackTimer); _fastTrackTimer = null; }
   var list = getFastTrack();
@@ -10824,14 +10826,20 @@ function applyFastTrack() {
   var ftUrls = fastTrackUrls();
 
   function runFastTrack() {
-    if (fastTrackPaused()) return; // extra guard — pause stops everything fast-track
+    if (fastTrackPaused()) {
+      // extra guard — pause stops everything fast-track
+      setFastTrackLastRun('⏸ Paused — fast-track timer stopped', true);
+      return;
+    }
     // Don't run if a scrape cycle is already in progress (either normal or fast-track)
     if (state.scraping) {
       log('info', '⚡ Fast-track tick skipped — a scrape cycle is already running.');
+      setFastTrackLastRun('⏳ A scrape cycle is already running — fast-track tick skipped');
       return;
     }
     if (!state.extReady) {
       log('info', '⚡ Fast-track skipped — extension offline.');
+      setFastTrackLastRun('⚠ Extension offline — fast-track skipped', true);
       return;
     }
     var list = getFastTrack();
@@ -10861,8 +10869,24 @@ function applyFastTrack() {
   }
 
   // Run once immediately if there are fast-track products, then on the interval
+  _runFastTrackNow = runFastTrack;
   runFastTrack();
   _fastTrackTimer = setInterval(runFastTrack, mins * 60000);
+}
+
+// ▶ Run now — force an immediate fast-track scrape from the panel button.
+function runFastTrackNow() {
+  if (!_runFastTrackNow) {
+    // No fast-track products at page load → try to (re)build the closure from
+    // the current list (e.g. products were added after load).
+    applyFastTrack();
+    if (!_runFastTrackNow) {
+      log('warn', '⚡ No fast-track products — add some with the ⚡ button on a product row.');
+      setFastTrackLastRun('⚠ No fast-track products to scrape', true);
+      return;
+    }
+  }
+  _runFastTrackNow();
 }
 
 // ── ⚡ FAST-TRACK API BATCH SCRAPE ─────────────────────────────────────────
