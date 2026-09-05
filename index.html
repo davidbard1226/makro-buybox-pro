@@ -4085,10 +4085,14 @@ function maybeAutoPushPrices() {
 
     // Only push products that were actually scraped in THIS cycle. Without this,
     // a fast-track scrape of 3 products would sweep up every pending price left
-    // over from the normal 4-hour run (isScopedProduct returns true for all when
-    // no watchlist/test mode is active).
+    // over from the normal 4-hour run. _cycleTouchedFsn is the correct guard —
+    // it records EVERY product scraped this cycle (watchlist, fast-track, manual).
+    // NOTE: isScopedProduct() is deliberately NOT applied here. When the watchlist
+    // is active it returns false for any product outside the watchlist, which
+    // silently blocked auto-push for fast-track/manual products (e.g. a losing
+    // product got a pending price but was never pushed — "didn't update price").
     var pending = state.products.filter(function(p){
-      return p.pending_price != null && isScopedProduct(p) &&
+      return p.pending_price != null &&
              _cycleTouchedFsn.indexOf(p.fsn) !== -1;
     });
     if (!pending.length) {
