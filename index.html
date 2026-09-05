@@ -3647,16 +3647,17 @@ function generateUrlsFromListings() {
 
 function startScraping() {
   if (!state.extReady) { alert('Extension not connected. Please install the Makro Pro Scraper extension.'); return; }
-  // Watchlist mode: force the watchlist URLs — ignore whatever is pasted in the box
-  var urls;
-  if (watchlistActive()) {
+  // Explicitly pasted URLs ALWAYS win. Watchlist/test mode only kick in when the
+  // URL box is empty — otherwise a user paste would be silently ignored (with a
+  // watchlist active, pasting new URLs used to scrape the watchlist instead of
+  // the pasted products, so nothing new ever got added).
+  var urls = parseUrls();
+  if (urls.length === 0 && watchlistActive()) {
     urls = watchlistUrls();
     log('info', '⭐ Watchlist mode: scraping ' + urls.length + ' watchlist product(s).');
-  } else if (getTestMode() && getTestUrl()) {
+  } else if (urls.length === 0 && getTestMode() && getTestUrl()) {
     urls = [getTestUrl()];
     log('info', '🧪 Test mode: forcing single-product scrape.');
-  } else {
-    urls = parseUrls();
   }
   if (urls.length === 0) { alert('No valid Makro URLs found. Paste at least one makro.co.za product URL.'); return; }
 
