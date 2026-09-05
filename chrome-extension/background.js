@@ -41,6 +41,28 @@ function isChallengeUrl(url) {
   return /challenges\.cloudflare\.com|cdn-cgi|interstitial|are-you-human|verify.*human|robot.*check|captcha|makro\.co\.za\/blocked(\?|$)/i.test(url);
 }
 
+// ── FAST-TRACK API WATCHDOG (module scope) ───────────────────────────────
+// If the Makro tab accepts a fast-track batch but then goes silent (hanging
+// sellers API, stale content script, challenge page), the dashboard would wait
+// forever. After 30s with no progress/done, tell the dashboard what's wrong so
+// it can show a diagnostic and reset instead of hanging silently.
+// NOTE: must live at module scope — inside the onMessage listener each message
+// invocation gets its own copy of the variable, so clearTimeout would never
+// cancel the armed timer (false "stalled" reports mid-batch).
+let fastTrackWatchdog = null;
+function armFastTrackWatchdog() {
+  clearFastTrackWatchdog();
+  fastTrackWatchdog = setTimeout(function() {
+    notifyDashboard({
+      action: 'fasttrack_api_stalled',
+      message: 'No progress from the Makro tab in 30s — the sellers API may be hanging or the content script is stale. Check the Makro tab is open and logged in, then reload the extension (chrome://extensions → ↻).'
+    });
+  }, 30000);
+}
+function clearFastTrackWatchdog() {
+  if (fastTrackWatchdog) { clearTimeout(fastTrackWatchdog); fastTrackWatchdog = null; }
+}
+
 // ── MESSAGE HANDLER ───────────────────────────────────────────────────────
 chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
 
@@ -307,25 +329,6 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
   // Dashboard sends a list of FSNs; we find (or create) ONE Makro tab and ask
   // its content script to loop the sellers API for every FSN — no page loads.
   // Progress/done messages from the content script are relayed to the dashboard.
-
-  // Watchdog: if the Makro tab accepts the batch but then goes silent (hanging
-  // sellers API, stale content script, challenge page), the dashboard would
-  // wait forever. After 30s with no progress/done, tell the dashboard what's
-  // wrong so it can show a diagnostic and reset instead of hanging silently.
-  var fastTrackWatchdog = null;
-  function armFastTrackWatchdog() {
-    clearFastTrackWatchdog();
-    fastTrackWatchdog = setTimeout(function() {
-      notifyDashboard({
-        action: 'fasttrack_api_stalled',
-        message: 'No progress from the Makro tab in 30s — the sellers API may be hanging or the content script is stale. Check the Makro tab is open and logged in, then reload the extension (chrome://extensions → ↻).'
-      });
-    }, 30000);
-  }
-  function clearFastTrackWatchdog() {
-    if (fastTrackWatchdog) { clearTimeout(fastTrackWatchdog); fastTrackWatchdog = null; }
-  }
-
   if (msg.action === 'fasttrack_api_scrape') {
     var fsns = msg.fsns || [];
     if (!fsns.length) { sendResponse({ error: 'No FSNs' }); return true; }
