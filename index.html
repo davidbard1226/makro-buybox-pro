@@ -7412,9 +7412,24 @@ document.addEventListener('scroll', function() {
 // INIT
 // ============================================================
 (function init() {
-  // Version badge — shows the deployed version so we can confirm the dashboard
-  // is running the latest code. Reads the ?v= cache-buster from the URL when
-  // present (extension popup opens with one), else shows the build date.
+  // ── CACHE-BUST GUARD ─────────────────────────────────────────────────────
+  // GitHub Pages caches the HTML for ~10 min, so a plain URL (bookmark, typed,
+  // or the extension popup before the cache-buster) keeps serving the OLD
+  // version no matter how many times the user refreshes. If this page was
+  // loaded WITHOUT a ?v= cache-buster, immediately reload with one so the
+  // browser fetches the latest deployed copy. The extension popup already
+  // opens with ?v=timestamp, so this only fires for manual/bookmark opens.
+  try {
+    var _v = (location.search.match(/[?&]v=([^&]+)/) || [])[1];
+    if (!_v && location.hostname.indexOf('github.io') !== -1) {
+      location.replace(location.pathname + '?v=' + Date.now());
+      return; // stop init — the reload re-runs it with the cache-buster
+    }
+  } catch(e) {}
+
+  // Version badge — shows the deployed version so we can always confirm the
+  // dashboard is running the latest code. Reads the ?v= cache-buster from the
+  // URL when present (extension popup opens with one), else shows the build date.
   try {
     var vb = document.getElementById('versionBadge');
     if (vb) {
