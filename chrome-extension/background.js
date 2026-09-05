@@ -357,6 +357,15 @@ function openScrapeWindow() {
   if (queue.length === 0) return;
   const firstUrl = queue.shift();
 
+  // Defensive cleanup: if a previous scrape window is still around (its close
+  // raced or failed), remove it BEFORE creating the new one so tabs never
+  // accumulate across cycles.
+  if (scrapeWinId) {
+    var leftoverWin = scrapeWinId;
+    scrapeWinId = null;
+    chrome.windows.remove(leftoverWin, function() {});
+  }
+
   chrome.windows.create({
     url: firstUrl,
     type: 'normal',
@@ -556,11 +565,16 @@ function finishCatSearch() {
       total:  catSearchTotal,
       found:  Object.keys(catSearchResults).length
     });
+    // Same window-id capture as finishQueue — never let a new cycle steal
+    // this close and leak the old window.
+    var winToClose = scrapeWinId;
     setTimeout(function() {
-      if (scrapeWinId) chrome.windows.remove(scrapeWinId, function() {});
-      scrapeWinId = null;
-      activeTabs.clear();
-    }, 6000);
+      if (winToClose) chrome.windows.remove(winToClose, function() {});
+      if (scrapeWinId === winToClose) {
+        scrapeWinId = null;
+        activeTabs.clear();
+      }
+    }, 2000);
   }, 500);
 }
 
@@ -569,11 +583,19 @@ function finishQueue() {
   active = false;
   setTimeout(function() {
     notifyDashboard({ action: 'queue_finished', done: doneCount, total: totalUrls });
+    // Capture the window id NOW (at schedule time). If a new scrape cycle
+    // starts before this fires, the close must target THIS window — reading
+    // scrapeWinId at fire time would remove the NEW window and leak the old
+    // one open forever (the "tabs keep accumulating" bug).
+    var winToClose = scrapeWinId;
     setTimeout(function() {
-      if (scrapeWinId) chrome.windows.remove(scrapeWinId, function() {});
-      scrapeWinId = null;
-      activeTabs.clear();
-    }, 6000);
+      if (winToClose) chrome.windows.remove(winToClose, function() {});
+      // Only reset shared state if no new cycle took over.
+      if (scrapeWinId === winToClose) {
+        scrapeWinId = null;
+        activeTabs.clear();
+      }
+    }, 2000);
   }, 500);
 }
 
