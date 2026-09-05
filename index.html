@@ -4142,21 +4142,14 @@ function doPush(withSku) {
       var newPrice = p.pending_price || p.new_price || p.buybox_price;
       idx++;
 
-      // ── NO-OP SKIP ─────────────────────────────────────────────────────────
-      // If the pending price equals our current listing price, there is no real
-      // change to push — pushing it is pointless and (if it's above the buybox)
-      // trips the NEVER-RAISE guard with a confusing error. Clear the stale
-      // pending and move on instead of counting it as a failed push.
+      // Current listing price (our price on the portal, as last known).
+      // NOTE: autoReprice sets listing.myPrice = target when it creates a
+      // pending, so for auto-repriced products curPrice === newPrice here —
+      // that is fine: the NEVER-RAISE guard below still catches genuine
+      // raises (pending from XLS import / manual / chase where myPrice is
+      // the real portal price), and above-buybox pushes are always refused.
       var curListing = findListingByFsn(p.fsn);
       var curPrice = curListing && curListing.myPrice > 0 ? curListing.myPrice : 0;
-      if (curPrice > 0 && newPrice === curPrice) {
-        log('info', '  ⏭ [' + idx + '/' + withSku.length + '] ' + (p.title || p.fsn).substring(0, 40) +
-            ' — no change (R' + newPrice + ' = current), skipping');
-        p.pending_price = null; p.pending_updated = null;
-        saveProducts(); updatePendingBadge();
-        setTimeout(pushNext, 300);
-        return;
-      }
 
       // ── NEVER-RAISE GUARD (final choke point) ─────────────────────────────
       // Every price push flows through here (autoReprice, XLS import, win-at-loss,
