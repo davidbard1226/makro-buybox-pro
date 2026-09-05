@@ -1173,6 +1173,7 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
                 <button class="action-btn" id="fastTrackSaveBtn" style="font-size:10px;color:#00e5a0;border-color:#00e5a066" onclick="saveFastTrackNow()" title="Save fast-track list to extension storage so it survives refreshes">💾 Save</button>
               </div>
               <div id="fastTrackStatus" style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.6"></div>
+              <div id="fastTrackLastRun" style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.6"></div>
               <div id="fastTrackList" style="margin-bottom:6px"></div>
               <div style="font-size:10px;color:var(--muted);line-height:1.5">
                 Click the <b style="color:var(--text)">⚡</b> button on any product row to fast-track it. Fast-tracked
@@ -2329,11 +2330,24 @@ window.addEventListener('message', function(ev) {
     return;
   }
 
-  if (d.type === 'FASTTRACK_RESTORED') {
+if (d.type === 'FASTTRACK_RESTORED') {
     // Bridge restored the fast-track list from chrome.storage after a refresh —
     // re-render the panel and restart the timer with the restored list.
     updateFastTrackStatus();
     applyFastTrack();
+
+    // Restore last fast-track run status (survives refresh)
+    try {
+      var lastRun = JSON.parse(localStorage.getItem('bbp_fasttrack_lastrun') || 'null');
+      if (lastRun && lastRun.text) {
+        var ftEl = document.getElementById('fastTrackLastRun');
+        if (ftEl) {
+          var when = lastRun.ts ? new Date(lastRun.ts).toLocaleTimeString() : '';
+          ftEl.innerHTML = '<span style="color:' + (lastRun.err ? '#ff6b6b' : 'var(--accent)') + '">' + lastRun.text + '</span>' +
+            (when ? ' <span style="color:var(--muted)">(' + when + ')</span>' : '');
+        }
+      }
+    } catch(e) {}
     log('info', '⚡ Fast track restored from extension storage (' + getFastTrack().length + ' product(s)).');
     return;
   }
@@ -2462,6 +2476,7 @@ window.addEventListener('message', function(ev) {
     // Bridge reports whether the background accepted the API batch scrape.
     if (d.ok) return; // started fine — progress events will follow
     log('err', '⚠ Fast-track API scrape failed to start: ' + (d.error || 'unknown error'));
+    setFastTrackLastRun('⚠ Failed to start: ' + (d.error || 'unknown error'), true);
     state.scraping = false;
     state.stopRequested = false;
     document.getElementById('startBtn').style.display = 'flex';
@@ -2482,6 +2497,9 @@ window.addEventListener('message', function(ev) {
 
   if (d.type === 'FASTTRACK_API_PROGRESS') {
     handleFastTrackApiResult(d.result, d.done, d.total);
+    // Live progress in the Fast Track panel (DOM only — persisted on done)
+    var ftEl = document.getElementById('fastTrackLastRun');
+    if (ftEl) ftEl.innerHTML = '<span style="color:var(--accent)">⏳ Scraping… ' + d.done + '/' + d.total + '</span>';
     return;
   }
 
@@ -2490,8 +2508,14 @@ window.addEventListener('message', function(ev) {
       // User hit Stop mid-batch — stopScraping() already finalized the UI;
       // just log what we got before the halt.
       log('info', '⏹ Fast-track API scrape stopped — ' + (d.results || []).length + ' product(s) processed.');
+      setFastTrackLastRun('⏹ Stopped — ' + (d.results || []).length + ' product(s) processed', true);
     } else {
-      handleQueueFinished();
+      _lastApiBatchCount = (d.results || []).length;
+      try { handleQueueFinished(); } catch(e) { console.error('[fast-track] finish error:', e); }
+      // Always show the final result in the Fast Track panel, even if the
+      // finish pipeline threw partway (handleQueueFinished also sets it for
+      // the page-load fallback path — this guarantees the API path shows it).
+      setFastTrackLastRun('✅ Done — ' + _lastApiBatchCount + ' product(s) updated via sellers API');
     }
     return;
   }
@@ -4149,6 +4173,15 @@ function handleQueueFinished() {
   clearQueueFinishWatchdog();
   finishScraping();
   log('ok', '✅ Queue complete — all products scraped.');
+  // Fast-track cycles: show the result in the Fast Track panel (Dashboard
+  // sidebar) so the user sees it without opening the Scraper tab log.
+  if (_lastCycleLabel === 'fast-track') {
+    if (_lastApiBatchCount > 0) {
+      setFastTrackLastRun('✅ Done — ' + _lastApiBatchCount + ' product(s) updated via sellers API');
+    } else {
+      setFastTrackLastRun('✅ Cycle finished — all fast-track products updated');
+    }
+  }
 }
 
 function finishScraping() {
@@ -7464,6 +7497,19 @@ document.addEventListener('scroll', function() {
   }
   updateFastTrackStatus();
   applyFastTrack();
+
+  // Restore last fast-track run status (survives refresh)
+  try {
+    var lastRun = JSON.parse(localStorage.getItem('bbp_fasttrack_lastrun') || 'null');
+    if (lastRun && lastRun.text) {
+      var ftEl = document.getElementById('fastTrackLastRun');
+      if (ftEl) {
+        var when = lastRun.ts ? new Date(lastRun.ts).toLocaleTimeString() : '';
+        ftEl.innerHTML = '<span style="color:' + (lastRun.err ? '#ff6b6b' : 'var(--accent)') + '">' + lastRun.text + '</span>' +
+          (when ? ' <span style="color:var(--muted)">(' + when + ')</span>' : '');
+      }
+    }
+  } catch(e) {}
 
   // Load saved seller name
   const savedSeller = localStorage.getItem(SELLER_KEY);
@@ -10798,6 +10844,7 @@ function applyFastTrack() {
       .filter(function(f) { return f && !/^itm/i.test(f); });
     if (fsns.length === list.length && fsns.length > 0) {
       log('info', '⚡ Fast-track API scrape — ' + fsns.length + ' product(s) via sellers API (no page loads).');
+      setFastTrackLastRun('🚀 API scrape started — ' + fsns.length + ' product(s) via sellers API…');
       startFastTrackApiScrape(fsns);
       switchTab('scraper');
       return;
@@ -10807,6 +10854,7 @@ function applyFastTrack() {
     var urls = fastTrackUrls();
     if (!urls.length) return;
     log('info', '⚡ Fast-track scrape — ' + urls.length + ' product(s) every ' + mins + ' min.');
+    setFastTrackLastRun('🚀 Page-load scrape started — ' + urls.length + ' product(s)…');
     var concurrency = parseInt(localStorage.getItem('scrape_parallel') || (document.getElementById('scrapeParallel')||{}).value || '5');
     syncThenStartQueue(urls, concurrency, 'fast-track');
     switchTab('scraper');
@@ -10823,6 +10871,23 @@ function applyFastTrack() {
 // pipeline as a normal scrape — win/lose, cost backfill, auto-reprice, history,
 // price log all work unchanged. The cycle ends with handleQueueFinished() so
 // auto-push + lost-buybox chase behave exactly like a page-load cycle.
+
+// Count of products in the last API batch (used by handleQueueFinished to show
+// "Done — N products" in the Fast Track panel).
+var _lastApiBatchCount = 0;
+
+// Show the last fast-track run result right in the Fast Track panel (Dashboard
+// sidebar) so the user never has to hunt for the log on the Scraper tab.
+// Persisted to localStorage so it survives refreshes.
+function setFastTrackLastRun(text, isErr) {
+  var el = document.getElementById('fastTrackLastRun');
+  var html = '<span style="color:' + (isErr ? '#ff6b6b' : 'var(--accent)') + '">' + text + '</span>';
+  if (el) el.innerHTML = html;
+  try {
+    localStorage.setItem('bbp_fasttrack_lastrun', JSON.stringify({ text: text, err: !!isErr, ts: Date.now() }));
+  } catch(e) {}
+}
+
 function startFastTrackApiScrape(fsns) {
   _lastCycleLabel = 'fast-track';   // chase skips fast-track cycles
   _autoPushFired = false;           // new cycle → allow one auto-push at the end
@@ -10830,6 +10895,7 @@ function startFastTrackApiScrape(fsns) {
   _chaseFired = false;
   _chaseRound = 0;
   resetCycleTouched();
+  _lastApiBatchCount = 0;
   scrapeQueue = fsns; scrapeIdx = 0; state.scraping = true;
   document.getElementById('progressSection').style.display = 'block';
   updateProgress(0, fsns.length);
