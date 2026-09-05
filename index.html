@@ -969,6 +969,10 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
               <span id="urlCount" style="font-size:12px;color:var(--muted)">0 URLs detected</span>
               <button class="action-btn" onclick="clearUrlInput()">Clear</button>
             </div>
+            <div style="margin-top:8px">
+              <button class="btn-primary" onclick="addPastedUrlsToProducts()" style="width:auto;padding:8px 16px;font-size:12px">➕ Add Pasted URLs to Products</button>
+              <span style="font-size:11px;color:var(--muted);margin-left:8px">Adds instantly — no extension needed. Then hit Start to fill in live data.</span>
+            </div>
 
             <div class="progress-section" id="progressSection" style="display:none">
               <div class="progress-label">
@@ -3278,6 +3282,40 @@ function parseUrls() {
   return raw.split('\n')
     .map(l => l.trim())
     .filter(l => l.startsWith('http') && l.includes('makro.co.za'));
+}
+
+// ── ADD PASTED URLS AS PRODUCTS (no extension needed) ─────────────────────
+// Creates product entries directly from the URL box so the user gets INSTANT
+// visible feedback in the Products tab. The scrape (Start) then fills in the
+// real FSN/SKU/price/seller. Dedupes by URL so re-adding is a no-op.
+function addPastedUrlsToProducts() {
+  var urls = parseUrls();
+  if (!urls.length) {
+    alert('Paste at least one makro.co.za product URL first.');
+    return;
+  }
+  var added = 0, skipped = 0;
+  urls.forEach(function(u) {
+    var exists = state.products.some(function(p) { return p.url === u; });
+    if (exists) { skipped++; return; }
+    state.products.push({
+      url: u,
+      fsn: '', sku: '', title: u,
+      buybox_price: 0, seller: '', status: 'unknown',
+      lastChecked: null, history: []
+    });
+    added++;
+  });
+  if (added) {
+    saveProducts();
+    updateProductCount();
+    renderProducts();
+    renderDashboard();
+    log('ok', '➕ Added ' + added + ' product(s) from pasted URLs' + (skipped ? ' (' + skipped + ' already in list)' : '') + '. Hit Start to scrape live data.');
+    alert('✅ Added ' + added + ' product(s) to the Products tab' + (skipped ? ' — ' + skipped + ' were already in your list.' : '') + '\n\nNow hit ⚡ Start Scraping to fill in the live buybox data.');
+  } else {
+    alert('No new products added — all ' + skipped + ' URL(s) are already in your list.');
+  }
 }
 
 document.getElementById('urlInput').addEventListener('input', function() {
