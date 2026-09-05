@@ -303,6 +303,112 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
     return true; // async
   }
 
+  // ── FAST-TRACK API BATCH SCRAPE ──────────────────────────────────────────
+  // Dashboard sends a list of FSNs; we find (or create) ONE Makro tab and ask
+  // its content script to loop the sellers API for every FSN — no page loads.
+  // Progress/done messages from the content script are relayed to the dashboard.
+  if (msg.action === 'fasttrack_api_scrape') {
+    var fsns = msg.fsns || [];
+    if (!fsns.length) { sendResponse({ error: 'No FSNs' }); return true; }
+    // Refuse if a page-load queue is mid-flight — the dashboard guards this
+    // too, but never let the two scrape paths overlap in the background.
+    if (active) { sendResponse({ error: 'Scraper already running — stop it first' }); return true; }
+
+    chrome.tabs.query({}, function(tabs) {
+      var makroTab = null;
+      for (var i = 0; i < tabs.length; i++) {
+        var u = tabs[i].url || '';
+        if (u.indexOf('https://www.makro.co.za') === 0 && !isChallengeUrl(u)) {
+          makroTab = tabs[i];
+          break;
+        }
+      }
+
+      function sendBatch(tabId, cb) {
+        chrome.tabs.sendMessage(tabId, {
+          action: 'fasttrack_api_scrape',
+          fsns: fsns,
+          concurrency: msg.concurrency || 6
+        }, function(resp) {
+          if (chrome.runtime.lastError) { cb({ error: 'makro_tab_not_ready' }); return; }
+          cb(resp);
+        });
+      }
+
+      if (makroTab) {
+        sendBatch(makroTab.id, function(resp) {
+          if (resp && resp.error === 'makro_tab_not_ready') {
+            // Content script not injected (tab opened before extension reload).
+            injectContentScript(makroTab.id, function(ok) {
+              if (!ok) { sendResponse({ error: 'makro_tab_not_ready' }); return; }
+              sendBatch(makroTab.id, sendResponse);
+            });
+            return;
+          }
+          sendResponse(resp);
+        });
+      } else {
+        // No Makro tab open — create one (homepage) and wait for it to load.
+        chrome.tabs.create({ url: 'https://www.makro.co.za/', active: false }, function(tab) {
+          if (chrome.runtime.lastError || !tab) { sendResponse({ error: 'makro_tab_failed' }); return; }
+          var tries = 0;
+          var waitTimer = setInterval(function() {
+            tries++;
+            chrome.tabs.get(tab.id, function(t) {
+              if (chrome.runtime.lastError || !t) {
+                clearInterval(waitTimer);
+                sendResponse({ error: 'makro_tab_failed' });
+                return;
+              }
+              if (t.status === 'complete' || tries > 20) {
+                clearInterval(waitTimer);
+                sendBatch(tab.id, function(resp) {
+                  if (resp && resp.error === 'makro_tab_not_ready') {
+                    injectContentScript(tab.id, function(ok) {
+                      if (!ok) { sendResponse({ error: 'makro_tab_not_ready' }); return; }
+                      sendBatch(tab.id, sendResponse);
+                    });
+                    return;
+                  }
+                  sendResponse(resp);
+                });
+              }
+            });
+          }, 500);
+        });
+      }
+    });
+    return true; // async
+  }
+
+  // ── FAST-TRACK API: STOP ──────────────────────────────────────────────────
+  // Dashboard Stop button → tell every Makro tab's content script to halt the
+  // batch loop. The content script finalizes with partial results.
+  if (msg.action === 'fasttrack_api_stop') {
+    chrome.tabs.query({}, function(tabs) {
+      for (var i = 0; i < tabs.length; i++) {
+        var u = tabs[i].url || '';
+        if (u.indexOf('https://www.makro.co.za') === 0) {
+          chrome.tabs.sendMessage(tabs[i].id, { action: 'fasttrack_api_stop' }, function() {});
+        }
+      }
+    });
+    sendResponse({ ok: true });
+    return true;
+  }
+
+  // ── FAST-TRACK API: PROGRESS/DONE FROM CONTENT → DASHBOARD ───────────────
+  if (msg.action === 'fasttrack_api_progress') {
+    notifyDashboard({ action: 'fasttrack_api_progress', done: msg.done, total: msg.total, result: msg.result });
+    sendResponse({ ok: true });
+    return true;
+  }
+  if (msg.action === 'fasttrack_api_done') {
+    notifyDashboard({ action: 'fasttrack_api_done', results: msg.results || [], stopped: !!msg.stopped });
+    sendResponse({ ok: true });
+    return true;
+  }
+
   // ── PORTAL API RELAY (dashboard → seller tab) ────────────────────────────
   if (msg.action === 'portal_get_orders' || msg.action === 'portal_get_listings' || msg.action === 'portal_list_product' || msg.action === 'portal_lookup_product' || msg.action === 'portal_update_price' || msg.action === 'portal_batch_update_prices') {
     chrome.tabs.query({}, function(tabs) {
@@ -345,6 +451,19 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
     chrome.scripting.executeScript({
       target: { tabId: tabId },
       files: ['portal_api.js']
+    }, function() {
+      if (chrome.runtime.lastError) { cb(false); return; }
+      cb(true);
+    });
+  }
+
+  // Inject content.js into a Makro tab if it's missing (tab opened before the
+  // extension reload). content.js guards against double-load.
+  function injectContentScript(tabId, cb) {
+    if (!chrome.scripting || !chrome.scripting.executeScript) { cb(false); return; }
+    chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      files: ['content.js']
     }, function() {
       if (chrome.runtime.lastError) { cb(false); return; }
       cb(true);

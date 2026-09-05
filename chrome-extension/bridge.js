@@ -263,9 +263,36 @@
       });
     }
 
+    // ── FAST-TRACK API BATCH SCRAPE (dashboard → background) ────────────────
+    // Dashboard sends FSNs; background forwards to ONE Makro tab's content
+    // script which loops the sellers API (no page loads). Progress/done come
+    // back through chrome.runtime.onMessage below.
+    if (ev.data.type === 'FASTTRACK_API_SCRAPE') {
+      safe(function() {
+        chrome.runtime.sendMessage({
+          action: 'fasttrack_api_scrape',
+          fsns: ev.data.fsns || [],
+          concurrency: parseInt(ev.data.concurrency) || 6
+        }, function(resp) {
+          var err = chrome.runtime.lastError ? chrome.runtime.lastError.message
+                   : (resp && resp.error) || null;
+          window.postMessage({ type: 'FASTTRACK_API_STARTED', ok: !!(resp && resp.started), error: err }, '*');
+          if (chrome.runtime.lastError) return;
+          console.log('[Bridge] Fast-track API scrape started:', resp);
+        });
+      });
+    }
+
     if (ev.data.type === 'STOP_QUEUE') {
       safe(function() {
         chrome.runtime.sendMessage({ action: 'stop_queue' }, function(){});
+      });
+    }
+
+    // ── FAST-TRACK API STOP (dashboard → background) ────────────────────────
+    if (ev.data.type === 'FASTTRACK_API_STOP') {
+      safe(function() {
+        chrome.runtime.sendMessage({ action: 'fasttrack_api_stop' }, function(){});
       });
     }
 
@@ -466,6 +493,13 @@
       }
       if (msg.action === 'sellers_updated') {
         window.postMessage({ type: 'SELLERS_UPDATED', fsn: msg.fsn, count: msg.count }, '*');
+      }
+      // Fast-track API batch scrape events
+      if (msg.action === 'fasttrack_api_progress') {
+        window.postMessage({ type: 'FASTTRACK_API_PROGRESS', done: msg.done, total: msg.total, result: msg.result }, '*');
+      }
+      if (msg.action === 'fasttrack_api_done') {
+        window.postMessage({ type: 'FASTTRACK_API_DONE', results: msg.results || [], stopped: !!msg.stopped }, '*');
       }
     });
   });

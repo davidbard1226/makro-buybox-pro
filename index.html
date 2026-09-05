@@ -2458,6 +2458,44 @@ window.addEventListener('message', function(ev) {
     return;
   }
 
+  if (d.type === 'FASTTRACK_API_STARTED') {
+    // Bridge reports whether the background accepted the API batch scrape.
+    if (d.ok) return; // started fine — progress events will follow
+    log('err', '⚠ Fast-track API scrape failed to start: ' + (d.error || 'unknown error'));
+    state.scraping = false;
+    state.stopRequested = false;
+    document.getElementById('startBtn').style.display = 'flex';
+    document.getElementById('stopBtn').style.display  = 'none';
+    document.getElementById('progressSection').style.display = 'none';
+    if (d.error && /already running/i.test(d.error)) {
+      log('info', '🔄 Stale queue detected — sending Stop, retrying fast-track in 1s…');
+      window.postMessage({ type: 'STOP_QUEUE' }, '*');
+      setTimeout(function() {
+        var list = getFastTrack();
+        var fsns = list.map(function(w) { return (w.fsn || '').trim(); })
+          .filter(function(f) { return f && !/^itm/i.test(f); });
+        if (fsns.length === list.length && fsns.length > 0) startFastTrackApiScrape(fsns);
+      }, 1000);
+    }
+    return;
+  }
+
+  if (d.type === 'FASTTRACK_API_PROGRESS') {
+    handleFastTrackApiResult(d.result, d.done, d.total);
+    return;
+  }
+
+  if (d.type === 'FASTTRACK_API_DONE') {
+    if (d.stopped) {
+      // User hit Stop mid-batch — stopScraping() already finalized the UI;
+      // just log what we got before the halt.
+      log('info', '⏹ Fast-track API scrape stopped — ' + (d.results || []).length + ' product(s) processed.');
+    } else {
+      handleQueueFinished();
+    }
+    return;
+  }
+
   if (d.type === 'SCRAPER_LOG') {
     log('info', d.msg || '');
     return;
@@ -3800,6 +3838,7 @@ function stopScraping() {
   state.scraping = false;
   clearQueueFinishWatchdog();
   window.postMessage({ type: 'STOP_QUEUE' }, '*');
+  window.postMessage({ type: 'FASTTRACK_API_STOP' }, '*');
   finishScraping();
   log('info', '⏹ Scraping stopped.');
 }
@@ -10749,6 +10788,22 @@ function applyFastTrack() {
       log('info', '⚡ Fast-track skipped — extension offline.');
       return;
     }
+    var list = getFastTrack();
+    if (!list.length) return;
+
+    // ── API PATH (preferred): every fast-track product has a real FSN → the
+    // extension loops Makro's sellers API from ONE tab (no page loads, no
+    // human delays). 100+ products scrape in well under a minute.
+    var fsns = list.map(function(w) { return (w.fsn || '').trim(); })
+      .filter(function(f) { return f && !/^itm/i.test(f); });
+    if (fsns.length === list.length && fsns.length > 0) {
+      log('info', '⚡ Fast-track API scrape — ' + fsns.length + ' product(s) via sellers API (no page loads).');
+      startFastTrackApiScrape(fsns);
+      switchTab('scraper');
+      return;
+    }
+
+    // ── FALLBACK: some products lack a real FSN → old page-load path.
     var urls = fastTrackUrls();
     if (!urls.length) return;
     log('info', '⚡ Fast-track scrape — ' + urls.length + ' product(s) every ' + mins + ' min.');
@@ -10760,6 +10815,57 @@ function applyFastTrack() {
   // Run once immediately if there are fast-track products, then on the interval
   runFastTrack();
   _fastTrackTimer = setInterval(runFastTrack, mins * 60000);
+}
+
+// ── ⚡ FAST-TRACK API BATCH SCRAPE ─────────────────────────────────────────
+// Sends FSNs to the extension, which loops Makro's sellers API from ONE tab
+// (no page loads). Each result is fed through the SAME handleQueueProgress
+// pipeline as a normal scrape — win/lose, cost backfill, auto-reprice, history,
+// price log all work unchanged. The cycle ends with handleQueueFinished() so
+// auto-push + lost-buybox chase behave exactly like a page-load cycle.
+function startFastTrackApiScrape(fsns) {
+  _lastCycleLabel = 'fast-track';   // chase skips fast-track cycles
+  _autoPushFired = false;           // new cycle → allow one auto-push at the end
+  _cyclePushStartedAt = 0;
+  _chaseFired = false;
+  _chaseRound = 0;
+  resetCycleTouched();
+  scrapeQueue = fsns; scrapeIdx = 0; state.scraping = true;
+  document.getElementById('progressSection').style.display = 'block';
+  updateProgress(0, fsns.length);
+  window.postMessage({ type: 'FASTTRACK_API_SCRAPE', fsns: fsns, concurrency: 6 }, '*');
+}
+
+// Build a synthetic scrape result from the API's seller list and run it through
+// the standard pipeline. sellers[0] is the buybox winner (sorted ascending).
+// handleQueueProgress does its own scrapeIdx++ / updateProgress.
+function handleFastTrackApiResult(result, done, total) {
+  if (!result || !result.fsn) return;
+  var sellers = result.sellers || [];
+  if (!sellers.length) {
+    log('warn', '⚡ No sellers returned for ' + result.fsn + ' — skipped.');
+    return;
+  }
+  var winner = sellers[0];
+  // Find the existing product so the synthetic result carries its URL/title
+  // (handleQueueProgress matches by URL first, then FSN prefix).
+  var prod = null;
+  try {
+    prod = state.products.find(function(x) {
+      if (!x.fsn) return false;
+      return x.fsn === result.fsn || x.fsn.slice(0, 15) === result.fsn.slice(0, 15);
+    });
+  } catch(e) {}
+  var synthetic = {
+    url: prod ? prod.url : ('https://www.makro.co.za/product/' + result.fsn),
+    fsn: result.fsn,
+    title: prod ? prod.title : result.fsn,
+    buyBoxPrice: winner.price,
+    buyBoxSeller: winner.seller,
+    sellers: sellers,
+    dataSource: 'api-fasttrack'
+  };
+  handleQueueProgress({ data: synthetic, done: done, total: total });
 }
 
 function openPortalUpload() {

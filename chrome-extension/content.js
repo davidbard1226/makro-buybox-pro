@@ -8,6 +8,10 @@
   // (chrome.* APIs become undefined) — exit cleanly instead of throwing.
   if (!chrome.runtime || !chrome.runtime.id) return;
 
+  // Set by 'fasttrack_api_stop' — the batch worker loop checks it between
+  // fetches and finalizes early with partial results.
+  var fastTrackStopRequested = false;
+
   // ── PRICE EXTRACTOR ───────────────────────────────────────────────────────
   function extractPrice(text) {
     if (!text) return null;
@@ -507,6 +511,72 @@
         sendResponse({ success: true, data: d });
       });
       return true; // keep sendResponse channel open for async response
+    }
+
+    // ── FAST-TRACK API BATCH SCRAPE ─────────────────────────────────────────
+    // Scrape MANY products by FSN via the sellers API from ONE page context —
+    // no page loads, no tabs, no human delays. Each FSN is one lightweight
+    // POST to /fccng/api/3/page/dynamic/product-sellers returning ALL sellers
+    // (buybox winner + every competitor price). Progress is posted back to the
+    // background as each result lands; a final 'fasttrack_api_done' carries the
+    // full result array. Concurrency is capped at 8 to stay gentle on Makro.
+    if (msg.action === 'fasttrack_api_stop') {
+      fastTrackStopRequested = true;
+      sendResponse({ ok: true });
+      return true;
+    }
+    if (msg.action === 'fasttrack_api_scrape') {
+      var fsns = msg.fsns || [];
+      var concurrency = Math.min(Math.max(parseInt(msg.concurrency) || 6, 1), 8);
+      var results = [];
+      var done = 0;
+      var idx = 0;
+      var doneSent = false;
+      fastTrackStopRequested = false;
+
+      function worker() {
+        if (fastTrackStopRequested || idx >= fsns.length) {
+          // Stopped (or exhausted) — send done once with whatever we have so
+          // the dashboard finalizes the cycle instead of hanging.
+          if (!doneSent) {
+            doneSent = true;
+            chrome.runtime.sendMessage({
+              action: 'fasttrack_api_done',
+              results: results,
+              stopped: fastTrackStopRequested
+            });
+          }
+          return;
+        }
+        var myIdx = idx++;
+        var fsn = fsns[myIdx];
+        fetchSellersApi(fsn).then(function(sellers) {
+          done++;
+          results[myIdx] = { fsn: fsn, sellers: sellers || [], ok: !!(sellers && sellers.length) };
+          chrome.runtime.sendMessage({
+            action: 'fasttrack_api_progress',
+            done: done,
+            total: fsns.length,
+            result: results[myIdx]
+          });
+          worker();
+        });
+      }
+
+      if (!fsns.length) {
+        chrome.runtime.sendMessage({ action: 'fasttrack_api_done', results: [] });
+        sendResponse({ started: true, total: 0 });
+        return true;
+      }
+      // Stagger worker starts slightly so the initial burst isn't a wall of
+      // simultaneous requests.
+      for (var i = 0; i < Math.min(concurrency, fsns.length); i++) {
+        (function(workerFn, delay) {
+          setTimeout(workerFn, delay);
+        })(worker, i * 150);
+      }
+      sendResponse({ started: true, total: fsns.length });
+      return true;
     }
   });
 
