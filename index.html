@@ -3298,6 +3298,9 @@ function addPastedUrlsToProducts() {
   urls.forEach(function(u) {
     var exists = state.products.some(function(p) { return p.url === u; });
     if (exists) { skipped++; return; }
+    // Explicit re-add overrides a previous deletion (the 3s auto-poll would
+    // otherwise remove it again because its URL sits in the deleted blocklist).
+    unDeleteProduct(u, '');
     state.products.push({
       url: u,
       fsn: '', sku: '', title: u,
@@ -3316,6 +3319,24 @@ function addPastedUrlsToProducts() {
   } else {
     alert('No new products added — all ' + skipped + ' URL(s) are already in your list.');
   }
+}
+
+// ── UNDELETE ───────────────────────────────────────────────────────────────
+// Removes a URL/FSN from the makro_deleted blocklist. The blocklist exists so
+// bridge syncs never resurrect products the user removed — but when the user
+// EXPLICITLY re-adds a product (paste + add, or scrape), that intent wins and
+// the product must not be filtered out 3s later by the auto-poll.
+function unDeleteProduct(url, fsn) {
+  try {
+    var deleted = JSON.parse(localStorage.getItem('makro_deleted') || '[]');
+    var before = deleted.length;
+    var fsnUp = (fsn || '').toUpperCase();
+    deleted = deleted.filter(function(d) { return d !== url && d !== fsnUp; });
+    if (deleted.length !== before) {
+      safeSet('makro_deleted', JSON.stringify(deleted));
+      log('info', '♻️ Removed from deleted blocklist: ' + String(url || fsn || '').slice(0, 60));
+    }
+  } catch(e) {}
 }
 
 document.getElementById('urlInput').addEventListener('input', function() {
@@ -3910,6 +3931,9 @@ async function handleQueueProgress(d) {
       // prevents scrape-created duplicate entries that lose their SKU/cost.
       return x.fsn.slice(0, 15) === p.fsn.slice(0, 15);
     });
+    // The user is explicitly scraping this URL — if it was deleted before,
+    // that deletion is overridden (otherwise the 3s auto-poll removes it again).
+    unDeleteProduct(p.url, p.fsn);
     if (existing) {
       existing.buybox_price = price;
       existing.seller       = seller;
@@ -6656,6 +6680,8 @@ function addProductFromSearch() {
     return;
   }
   // Add as a stub — scraper will fill in the rest
+  // Explicit re-add overrides a previous deletion (auto-poll would remove it otherwise)
+  unDeleteProduct(url, '');
   var stub = {
     url: url,
     fsn: '', sku: '', title: url,
