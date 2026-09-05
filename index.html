@@ -3714,6 +3714,7 @@ function syncThenStartQueue(urls, concurrency, label) {
     window.postMessage({ type: 'START_QUEUE', urls: urls, concurrency: concurrency }, '*');
     scrapeQueue = urls; scrapeIdx = 0; state.scraping = true;
     _autoPushFired = false; // new cycle → allow one auto-push at the end
+    _cyclePushStartedAt = 0;
     _chaseFired = false;    // new cycle → allow one lost-buybox chase
     _chaseRound = 0;
     resetCycleTouched();    // new cycle → only push products scraped in THIS cycle
@@ -3944,6 +3945,26 @@ async function handleQueueProgress(d) {
     // cycle end only pushes products that were actually scraped now.
     markCycleTouched(prod.fsn);
 
+    // ── LATE-ARRIVAL PUSH ──────────────────────────────────────────────────
+    // A slow URL can exceed the background's 15s per-tab safety timeout: the
+    // cycle finishes and auto-pushes WITHOUT this product (its data hadn't
+    // arrived yet), then the real scrape lands here and sets a pending price
+    // that would otherwise sit forever (e.g. 4024MF B3411-C1 pending R16,279
+    // never pushed). If the cycle already ended and the auto-push already ran,
+    // push this product's pending immediately instead of waiting for a cycle
+    // that already finished.
+    if (!state.scraping && _autoPushFired && _cyclePushStartedAt &&
+        prod.pending_price != null && prod.fsn && prod.sku &&
+        prod.lastChecked && new Date(prod.lastChecked).getTime() > _cyclePushStartedAt) {
+      log('info', '🤖 Late scrape after cycle end — pushing pending R' + prod.pending_price +
+          ' for ' + String(prod.title || prod.fsn).slice(0, 40) + ' immediately.');
+      refreshPortalSession(true).then(function() {
+        doPush([prod]);
+      }).catch(function() {
+        doPush([prod]);
+      });
+    }
+
     // ── PRICE LOG ENTRY ───────────────────────────────────────────────────
     var listingMatch = findListingByFsn(prod.fsn);
     addPriceLogEntry({
@@ -4082,6 +4103,7 @@ function maybeAutoPushPrices() {
     // Guard: finishScraping() fires from several paths — only push once per cycle.
     if (_autoPushFired) return;
     _autoPushFired = true;
+    _cyclePushStartedAt = Date.now(); // late scrape data after this point gets pushed immediately
 
     // Only push products that were actually scraped in THIS cycle. Without this,
     // a fast-track scrape of 3 products would sweep up every pending price left
@@ -4283,6 +4305,7 @@ function startChaseScrape(urls) {
   state.scraping = true;
   state.stopRequested = false;
   _autoPushFired = false; // chase cycle → allow one auto-push at its end
+  _cyclePushStartedAt = 0;
   resetCycleTouched();    // chase cycle → only push products scraped in THIS cycle
 
   document.getElementById('startBtn').style.display = 'none';
@@ -9869,6 +9892,7 @@ function saveBulkSkus() {
 var _autoScrapeTimer = null;
 var _lastSellerSig = '';
 var _autoPushFired = false; // one auto-push per scrape cycle (finishScraping fires from multiple paths)
+var _cyclePushStartedAt = 0; // when the cycle's auto-push ran — late scrape data after this gets pushed immediately
 var _autoScrapeRun = 0; // tracks cycle count
 // FSNs actually scraped in the CURRENT cycle. maybeAutoPushPrices() only pushes
 // products touched by THIS cycle, so a fast-track scrape of 3 products never
