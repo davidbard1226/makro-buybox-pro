@@ -378,24 +378,51 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
         makro.forEach(function(c) {
           diag.makroDomains[c.domain] = (diag.makroDomains[c.domain] || 0) + 1;
         });
-        var remaining = portalTabs.length;
-        diag.portalCookieCounts = [];
-        if (!remaining) {
-          sendResponse({ ok: true, diag: diag });
-          return;
-        }
-        portalTabs.forEach(function(pt) {
-          chrome.cookies.getAll({ url: pt.url, storeId: pt.cookieStoreId }, function(cs) {
-            diag.portalCookieCounts.push({
-              url: pt.url,
-              storeId: pt.cookieStoreId,
-              count: (cs || []).length,
-              names: (cs || []).map(function(c) { return c.name; }),
-              error: chrome.runtime.lastError ? chrome.runtime.lastError.message : null
+        // Granted permissions — proves whether 'cookies' + host perms are real
+        chrome.permissions.getAll(function(perms) {
+          diag.grantedPermissions = (perms && perms.permissions) || [];
+          diag.grantedHosts = (perms && perms.origins) || [];
+          // All cookie stores — the definitive store inventory
+          chrome.cookies.getAllCookieStores(function(stores) {
+            diag.cookieStores = (stores || []).map(function(s) {
+              return { id: s.id, tabIds: (s.tabIds || []).slice(0, 20) };
             });
-            if (--remaining === 0) sendResponse({ ok: true, diag: diag });
+            var remainingStores = (stores || []).length;
+            diag.storeCounts = [];
+            if (!remainingStores) { finishDiag(); return; }
+            (stores || []).forEach(function(s) {
+              chrome.cookies.getAll({ storeId: s.id }, function(cs) {
+                diag.storeCounts.push({
+                  storeId: s.id,
+                  count: (cs || []).length,
+                  makro: (cs || []).filter(function(c) { return (c.domain || '').indexOf('makro') !== -1; }).length,
+                  error: chrome.runtime.lastError ? chrome.runtime.lastError.message : null
+                });
+                if (--remainingStores === 0) finishDiag();
+              });
+            });
           });
         });
+        function finishDiag() {
+          var remaining = portalTabs.length;
+          diag.portalCookieCounts = [];
+          if (!remaining) {
+            sendResponse({ ok: true, diag: diag });
+            return;
+          }
+          portalTabs.forEach(function(pt) {
+            chrome.cookies.getAll({ url: pt.url, storeId: pt.cookieStoreId }, function(cs) {
+              diag.portalCookieCounts.push({
+                url: pt.url,
+                storeId: pt.cookieStoreId,
+                count: (cs || []).length,
+                names: (cs || []).map(function(c) { return c.name; }),
+                error: chrome.runtime.lastError ? chrome.runtime.lastError.message : null
+              });
+              if (--remaining === 0) sendResponse({ ok: true, diag: diag });
+            });
+          });
+        }
       });
     });
     return true; // async

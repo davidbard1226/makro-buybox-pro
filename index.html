@@ -3355,7 +3355,9 @@ function diagnosePortal() {
     }
     var d = ev.data.diag || {};
     log('info', '📋 Extension: ' + d.extId + ' v' + d.version + ' | cookies API: ' + (d.hasCookiesApi ? 'yes' : 'NO') + ' | scripting: ' + (d.hasScriptingApi ? 'yes' : 'NO'));
+    log('info', '📋 Granted permissions: ' + (d.grantedPermissions || []).join(', ') + ' | hosts: ' + (d.grantedHosts || []).join(', '));
     log('info', '📋 All cookies in store: ' + d.allCookies + (d.allCookiesError ? ' (ERROR: ' + d.allCookiesError + ')' : '') + ' | makro cookies: ' + d.makroCookies + (d.makroDomains ? ' | domains: ' + JSON.stringify(d.makroDomains) : ''));
+    log('info', '📋 Cookie stores: ' + JSON.stringify(d.cookieStores || []) + ' | per-store: ' + JSON.stringify(d.storeCounts || []));
     log('info', '📋 Tabs (' + (d.tabs || []).length + '): ' + (d.tabs || []).map(function(t) { return t.url + ' [' + t.storeId + (t.incognito ? ', incognito' : '') + ']'; }).join(' | '));
     (d.portalCookieCounts || []).forEach(function(p) {
       log('info', '📋 Portal tab ' + p.url + ' [' + p.storeId + '] → cookies: ' + p.count + (p.error ? ' (ERROR: ' + p.error + ')' : '') + (p.names && p.names.length ? ' | names: ' + p.names.join(', ') : ''));
