@@ -3362,6 +3362,10 @@ function diagnosePortal() {
     (d.portalCookieCounts || []).forEach(function(p) {
       log('info', '📋 Portal tab ' + p.url + ' [' + p.storeId + '] → cookies: ' + p.count + (p.error ? ' (ERROR: ' + p.error + ')' : '') + (p.names && p.names.length ? ' | names: ' + p.names.join(', ') : ''));
     });
+    if (d.pageState) {
+      var ps = d.pageState;
+      log('info', '📋 Portal page state: url=' + ps.url + ' | title=' + ps.title + ' | docCookieLen=' + ps.docCookieLen + (ps.docCookie ? ' | docCookie=' + ps.docCookie.slice(0, 120) : '') + ' | hasCsrf=' + ps.hasCsrf + ' (len ' + ps.csrfLen + ') | hasSellerId=' + ps.hasSellerId + ' | hasLocationId=' + ps.hasLocationId + (ps.appDataKeys ? ' | appDataKeys=' + ps.appDataKeys.join(',') : '') + (ps.error ? ' | ERROR: ' + ps.error : ''));
+    }
     if (!(d.portalCookieCounts || []).length) log('warn', '⚠ No seller.makro.co.za tab found — open one and log in, then Diagnose again');
   });
 }

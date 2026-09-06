@@ -419,7 +419,36 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
                 names: (cs || []).map(function(c) { return c.name; }),
                 error: chrome.runtime.lastError ? chrome.runtime.lastError.message : null
               });
-              if (--remaining === 0) sendResponse({ ok: true, diag: diag });
+              if (--remaining === 0) {
+                // Page-state check: read the portal tab's OWN document.cookie +
+                // __appData via scripting — independent of the cookies API.
+                var pt = portalTabs[0];
+                chrome.scripting.executeScript({
+                  target: { tabId: pt.id },
+                  func: function() {
+                    try {
+                      var d = JSON.parse(localStorage.getItem('__appData') || '{}');
+                      var sc = d.sellerConfig || {};
+                      return {
+                        url: location.href,
+                        title: document.title,
+                        docCookie: document.cookie,
+                        docCookieLen: (document.cookie || '').length,
+                        hasCsrf: !!sc.csrfToken,
+                        csrfLen: (sc.csrfToken || '').length,
+                        hasSellerId: !!sc.sellerId,
+                        hasLocationId: !!d['X-LOCATION-ID'],
+                        appDataKeys: Object.keys(d).slice(0, 20)
+                      };
+                    } catch(e) {
+                      return { error: e.message };
+                    }
+                  }
+                }, function(results) {
+                  diag.pageState = (results && results[0] && results[0].result) || { error: 'no result' };
+                  sendResponse({ ok: true, diag: diag });
+                });
+              }
             });
           });
         }
