@@ -589,6 +589,80 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
     return true;
   }
 
+  // ── MAKRO SEARCH (browse API) ─────────────────────────────────────────────
+  // Dashboard asks for a catalogue search; we find (or create) ONE Makro tab,
+  // inject content.js and ask it to run the browse API. Results come back in
+  // the sendResponse — no page loads, no bot checks.
+  if (msg.action === 'makro_search') {
+    var searchQuery = (msg.query || '').trim();
+    if (!searchQuery) { sendResponse({ error: 'No query' }); return true; }
+    function dispatchSearch(tabId, cb, attempt) {
+      attempt = attempt || 0;
+      chrome.scripting.executeScript({
+        target: { tabId: tabId },
+        files: ['content.js']
+      }, function() {
+        if (chrome.runtime.lastError) {
+          if (attempt < 3) { setTimeout(function() { dispatchSearch(tabId, cb, attempt + 1); }, 1000); return; }
+          cb({ error: 'makro_tab_not_ready' });
+          return;
+        }
+        chrome.tabs.sendMessage(tabId, {
+          action: 'makro_search',
+          query: searchQuery,
+          maxPages: msg.maxPages || 10
+        }, function(resp) {
+          if (chrome.runtime.lastError) {
+            if (attempt < 3) { setTimeout(function() { dispatchSearch(tabId, cb, attempt + 1); }, 1000); return; }
+            cb({ error: 'makro_tab_not_ready' });
+            return;
+          }
+          cb(resp);
+        });
+      });
+    }
+    function waitForSearchTabReady(tab, cb) {
+      var tries = 0;
+      var waitTimer = setInterval(function() {
+        tries++;
+        chrome.tabs.get(tab.id, function(t) {
+          if (chrome.runtime.lastError || !t) {
+            clearInterval(waitTimer);
+            cb({ error: 'makro_tab_failed' });
+            return;
+          }
+          if (isChallengeUrl(t.url || '')) {
+            if (tries <= 4) { chrome.tabs.update(tab.id, { url: 'https://www.makro.co.za/' }, function() {}); }
+            return;
+          }
+          if (t.status === 'complete' || tries > 40) {
+            clearInterval(waitTimer);
+            dispatchSearch(tab.id, cb);
+          }
+        });
+      }, 500);
+    }
+    chrome.tabs.query({}, function(tabs) {
+      var makroTab = null;
+      for (var i = 0; i < tabs.length; i++) {
+        var u = tabs[i].url || '';
+        if (u.indexOf('https://www.makro.co.za') === 0 && !isChallengeUrl(u)) {
+          makroTab = tabs[i];
+          break;
+        }
+      }
+      if (makroTab) {
+        waitForSearchTabReady(makroTab, sendResponse);
+      } else {
+        chrome.tabs.create({ url: 'https://www.makro.co.za/', active: false }, function(tab) {
+          if (chrome.runtime.lastError || !tab) { sendResponse({ error: 'makro_tab_failed' }); return; }
+          waitForSearchTabReady(tab, sendResponse);
+        });
+      }
+    });
+    return true; // async
+  }
+
   // ── PORTAL API RELAY (dashboard → seller tab) ────────────────────────────
   if (msg.action === 'portal_get_orders' || msg.action === 'portal_get_listings' || msg.action === 'portal_list_product' || msg.action === 'portal_lookup_product' || msg.action === 'portal_update_price' || msg.action === 'portal_batch_update_prices') {
     chrome.tabs.query({}, function(tabs) {

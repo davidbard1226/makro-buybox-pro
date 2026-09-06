@@ -292,6 +292,32 @@
       });
     }
 
+    // ── MAKRO SEARCH (dashboard → background → Makro tab content script) ────
+    // Dashboard asks for a catalogue search; background finds/creates a Makro
+    // tab, injects content.js which runs the browse API. Results come back in
+    // the sendResponse and are relayed to the dashboard.
+    if (ev.data.type === 'MAKRO_SEARCH') {
+      safe(function() {
+        chrome.runtime.sendMessage({
+          action: 'makro_search',
+          query: ev.data.query || '',
+          maxPages: parseInt(ev.data.maxPages) || 10
+        }, function(resp) {
+          if (chrome.runtime.lastError) {
+            window.postMessage({ type: 'MAKRO_SEARCH_RESULT', ok: false, error: 'Extension error' }, '*');
+            return;
+          }
+          window.postMessage({
+            type: 'MAKRO_SEARCH_RESULT',
+            ok: !!(resp && resp.ok),
+            query: ev.data.query || '',
+            results: resp && resp.results,
+            error: resp && resp.error
+          }, '*');
+        });
+      });
+    }
+
     if (ev.data.type === 'STOP_QUEUE') {
       safe(function() {
         chrome.runtime.sendMessage({ action: 'stop_queue' }, function(){});

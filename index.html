@@ -687,6 +687,7 @@
     <button class="tab-btn active" onclick="switchTab('dashboard')">📊 Dashboard</button>
     <button class="tab-btn" onclick="switchTab('products')">📦 Products <span class="tab-badge" id="prodCount">0</span></button>
     <button class="tab-btn" onclick="switchTab('scraper')">⚡ Scraper</button>
+    <button class="tab-btn" onclick="switchTab('search')">🔍 Search</button>
     <button class="tab-btn" onclick="switchTab('pricer')">💰 Price Updater</button>
     <button class="tab-btn" onclick="switchTab('analytics')">📈 Analytics</button>
     <button class="tab-btn" onclick="switchTab('log')">📋 Price Log</button>
@@ -1271,6 +1272,52 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
       </div>
 
     </div><!-- /scraper -->
+
+    <!-- ========== SEARCH TAB ========== -->
+    <div class="tab-content" id="tab-search">
+      <div class="scraper-layout">
+        <div>
+          <div class="card-title" style="margin-bottom:10px">🔍 SEARCH MAKRO CATALOGUE</div>
+          <div style="margin-bottom:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input type="text" id="searchQuery" placeholder="e.g. hp 925, canon 1400, brother tn2355..."
+              style="flex:1;min-width:260px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:'Space Mono',monospace;font-size:13px;padding:10px 14px;border-radius:8px;outline:none"
+              onkeydown="if(event.key==='Enter')runMakroSearch()">
+            <button class="btn-primary" onclick="runMakroSearch()" style="width:auto;padding:10px 20px;font-size:13px;background:linear-gradient(135deg,var(--accent),#00c9a7);box-shadow:0 2px 12px rgba(0,229,160,.3)">🔎 Search Makro</button>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:12px">
+            Searches Makro's own catalogue API — no page loads, no bot checks. Shows every product Makro sells for your query, and flags which ones you already sell (matched by FSN).
+          </div>
+
+          <div id="searchStatus" style="font-size:12px;color:var(--muted);margin-bottom:8px"></div>
+
+          <div id="searchResultsWrap" style="display:none">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+              <span id="searchSummary" style="font-size:12px;color:var(--muted)"></span>
+              <div style="display:flex;gap:8px;align-items:center">
+                <button class="btn-primary" onclick="addSelectedSearchResults()" style="width:auto;padding:8px 16px;font-size:12px">➕ Add Selected to Products</button>
+                <button class="action-btn" onclick="clearSearchResults()">Clear</button>
+              </div>
+            </div>
+            <div style="max-height:520px;overflow-y:auto;border:1px solid var(--border);border-radius:8px">
+              <table style="width:100%;border-collapse:collapse;font-size:12px">
+                <thead style="position:sticky;top:0;background:var(--surface2);z-index:2">
+                  <tr>
+                    <th style="padding:8px;text-align:left;border-bottom:1px solid var(--border);width:28px"><input type="checkbox" id="searchCheckAll" onchange="toggleSearchCheckAll(this.checked)"></th>
+                    <th style="padding:8px;text-align:left;border-bottom:1px solid var(--border)">Product</th>
+                    <th style="padding:8px;text-align:right;border-bottom:1px solid var(--border)">Buybox</th>
+                    <th style="padding:8px;text-align:right;border-bottom:1px solid var(--border)">MRP</th>
+                    <th style="padding:8px;text-align:center;border-bottom:1px solid var(--border)">Stock</th>
+                    <th style="padding:8px;text-align:left;border-bottom:1px solid var(--border)">FSN</th>
+                    <th style="padding:8px;text-align:center;border-bottom:1px solid var(--border)">You sell?</th>
+                  </tr>
+                </thead>
+                <tbody id="searchResultsBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div><!-- /search -->
 
     <!-- ========== PRICE UPDATER TAB ========== -->
     <div class="tab-content" id="tab-pricer">
@@ -2608,6 +2655,11 @@ if (d.type === 'FASTTRACK_RESTORED') {
     handleLookupProductResult(d);
     return;
   }
+
+  if (d.type === 'MAKRO_SEARCH_RESULT') {
+    handleMakroSearchResult(d);
+    return;
+  }
 });
 
 // ============================================================
@@ -3410,7 +3462,7 @@ function setExtStatus(online) {
 // TABS
 // ============================================================
 function switchTab(name) {
-  const names = ['dashboard','products','scraper','pricer','analytics','log','autopush','intelligence','orders','recon','backup'];
+  const names = ['dashboard','products','scraper','search','pricer','analytics','log','autopush','intelligence','orders','recon','backup'];
   document.querySelectorAll('.tab-btn').forEach((b,i) => {
     b.classList.toggle('active', names[i] === name);
   });
@@ -7008,6 +7060,143 @@ function rescrapeOne(idx) {
   document.getElementById('urlInput').value = p.url;
   document.getElementById('urlCount').textContent = '1 URL detected';
   setTimeout(startScraping, 100);
+}
+
+// ============================================================
+// SEARCH TAB — Makro catalogue search via the browse API
+// Flow: dashboard → postMessage MAKRO_SEARCH → bridge.js →
+//       background.js → Makro tab content.js (browse API) → back.
+// ============================================================
+var _searchResults = [];
+
+function runMakroSearch() {
+  var q = (document.getElementById('searchQuery').value || '').trim();
+  if (!q) { alert('Type a search query first, e.g. "hp 925".'); return; }
+  if (!state.extReady) {
+    alert('Extension not connected.\nLoad the dashboard with the Makro BuyBox Pro extension active, then try again.');
+    return;
+  }
+  var statusEl = document.getElementById('searchStatus');
+  var btn = document.querySelector('#tab-search .btn-primary');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Searching...'; }
+  statusEl.textContent = 'Searching Makro for "' + q + '"...';
+  statusEl.style.color = 'var(--muted)';
+  document.getElementById('searchResultsWrap').style.display = 'none';
+  window.postMessage({ type: 'MAKRO_SEARCH', query: q, maxPages: 12 }, '*');
+}
+
+function handleMakroSearchResult(d) {
+  var statusEl = document.getElementById('searchStatus');
+  var btn = document.querySelector('#tab-search .btn-primary');
+  if (btn) { btn.disabled = false; btn.textContent = '🔎 Search Makro'; }
+  if (!d.ok) {
+    var msg = d.error === 'makro_tab_not_ready'
+      ? '❌ Makro tab not ready — try again in a moment.'
+      : '❌ Search failed: ' + (d.error || 'unknown error');
+    statusEl.textContent = msg;
+    statusEl.style.color = '#ff4444';
+    return;
+  }
+  _searchResults = d.results || [];
+  renderSearchResults();
+}
+
+function renderSearchResults() {
+  var wrap = document.getElementById('searchResultsWrap');
+  var statusEl = document.getElementById('searchStatus');
+  var body = document.getElementById('searchResultsBody');
+  if (!_searchResults.length) {
+    statusEl.textContent = 'No products found for that query.';
+    statusEl.style.color = '#ff9500';
+    wrap.style.display = 'none';
+    return;
+  }
+  // Cross-reference against dashboard products by FSN (and URL as fallback)
+  var myFsns = {};
+  var myUrls = {};
+  state.products.forEach(function(p) {
+    if (p.fsn) myFsns[p.fsn.toUpperCase()] = true;
+    if (p.url) myUrls[p.url.replace(/[?&]pid=[A-Z0-9]+/i, '')] = true;
+  });
+  var matched = 0;
+  _searchResults.forEach(function(r) {
+    r._mine = !!(r.fsn && myFsns[r.fsn.toUpperCase()]) ||
+              !!(r.url && myUrls[r.url.replace(/[?&]pid=[A-Z0-9]+/i, '')]);
+    if (r._mine) matched++;
+  });
+  var newCount = _searchResults.length - matched;
+  document.getElementById('searchSummary').innerHTML =
+    '<strong>' + _searchResults.length + '</strong> products found — ' +
+    '<span style="color:var(--accent)"><strong>' + newCount + '</strong> new</span> · ' +
+    '<span style="color:var(--muted)">' + matched + ' you already sell</span>';
+  document.getElementById('searchCheckAll').checked = false;
+  body.innerHTML = _searchResults.map(function(r, i) {
+    var stockColor = r.stock === 'IN_STOCK' ? 'var(--accent)' : r.stock === 'OUT_OF_STOCK' ? '#ff9500' : 'var(--muted)';
+    var stockLabel = r.stock === 'IN_STOCK' ? 'In stock' : r.stock === 'OUT_OF_STOCK' ? 'Out' : (r.stock || '—');
+    var badge = r._mine
+      ? '<span style="color:var(--muted);font-size:10px;border:1px solid var(--border);padding:2px 8px;border-radius:10px">✓ You sell</span>'
+      : '<span style="color:var(--accent);font-size:10px;border:1px solid var(--accent);padding:2px 8px;border-radius:10px;font-weight:600">NEW</span>';
+    return `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:8px;text-align:left"><input type="checkbox" class="search-row-check" data-idx="${i}" ${r._mine ? 'disabled' : ''}></td>
+      <td style="padding:8px;text-align:left">
+        <div style="font-weight:600;color:var(--text)">${escHtml((r.title||'').slice(0,70))}</div>
+        <div style="font-size:10px;color:var(--muted)">${escHtml(r.brand||'')} · <a href="${escHtml(r.url)}" target="_blank" rel="noopener" style="color:#818cf8">${escHtml(shortUrl(r.url))}</a></div>
+      </td>
+      <td style="padding:8px;text-align:right;font-family:'Space Mono',monospace;color:var(--accent3)">${r.price != null ? 'R ' + r.price.toFixed(2) : '—'}</td>
+      <td style="padding:8px;text-align:right;font-family:'Space Mono',monospace;color:var(--muted)">${r.mrp != null ? 'R ' + r.mrp.toFixed(2) : '—'}</td>
+      <td style="padding:8px;text-align:center;color:${stockColor};font-size:11px">${stockLabel}</td>
+      <td style="padding:8px;text-align:left;font-family:'Space Mono',monospace;font-size:10px;color:var(--muted)">${escHtml(r.fsn||'')}</td>
+      <td style="padding:8px;text-align:center">${badge}</td>
+    </tr>`;
+  }).join('');
+  wrap.style.display = 'block';
+  statusEl.textContent = '';
+}
+
+function toggleSearchCheckAll(checked) {
+  document.querySelectorAll('.search-row-check:not(:disabled)').forEach(function(c) { c.checked = checked; });
+}
+
+function addSelectedSearchResults() {
+  var selected = [];
+  document.querySelectorAll('.search-row-check:checked').forEach(function(c) {
+    selected.push(_searchResults[parseInt(c.dataset.idx)]);
+  });
+  if (!selected.length) { alert('Tick the products you want to add first.'); return; }
+  var added = 0, skipped = 0;
+  selected.forEach(function(r) {
+    var exists = state.products.some(function(p) {
+      return p.url === r.url || (r.fsn && p.fsn && p.fsn.toUpperCase() === r.fsn.toUpperCase());
+    });
+    if (exists) { skipped++; return; }
+    unDeleteProduct(r.url, '');
+    state.products.push({
+      url: r.url,
+      fsn: r.fsn || '',
+      sku: '', title: r.title || r.url,
+      buybox_price: r.price || 0, seller: '', status: 'unknown',
+      lastChecked: null, history: []
+    });
+    added++;
+  });
+  if (added) {
+    saveProducts();
+    updateProductCount();
+    renderProducts();
+    renderDashboard();
+    log('ok', '➕ Added ' + added + ' product(s) from search results' + (skipped ? ' (' + skipped + ' already in list)' : '') + '.');
+    alert('✅ Added ' + added + ' product(s) to the Products tab' + (skipped ? ' — ' + skipped + ' were already in your list.' : '') + '.\n\nFSN is already filled — hit ⚡ Start Scraping (or Fast Track) to fill in live buybox data.');
+    renderSearchResults();
+  } else {
+    alert('No new products added — all ' + skipped + ' selected product(s) are already in your list.');
+  }
+}
+
+function clearSearchResults() {
+  _searchResults = [];
+  document.getElementById('searchResultsWrap').style.display = 'none';
+  document.getElementById('searchStatus').textContent = '';
+  document.getElementById('searchQuery').value = '';
 }
 
 function clearAllConfirm() {

@@ -514,10 +514,68 @@
     else window.addEventListener('load', function() { setTimeout(sellersRun, 800); });
   }
 
+  // ── MAKRO SEARCH (browse API) ────────────────────────────────────────────
+  // Search Makro's catalogue via their own browse API — one lightweight GET
+  // per page of 20 results, no page loads, no bot checks. Returns FSN, itm,
+  // title, brand, price, MRP, stock and URL for every result.
+  function searchMakro(query, maxPages) {
+    var results = [];
+    var start = 0;
+    var page = 0;
+    maxPages = Math.min(Math.max(parseInt(maxPages) || 10, 1), 25);
+    function fetchPage() {
+      var body = { requestContext: { store: 'all', sort: 'popularity', count: 20, filter: 'q=' + query, start: start } };
+      var url = '/fccng/api/3/product/browse?http-method=POST&http-body=' + encodeURIComponent(JSON.stringify(body));
+      var ctrl = new AbortController();
+      var timer = setTimeout(function() { ctrl.abort(); }, 15000);
+      return fetch(url, {
+        headers: { 'x-user-agent': navigator.userAgent + ' FKUA/website/42/website/Desktop' },
+        credentials: 'include',
+        signal: ctrl.signal
+      })
+        .then(function(r) {
+          clearTimeout(timer);
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
+        })
+        .then(function(json) {
+          var pl = json.RESPONSE && json.RESPONSE.data && json.RESPONSE.data.product_listview;
+          var items = pl && pl.data ? pl.data : [];
+          items.forEach(function(it) {
+            var v = it.value || {};
+            var u = it.action && it.action.url ? it.action.url : '';
+            if (u && u.indexOf('http') !== 0) u = 'https://www.makro.co.za' + u;
+            results.push({
+              fsn: v.id || '',
+              itm: v.itemId || '',
+              title: (v.titles && v.titles.title) || '',
+              brand: (v.titles && v.titles.superTitle) || '',
+              price: v.pricing && v.pricing.finalPrice ? v.pricing.finalPrice.value : null,
+              mrp: v.pricing && v.pricing.mrp ? v.pricing.mrp.value : null,
+              stock: v.availability ? v.availability.displayState : '',
+              url: u
+            });
+          });
+          start += 20;
+          page++;
+          if (items.length >= 20 && page < maxPages) return fetchPage();
+          return results;
+        })
+        .catch(function(e) { clearTimeout(timer); console.warn('[BuyBox] Search failed:', e.message); return results; });
+    }
+    return fetchPage();
+  }
+
   // ── MESSAGES ───────────────────────────────────────────────────────────────
   chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
     if (msg.action === 'ping') { sendResponse({ pong: true }); return true; }
     if (msg.action === 'fasttrack_api_ping') { sendResponse({ version: 'v5-api', ok: true }); return true; }
+    if (msg.action === 'makro_search') {
+      searchMakro(msg.query || '', msg.maxPages || 10).then(function(results) {
+        sendResponse({ ok: true, query: msg.query, results: results });
+      });
+      return true; // keep sendResponse channel open for async response
+    }
     if (msg.action === 'scrape_now' || msg.action === 'SCRAPE_URL') {
       scrapeProduct().then(function(d) {
         saveProduct(d);
