@@ -1179,6 +1179,19 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
                 <button class="action-btn" style="font-size:10px;color:#ffd60a;border-color:#ffd60a66" onclick="addProductsToFastTrack('watchlist')" title="Add every ⭐ watchlist product to fast-track (API scrape — no page loads)">⭐ Add watchlist</button>
                 <button class="action-btn" style="font-size:10px;color:#00e5a0;border-color:#00e5a066" onclick="addProductsToFastTrack('all')" title="Add EVERY product with a real FSN to fast-track (API scrape — no page loads)">➕ Add all products</button>
               </div>
+              <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap">
+                <select id="ftSellerSelect" onchange="updateFtFilterCount()" style="background:var(--card);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:11px;max-width:190px" title="Add all products where this seller wins the buybox">
+                  <option value="">— Seller —</option>
+                </select>
+                <button class="action-btn" style="font-size:10px;color:#ffd60a;border-color:#ffd60a66" onclick="addFtBySeller()" title="Add all products where the selected seller wins the buybox">➕ By seller</button>
+                <select id="ftStatusSelect" onchange="updateFtFilterCount()" style="background:var(--card);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:11px" title="Add all products with this WIN/LOSE status">
+                  <option value="">— Win/Lose —</option>
+                  <option value="win">✓ WIN</option>
+                  <option value="lose">✗ LOSE</option>
+                </select>
+                <button class="action-btn" style="font-size:10px;color:#00e5a0;border-color:#00e5a066" onclick="addFtByStatus()" title="Add all products with the selected WIN/LOSE status">➕ By status</button>
+              </div>
+              <div id="ftFilterCount" style="font-size:10px;color:var(--muted);margin-bottom:6px"></div>
               <div id="fastTrackStatus" style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.6"></div>
               <div id="fastTrackLastRun" style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.6"></div>
               <div id="fastTrackList" style="margin-bottom:6px"></div>
@@ -4271,6 +4284,7 @@ function finishScraping() {
   renderDashboard();
   renderProducts();
   updateProductCount();
+  populateFtSellerSelect(); // refresh seller filter dropdown after products change
 
   // ── AUTO-PUSH CHAIN: after a scrape completes, if Korvex auto-push is on,
   // generate the price file and hand it to the portal extension for upload. ──
@@ -7570,6 +7584,7 @@ document.addEventListener('scroll', function() {
   // Load 10-min watchlist
   renderWatchlist();
   populateSellerWatchlist();
+  populateFtSellerSelect();
 
   // ── ONE-TIME MIGRATION: multi-batch → single list ──
   // The experimental multi-batch build stored products as bbp_fasttrack_batches
@@ -10432,33 +10447,96 @@ function saveFastTrackNow() {
 // needs FSNs (no page loads), so 100s of products are fine — dedup by FSN so
 // re-clicking never duplicates.
 function addProductsToFastTrack(source) {
-  var src = [];
-  if (source === 'watchlist') {
-    src = getWatchlist();
-  } else {
-    src = state.products.map(function(p) {
-      return { url: p.url, fsn: p.fsn, name: p.title || p.url };
-    });
-  }
+  if (source === 'watchlist') addFtProducts(getWatchlist(), 'watchlist');
+  else addFtProducts(state.products, 'all products');
+}
+
+// Shared bulk-add: dedup by FSN against the current fast-track list, save,
+// re-render, log. src = array of {url, fsn, title/name}.
+function addFtProducts(src, label) {
   var existing = getFastTrack();
   var seen = {};
   existing.forEach(function(w) { if (w.fsn) seen[w.fsn] = 1; });
   var added = 0;
-  src.forEach(function(w) {
-    var fsn = String(w.fsn || '').trim();
+  src.forEach(function(p) {
+    var fsn = String(p.fsn || '').trim();
     if (!fsn || /^itm/i.test(fsn)) return; // skip URL-slug pseudo-FSNs
     if (seen[fsn]) return;
     seen[fsn] = 1;
-    existing.push({ url: w.url, fsn: fsn, name: w.name || w.title || fsn });
+    existing.push({ url: p.url, fsn: fsn, name: p.title || p.name || fsn });
     added++;
   });
   if (!added) {
-    log('info', '⚡ Nothing new to add — ' + (source === 'watchlist' ? 'watchlist' : '') + ' products already in fast-track (' + existing.length + ' total).');
+    log('info', '⚡ Nothing new to add — ' + label + ' already in fast-track (' + existing.length + ' total).');
     return;
   }
   saveFastTrack(existing);
   updateFastTrackStatus();
-  log('info', '⚡ Added ' + added + ' product(s) to fast-track — now ' + existing.length + ' total (API scrape, no page loads).');
+  log('info', '⚡ Added ' + added + ' product(s) to fast-track (' + label + ') — now ' + existing.length + ' total (API scrape, no page loads).');
+}
+
+// ── FAST-TRACK FILTERS (by seller / by win-lose) ───────────────────────────
+// Populate the seller dropdown with every seller currently winning the buybox
+// (from state.products), showing how many products each wins.
+function populateFtSellerSelect() {
+  var sel = document.getElementById('ftSellerSelect');
+  if (!sel) return;
+  var prev = sel.value;
+  var sellers = {};
+  state.products.forEach(function(p) {
+    var s = (p.seller || '').trim();
+    if (s && s !== 'Unknown Seller') sellers[s] = (sellers[s] || 0) + 1;
+  });
+  var names = Object.keys(sellers).sort(function(a,b){ return a.toLowerCase().localeCompare(b.toLowerCase()); });
+  var html = '<option value="">— Seller —</option>';
+  names.forEach(function(s) {
+    html += '<option value="' + escHtml(s) + '">' + escHtml(s) + ' (' + sellers[s] + ')</option>';
+  });
+  sel.innerHTML = html;
+  if (prev && sellers[prev]) sel.value = prev;
+  updateFtFilterCount();
+}
+
+// Show how many products match the current seller/status selection.
+function updateFtFilterCount() {
+  var el = document.getElementById('ftFilterCount');
+  if (!el) return;
+  var seller = (document.getElementById('ftSellerSelect') || {}).value || '';
+  var status = (document.getElementById('ftStatusSelect') || {}).value || '';
+  if (!seller && !status) { el.textContent = ''; return; }
+  var count = state.products.filter(function(p) {
+    if (seller && (p.seller || '').trim().toLowerCase() !== seller.toLowerCase()) return false;
+    if (status && String(p.status || '').toLowerCase() !== status) return false;
+    return true;
+  }).length;
+  var parts = [];
+  if (seller) parts.push('where ' + seller + ' wins');
+  if (status) parts.push('status ' + status.toUpperCase());
+  el.textContent = count + ' product(s) ' + parts.join(' + ') + ' — click ➕ to add them to fast-track.';
+}
+
+function addFtBySeller() {
+  var sel = document.getElementById('ftSellerSelect');
+  if (!sel) return;
+  var seller = (sel.value || '').trim();
+  if (!seller) { alert('Pick a seller from the dropdown first.'); return; }
+  var matches = state.products.filter(function(p) {
+    return (p.seller || '').trim().toLowerCase() === seller.toLowerCase();
+  });
+  if (!matches.length) { alert('No products found for ' + seller + '.'); return; }
+  addFtProducts(matches, 'seller: ' + seller);
+}
+
+function addFtByStatus() {
+  var sel = document.getElementById('ftStatusSelect');
+  if (!sel) return;
+  var status = (sel.value || '').trim().toLowerCase();
+  if (!status) { alert('Pick WIN or LOSE first.'); return; }
+  var matches = state.products.filter(function(p) {
+    return String(p.status || '').toLowerCase() === status;
+  });
+  if (!matches.length) { alert('No products with status ' + status.toUpperCase() + '.'); return; }
+  addFtProducts(matches, 'status: ' + status.toUpperCase());
 }
 function fastTrackActive() {
   return getFastTrack().length > 0;
