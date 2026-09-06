@@ -268,16 +268,10 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
         sendResponse({ ok: false, error: 'no_portal_tab' });
         return;
       }
-      // Read ALL cookies for the portal domain — including HttpOnly ones
-      // (connect.sid etc.) that document.cookie cannot see.
-      chrome.cookies.getAll({ domain: 'seller.makro.co.za' }, function(cookies) {
-        var cookieStr = (cookies || []).map(function(c) {
-          return c.name + '=' + c.value;
-        }).join('; ');
-        if (!cookieStr) {
-          sendResponse({ ok: false, error: 'no_cookies — log into seller.makro.co.za first' });
-          return;
-        }
+      // Read ALL cookies for the portal URL — including HttpOnly ones
+      // (connect.sid etc.) that document.cookie cannot see. Use the URL
+      // filter (not domain) so parent-domain cookies (.makro.co.za) match.
+      function captureAndPost(cookieStr) {
         // Pull CSRF + sellerId + locationId from the page's localStorage.__appData
         chrome.scripting.executeScript({
           target: { tabId: portalTab.id },
@@ -320,6 +314,30 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
           };
           req.send(payload);
         });
+      }
+
+      // Query by URL so parent-domain (.makro.co.za) session cookies match.
+      chrome.cookies.getAll({ url: portalTab.url }, function(cookies) {
+        var cookieStr = (cookies || []).map(function(c) {
+          return c.name + '=' + c.value;
+        }).join('; ');
+        if (!cookieStr) {
+          // Fallback: scan ALL cookies for any makro domain — the portal's
+          // session cookie may live on a sibling subdomain (SSO).
+          chrome.cookies.getAll({}, function(all) {
+            var makro = (all || []).filter(function(c) {
+              return (c.domain || '').indexOf('makro') !== -1;
+            });
+            var str2 = makro.map(function(c) { return c.name + '=' + c.value; }).join('; ');
+            if (!str2) {
+              sendResponse({ ok: false, error: 'no_cookies — log into seller.makro.co.za first (tab cookies: ' + (cookies || []).length + ', makro cookies: ' + makro.length + ')' });
+              return;
+            }
+            captureAndPost(str2);
+          });
+          return;
+        }
+        captureAndPost(cookieStr);
       });
     });
     return true; // async
