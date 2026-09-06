@@ -1175,14 +1175,19 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
                 <button class="action-btn" id="fastTrackRunNowBtn" style="font-size:10px;color:#818cf8;border-color:#818cf866" onclick="runFastTrackNow()" title="Scrape the fast-track list right now — no waiting for the timer">▶ Run now</button>
                 <button class="action-btn" id="fastTrackSaveBtn" style="font-size:10px;color:#00e5a0;border-color:#00e5a066" onclick="saveFastTrackNow()" title="Save fast-track list to extension storage so it survives refreshes">💾 Save</button>
               </div>
+              <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+                <button class="action-btn" style="font-size:10px;color:#ffd60a;border-color:#ffd60a66" onclick="addProductsToFastTrack('watchlist')" title="Add every ⭐ watchlist product to fast-track (API scrape — no page loads)">⭐ Add watchlist</button>
+                <button class="action-btn" style="font-size:10px;color:#00e5a0;border-color:#00e5a066" onclick="addProductsToFastTrack('all')" title="Add EVERY product with a real FSN to fast-track (API scrape — no page loads)">➕ Add all products</button>
+              </div>
               <div id="fastTrackStatus" style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.6"></div>
               <div id="fastTrackLastRun" style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.6"></div>
               <div id="fastTrackList" style="margin-bottom:6px"></div>
               <div style="font-size:10px;color:var(--muted);line-height:1.5">
-                Click the <b style="color:var(--text)">⚡</b> button on any product row to fast-track it. Fast-tracked
-                products are scraped every <b style="color:var(--text)">1–5 min</b> (above) so you react instantly when
-                an active competitor changes price. All other products keep the normal schedule. Keep it to
-                <b style="color:var(--text)">10–20 products</b> to avoid hitting Makro too hard.
+                Click the <b style="color:var(--text)">⚡</b> button on any product row to fast-track it, or use the
+                bulk buttons above to add the whole ⭐ watchlist or every product at once. Fast-tracked products are
+                scraped every <b style="color:var(--text)">1–5 min</b> via Makro's sellers API (<b style="color:var(--text)">no page loads</b> —
+                roughly 6 products/second), so even 100s of products are fine. Pick a longer interval (3–5 min) for
+                bigger lists to stay gentle on Makro.
               </div>
             </div>
 
@@ -10420,6 +10425,40 @@ function saveFastTrackNow() {
     setTimeout(function() { btn.textContent = '💾 Save'; }, 2000);
   }
   log('info', '💾 Fast track saved to extension storage (' + getFastTrack().length + ' product(s)).');
+}
+
+// Bulk-add products to the fast-track list: 'watchlist' = every ⭐ watchlist
+// product, 'all' = every product with a real FSN. The API batch scrape only
+// needs FSNs (no page loads), so 100s of products are fine — dedup by FSN so
+// re-clicking never duplicates.
+function addProductsToFastTrack(source) {
+  var src = [];
+  if (source === 'watchlist') {
+    src = getWatchlist();
+  } else {
+    src = state.products.map(function(p) {
+      return { url: p.url, fsn: p.fsn, name: p.title || p.url };
+    });
+  }
+  var existing = getFastTrack();
+  var seen = {};
+  existing.forEach(function(w) { if (w.fsn) seen[w.fsn] = 1; });
+  var added = 0;
+  src.forEach(function(w) {
+    var fsn = String(w.fsn || '').trim();
+    if (!fsn || /^itm/i.test(fsn)) return; // skip URL-slug pseudo-FSNs
+    if (seen[fsn]) return;
+    seen[fsn] = 1;
+    existing.push({ url: w.url, fsn: fsn, name: w.name || w.title || fsn });
+    added++;
+  });
+  if (!added) {
+    log('info', '⚡ Nothing new to add — ' + (source === 'watchlist' ? 'watchlist' : '') + ' products already in fast-track (' + existing.length + ' total).');
+    return;
+  }
+  saveFastTrack(existing);
+  updateFastTrackStatus();
+  log('info', '⚡ Added ' + added + ' product(s) to fast-track — now ' + existing.length + ' total (API scrape, no page loads).');
 }
 function fastTrackActive() {
   return getFastTrack().length > 0;
