@@ -2892,7 +2892,7 @@ function handlePortalListings(d) {
 // WRITE path — only fires after the user confirms the payload.
 // ============================================================
 
-function openListOnMakroModal() {
+function openListOnMakroModal(prefillFsn) {
   if (!state.extReady) {
     alert('Extension not connected.\nLoad the dashboard with the Makro BuyBox Pro extension active, then try again.');
     return;
@@ -2912,6 +2912,11 @@ function openListOnMakroModal() {
   if (res) { res.textContent = ''; res.style.color = 'var(--muted)'; }
   var info = document.getElementById('listLookupInfo');
   if (info) { info.innerHTML = ''; }
+  // Pre-fill FSN when opened from a product row / search result
+  if (prefillFsn) {
+    var fsnEl = document.getElementById('listFsnInput');
+    if (fsnEl) fsnEl.value = prefillFsn.toUpperCase();
+  }
   document.getElementById('listOnMakroModal').classList.add('show');
 }
 
@@ -5527,6 +5532,7 @@ function renderProducts() {
         <button class="action-btn" style="font-size:10px;padding:1px 3px;${inWatchlist(p) ? 'color:#ffd60a;border-color:#ffd60a66' : ''}" onclick="toggleWatchlistFromProduct(${realIdx})" title="${inWatchlist(p) ? 'Remove from 10-min watchlist' : 'Add to 10-min watchlist'}">⭐</button>
         <button class="action-btn" style="font-size:10px;padding:1px 3px;${inFastTrack(p) ? 'color:#00e5a0;border-color:#00e5a066' : ''}" onclick="toggleFastTrackFromProduct(${realIdx})" title="${inFastTrack(p) ? 'Remove from fast track (1-5 min)' : 'Add to fast track (1-5 min)'}">⚡</button>
         <button class="action-btn" style="font-size:10px;padding:1px 3px" onclick="openPushModal(${realIdx})" title="Push new price to seller portal">🚀</button>
+        <button class="action-btn" style="font-size:10px;padding:1px 3px;color:#ff9500;border-color:#ff950066" onclick="openListOnMakroModal('${escHtml(p.fsn||'')}')" title="List this product on the Makro portal (latch-on, WRITE)">📦</button>
         <button class="action-btn" style="font-size:10px;padding:1px 3px" onclick="syncCostForProduct(${realIdx})" title="Sync cost price from supplier sheets (by SKU)">💲</button>
         <button class="action-btn" style="font-size:10px;padding:1px 3px" onclick="showHistory(${realIdx})" title="Price history">📈</button>
         <button class="action-btn" style="font-size:10px;padding:1px 3px" onclick="rescrapeOne(${realIdx})" title="Re-scrape">↻</button>
@@ -7136,6 +7142,7 @@ function renderSearchResults() {
     var badge = r._mine
       ? '<span style="color:var(--muted);font-size:10px;border:1px solid var(--border);padding:2px 8px;border-radius:10px">✓ You sell</span>'
       : '<span style="color:var(--accent);font-size:10px;border:1px solid var(--accent);padding:2px 8px;border-radius:10px;font-weight:600">NEW</span>';
+    var listBtn = r._mine ? '' : `<button class="action-btn" style="font-size:9px;padding:1px 5px;color:#ff9500;border-color:#ff950066" onclick="openListOnMakroModal('${escHtml(r.fsn||'')}')" title="List this product on the Makro portal (latch-on, WRITE)">📦 List</button>`;
     return `<tr style="border-bottom:1px solid var(--border)">
       <td style="padding:8px;text-align:left"><input type="checkbox" class="search-row-check" data-idx="${i}" ${r._mine ? 'disabled' : ''}></td>
       <td style="padding:8px;text-align:left">
@@ -7146,7 +7153,7 @@ function renderSearchResults() {
       <td style="padding:8px;text-align:right;font-family:'Space Mono',monospace;color:var(--muted)">${r.mrp != null ? 'R ' + r.mrp.toFixed(2) : '—'}</td>
       <td style="padding:8px;text-align:center;color:${stockColor};font-size:11px">${stockLabel}</td>
       <td style="padding:8px;text-align:left;font-family:'Space Mono',monospace;font-size:10px;color:var(--muted)">${escHtml(r.fsn||'')}</td>
-      <td style="padding:8px;text-align:center">${badge}</td>
+      <td style="padding:8px;text-align:center">${badge} ${listBtn}</td>
     </tr>`;
   }).join('');
   wrap.style.display = 'block';
