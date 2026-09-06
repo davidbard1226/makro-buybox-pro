@@ -2332,6 +2332,10 @@ window.addEventListener('message', function(ev) {
       if (!d.version) {
         log('warn', '⚠ Extension is OUTDATED — it reported no version, so it predates the fast-track API batch support. Reload it: chrome://extensions → ↻ (make sure it loads from the makro-buybox-pro\\chrome-extension folder).');
       }
+    } else if (d.version && d.version !== window.__bbpExtVersion) {
+      // Extension was reloaded with a new version — refresh the label + log it.
+      window.__bbpExtVersion = d.version;
+      log('info', 'Extension reloaded — now v' + d.version + ' (id: ' + (d.extensionId || extensionId || '').slice(0,8) + '...)');
     }
     setExtStatus(true);
     return;
