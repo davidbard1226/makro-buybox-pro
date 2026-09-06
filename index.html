@@ -1178,6 +1178,7 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
               <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
                 <button class="action-btn" style="font-size:10px;color:#ffd60a;border-color:#ffd60a66" onclick="addProductsToFastTrack('watchlist')" title="Add every ⭐ watchlist product to fast-track (API scrape — no page loads)">⭐ Add watchlist</button>
                 <button class="action-btn" style="font-size:10px;color:#00e5a0;border-color:#00e5a066" onclick="addProductsToFastTrack('all')" title="Add EVERY product with a real FSN to fast-track (API scrape — no page loads)">➕ Add all products</button>
+                <button class="action-btn" style="font-size:10px;color:#ff6b6b;border-color:#ff6b6b66" onclick="clearFastTrack()" title="Remove EVERY product from fast-track and stop the timer">🗑 Clear fast-track</button>
               </div>
               <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap">
                 <select id="ftSellerSelect" onchange="updateFtFilterCount()" style="background:var(--card);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:11px;max-width:190px" title="Add all products where this seller wins the buybox">
@@ -10494,6 +10495,22 @@ function addFtProducts(src, label) {
   saveFastTrack(existing);
   updateFastTrackStatus();
   log('info', '⚡ Added ' + added + ' product(s) to fast-track (' + label + ') — now ' + existing.length + ' total (API scrape, no page loads).');
+}
+
+// Remove EVERY product from fast-track: clears localStorage + extension
+// storage, stops the timer, re-renders. Destructive — confirm first.
+function clearFastTrack() {
+  var list = getFastTrack();
+  if (!list.length) {
+    log('info', '🗑 Fast track already empty — nothing to clear.');
+    return;
+  }
+  if (!confirm('Remove all ' + list.length + ' product(s) from fast track?\n\nThe fast-track timer will stop until you add products again.')) return;
+  localStorage.removeItem('bbp_fasttrack');
+  saveFastTrack([]);
+  updateFastTrackStatus();
+  applyFastTrack(); // list empty → timer stops
+  log('ok', '🗑 Fast track cleared — ' + list.length + ' product(s) removed. Timer stopped.');
 }
 
 // ── FAST-TRACK FILTERS (by seller / by win-lose) ───────────────────────────
