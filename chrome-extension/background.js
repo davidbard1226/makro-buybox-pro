@@ -472,18 +472,30 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
     // idempotent thanks to the __bbpContentLoaded guard, and guarantees the
     // tab runs the CURRENT handler even if it was opened before the extension
     // reload (otherwise a stale content script silently swallows the batch).
-    function dispatchBatch(tabId, cb) {
+    // Retries up to 3x with 1s gaps — a freshly-created Makro tab can still be
+    // settling when the first injection attempt lands (heavy homepage, bot
+    // checks), which previously surfaced as a confusing makro_tab_not_ready.
+    function dispatchBatch(tabId, cb, attempt) {
+      attempt = attempt || 0;
       chrome.scripting.executeScript({
         target: { tabId: tabId },
         files: ['content.js']
       }, function() {
-        if (chrome.runtime.lastError) { cb({ error: 'makro_tab_not_ready' }); return; }
+        if (chrome.runtime.lastError) {
+          if (attempt < 3) { setTimeout(function() { dispatchBatch(tabId, cb, attempt + 1); }, 1000); return; }
+          cb({ error: 'makro_tab_not_ready' });
+          return;
+        }
         chrome.tabs.sendMessage(tabId, {
           action: 'fasttrack_api_scrape',
           fsns: fsns,
           concurrency: msg.concurrency || 6
         }, function(resp) {
-          if (chrome.runtime.lastError) { cb({ error: 'makro_tab_not_ready' }); return; }
+          if (chrome.runtime.lastError) {
+            if (attempt < 3) { setTimeout(function() { dispatchBatch(tabId, cb, attempt + 1); }, 1000); return; }
+            cb({ error: 'makro_tab_not_ready' });
+            return;
+          }
           if (resp && resp.started) armFastTrackWatchdog();
           cb(resp);
         });
@@ -515,7 +527,14 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
                 sendResponse({ error: 'makro_tab_failed' });
                 return;
               }
-              if (t.status === 'complete' || tries > 20) {
+              // If the fresh homepage lands on a bot challenge, reload it once
+              // (a challenge page can't run the sellers API). Otherwise wait for
+              // a fully-loaded page — up to 20s, the homepage is heavy.
+              if (isChallengeUrl(t.url || '')) {
+                if (tries <= 4) { chrome.tabs.update(tab.id, { url: 'https://www.makro.co.za/' }, function() {}); }
+                return;
+              }
+              if (t.status === 'complete' || tries > 40) {
                 clearInterval(waitTimer);
                 dispatchBatch(tab.id, sendResponse);
               }
