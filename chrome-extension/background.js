@@ -317,20 +317,25 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
       }
 
       // Query by URL so parent-domain (.makro.co.za) session cookies match.
-      chrome.cookies.getAll({ url: portalTab.url }, function(cookies) {
+      // Use the tab's cookieStoreId: if the portal tab lives in an incognito
+      // window (separate cookie store), getAll without storeId only reads the
+      // default store and returns 0 — which looked like "not logged in".
+      var storeId = portalTab.cookieStoreId;
+      chrome.cookies.getAll({ url: portalTab.url, storeId: storeId }, function(cookies) {
         var cookieStr = (cookies || []).map(function(c) {
           return c.name + '=' + c.value;
         }).join('; ');
         if (!cookieStr) {
-          // Fallback: scan ALL cookies for any makro domain — the portal's
-          // session cookie may live on a sibling subdomain (SSO).
-          chrome.cookies.getAll({}, function(all) {
+          // Fallback: scan ALL cookies in the tab's store for any makro
+          // domain — the portal's session cookie may live on a sibling
+          // subdomain (SSO).
+          chrome.cookies.getAll({ storeId: storeId }, function(all) {
             var makro = (all || []).filter(function(c) {
               return (c.domain || '').indexOf('makro') !== -1;
             });
             var str2 = makro.map(function(c) { return c.name + '=' + c.value; }).join('; ');
             if (!str2) {
-              sendResponse({ ok: false, error: 'no_cookies — log into seller.makro.co.za first (tab cookies: ' + (cookies || []).length + ', makro cookies: ' + makro.length + ')' });
+              sendResponse({ ok: false, error: 'no_cookies — log into seller.makro.co.za first (tab cookies: ' + (cookies || []).length + ', makro cookies: ' + makro.length + ', incognito: ' + !!portalTab.incognito + ')' });
               return;
             }
             captureAndPost(str2);
