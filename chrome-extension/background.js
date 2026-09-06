@@ -502,6 +502,35 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
       });
     }
 
+    // Wait for a Makro tab to be fully loaded and not on a bot challenge,
+    // then dispatch the batch. Shared by the found-tab and created-tab paths
+    // so both are equally robust: up to 20s for a heavy homepage, reloading
+    // up to 4x if it lands on a bot challenge (a challenge page can't run
+    // the sellers API). Previously the found-tab path dispatched immediately,
+    // so a tab that was mid-load or transitioning failed injection 3x and
+    // surfaced as a confusing makro_tab_not_ready.
+    function waitForMakroTabReady(tab, cb) {
+      var tries = 0;
+      var waitTimer = setInterval(function() {
+        tries++;
+        chrome.tabs.get(tab.id, function(t) {
+          if (chrome.runtime.lastError || !t) {
+            clearInterval(waitTimer);
+            cb({ error: 'makro_tab_failed' });
+            return;
+          }
+          if (isChallengeUrl(t.url || '')) {
+            if (tries <= 4) { chrome.tabs.update(tab.id, { url: 'https://www.makro.co.za/' }, function() {}); }
+            return;
+          }
+          if (t.status === 'complete' || tries > 40) {
+            clearInterval(waitTimer);
+            dispatchBatch(tab.id, cb);
+          }
+        });
+      }, 500);
+    }
+
     chrome.tabs.query({}, function(tabs) {
       var makroTab = null;
       for (var i = 0; i < tabs.length; i++) {
@@ -513,33 +542,16 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
       }
 
       if (makroTab) {
-        dispatchBatch(makroTab.id, sendResponse);
+        // Found tab: still wait for it to be fully loaded and not on a bot
+        // challenge before dispatching — a tab found via query can be mid-load
+        // or land on a challenge right after being found (previously this
+        // surfaced as a confusing makro_tab_not_ready after 3 quick retries).
+        waitForMakroTabReady(makroTab, sendResponse);
       } else {
         // No Makro tab open — create one (homepage) and wait for it to load.
         chrome.tabs.create({ url: 'https://www.makro.co.za/', active: false }, function(tab) {
           if (chrome.runtime.lastError || !tab) { sendResponse({ error: 'makro_tab_failed' }); return; }
-          var tries = 0;
-          var waitTimer = setInterval(function() {
-            tries++;
-            chrome.tabs.get(tab.id, function(t) {
-              if (chrome.runtime.lastError || !t) {
-                clearInterval(waitTimer);
-                sendResponse({ error: 'makro_tab_failed' });
-                return;
-              }
-              // If the fresh homepage lands on a bot challenge, reload it once
-              // (a challenge page can't run the sellers API). Otherwise wait for
-              // a fully-loaded page — up to 20s, the homepage is heavy.
-              if (isChallengeUrl(t.url || '')) {
-                if (tries <= 4) { chrome.tabs.update(tab.id, { url: 'https://www.makro.co.za/' }, function() {}); }
-                return;
-              }
-              if (t.status === 'complete' || tries > 40) {
-                clearInterval(waitTimer);
-                dispatchBatch(tab.id, sendResponse);
-              }
-            });
-          }, 500);
+          waitForMakroTabReady(tab, sendResponse);
         });
       }
     });
