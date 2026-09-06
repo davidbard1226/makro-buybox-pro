@@ -64,15 +64,22 @@
   // ── SYNC chrome.storage → dashboard localStorage (fast track) ─────────────
   // The fast-track list lives in dashboard localStorage (bbp_fasttrack). Persist
   // it to chrome.storage too so it survives dashboard refreshes and even
-  // localStorage clears. Restore only when the dashboard has NEVER set a list
-  // (null) — an empty array means the user deliberately cleared it.
+  // localStorage clears. Restore when the dashboard has NO list (null) OR an
+  // EMPTY list ([]) — an empty array can be written by a stale code path, and
+  // losing 63 fast-track products because of it costs sales. chrome.storage is
+  // the source of truth as long as it has a non-empty list.
   function syncFastTrackToLocal() {
     safe(function() {
       chrome.storage.local.get(['bbp_fasttrack', 'bbp_fasttrack_interval', 'bbp_fasttrack_paused'], function(r) {
         try {
           if (chrome.runtime.lastError) return;
           var restored = false;
-          if (localStorage.getItem('bbp_fasttrack') === null && r.bbp_fasttrack) {
+          var localRaw = null;
+          try { localRaw = localStorage.getItem('bbp_fasttrack'); } catch(e) {}
+          var localList = [];
+          try { localList = JSON.parse(localRaw || '[]'); } catch(e) { localList = []; }
+          var localEmpty = localRaw === null || !Array.isArray(localList) || localList.length === 0;
+          if (localEmpty && r.bbp_fasttrack && r.bbp_fasttrack.length) {
             localStorage.setItem('bbp_fasttrack', JSON.stringify(r.bbp_fasttrack));
             restored = true;
           }
