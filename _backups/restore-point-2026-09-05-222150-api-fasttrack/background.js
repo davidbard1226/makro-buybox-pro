@@ -41,28 +41,6 @@ function isChallengeUrl(url) {
   return /challenges\.cloudflare\.com|cdn-cgi|interstitial|are-you-human|verify.*human|robot.*check|captcha|makro\.co\.za\/blocked(\?|$)/i.test(url);
 }
 
-// ── FAST-TRACK API WATCHDOG (module scope) ───────────────────────────────
-// If the Makro tab accepts a fast-track batch but then goes silent (hanging
-// sellers API, stale content script, challenge page), the dashboard would wait
-// forever. After 15s with no progress/done, tell the dashboard what's wrong so
-// it can show a diagnostic and reset instead of hanging silently.
-// NOTE: must live at module scope — inside the onMessage listener each message
-// invocation gets its own copy of the variable, so clearTimeout would never
-// cancel the armed timer (false "stalled" reports mid-batch).
-let fastTrackWatchdog = null;
-function armFastTrackWatchdog() {
-  clearFastTrackWatchdog();
-  fastTrackWatchdog = setTimeout(function() {
-    notifyDashboard({
-      action: 'fasttrack_api_stalled',
-      message: 'No progress from the Makro tab in 15s — the sellers API may be hanging or the content script is stale. Check the Makro tab is open and logged in, then reload the extension (chrome://extensions → ↻).'
-    });
-  }, 15000);
-}
-function clearFastTrackWatchdog() {
-  if (fastTrackWatchdog) { clearTimeout(fastTrackWatchdog); fastTrackWatchdog = null; }
-}
-
 // ── MESSAGE HANDLER ───────────────────────────────────────────────────────
 chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
 
@@ -268,10 +246,16 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
         sendResponse({ ok: false, error: 'no_portal_tab' });
         return;
       }
-      // Read ALL cookies for the portal URL — including HttpOnly ones
-      // (connect.sid etc.) that document.cookie cannot see. Use the URL
-      // filter (not domain) so parent-domain cookies (.makro.co.za) match.
-      function captureAndPost(cookieStr) {
+      // Read ALL cookies for the portal domain — including HttpOnly ones
+      // (connect.sid etc.) that document.cookie cannot see.
+      chrome.cookies.getAll({ domain: 'seller.makro.co.za' }, function(cookies) {
+        var cookieStr = (cookies || []).map(function(c) {
+          return c.name + '=' + c.value;
+        }).join('; ');
+        if (!cookieStr) {
+          sendResponse({ ok: false, error: 'no_cookies — log into seller.makro.co.za first' });
+          return;
+        }
         // Pull CSRF + sellerId + locationId from the page's localStorage.__appData
         chrome.scripting.executeScript({
           target: { tabId: portalTab.id },
@@ -314,192 +298,9 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
           };
           req.send(payload);
         });
-      }
-
-      // Query by URL so parent-domain (.makro.co.za) session cookies match.
-      // Use the tab's cookieStoreId: if the portal tab lives in an incognito
-      // window (separate cookie store), getAll without storeId only reads the
-      // default store and returns 0 — which looked like "not logged in".
-      var storeId = portalTab.cookieStoreId;
-      chrome.cookies.getAll({ url: portalTab.url, storeId: storeId }, function(cookies) {
-        var cookieStr = (cookies || []).map(function(c) {
-          return c.name + '=' + c.value;
-        }).join('; ');
-        if (!cookieStr) {
-          // Fallback: scan ALL cookies in the tab's store for any makro
-          // domain — the portal's session cookie may live on a sibling
-          // subdomain (SSO).
-          chrome.cookies.getAll({ storeId: storeId }, function(all) {
-            var makro = (all || []).filter(function(c) {
-              return (c.domain || '').indexOf('makro') !== -1;
-            });
-            var str2 = makro.map(function(c) { return c.name + '=' + c.value; }).join('; ');
-            if (!str2) {
-              sendResponse({ ok: false, error: 'no_cookies — log into seller.makro.co.za first (tab cookies: ' + (cookies || []).length + ', makro cookies: ' + makro.length + ', incognito: ' + !!portalTab.incognito + ')' });
-              return;
-            }
-            captureAndPost(str2);
-          });
-          return;
-        }
-        captureAndPost(cookieStr);
       });
     });
     return true; // async
-  }
-
-  // ── PORTAL DIAGNOSTIC (dashboard button) ─────────────────────────────────
-  // Dump ground truth about tabs + cookies so we can see WHY the refresh sees
-  // 0 cookies: which tabs exist, their cookieStoreId/incognito, what getAll
-  // returns for the whole store and per portal tab, and any lastError.
-  if (msg.action === 'portal_diag') {
-    chrome.tabs.query({}, function(tabs) {
-      var diag = {
-        extId: chrome.runtime.id,
-        version: chrome.runtime.getManifest().version,
-        hasCookiesApi: typeof chrome.cookies !== 'undefined',
-        hasScriptingApi: typeof chrome.scripting !== 'undefined',
-        tabs: (tabs || []).map(function(t) {
-          return { url: (t.url || '').slice(0, 80), storeId: t.cookieStoreId, incognito: !!t.incognito };
-        })
-      };
-      var portalTabs = (tabs || []).filter(function(t) {
-        return (t.url || '').indexOf('https://seller.makro.co.za') === 0;
-      });
-      diag.portalTabs = portalTabs.map(function(t) {
-        return { url: t.url, storeId: t.cookieStoreId, incognito: !!t.incognito };
-      });
-      chrome.cookies.getAll({}, function(all) {
-        diag.allCookies = (all || []).length;
-        diag.allCookiesError = chrome.runtime.lastError ? chrome.runtime.lastError.message : null;
-        var makro = (all || []).filter(function(c) { return (c.domain || '').indexOf('makro') !== -1; });
-        diag.makroCookies = makro.length;
-        diag.makroDomains = {};
-        makro.forEach(function(c) {
-          diag.makroDomains[c.domain] = (diag.makroDomains[c.domain] || 0) + 1;
-        });
-        var remaining = portalTabs.length;
-        diag.portalCookieCounts = [];
-        if (!remaining) {
-          sendResponse({ ok: true, diag: diag });
-          return;
-        }
-        portalTabs.forEach(function(pt) {
-          chrome.cookies.getAll({ url: pt.url, storeId: pt.cookieStoreId }, function(cs) {
-            diag.portalCookieCounts.push({
-              url: pt.url,
-              storeId: pt.cookieStoreId,
-              count: (cs || []).length,
-              names: (cs || []).map(function(c) { return c.name; }),
-              error: chrome.runtime.lastError ? chrome.runtime.lastError.message : null
-            });
-            if (--remaining === 0) sendResponse({ ok: true, diag: diag });
-          });
-        });
-      });
-    });
-    return true; // async
-  }
-
-  // ── FAST-TRACK API BATCH SCRAPE ──────────────────────────────────────────
-  // Dashboard sends a list of FSNs; we find (or create) ONE Makro tab and ask
-  // its content script to loop the sellers API for every FSN — no page loads.
-  // Progress/done messages from the content script are relayed to the dashboard.
-  if (msg.action === 'fasttrack_api_scrape') {
-    var fsns = msg.fsns || [];
-    if (!fsns.length) { sendResponse({ error: 'No FSNs' }); return true; }
-    // Refuse if a page-load queue is mid-flight — the dashboard guards this
-    // too, but never let the two scrape paths overlap in the background.
-    if (active) { sendResponse({ error: 'Scraper already running — stop it first' }); return true; }
-
-    // Always (re)inject content.js into the Makro tab before dispatching:
-    // idempotent thanks to the __bbpContentLoaded guard, and guarantees the
-    // tab runs the CURRENT handler even if it was opened before the extension
-    // reload (otherwise a stale content script silently swallows the batch).
-    function dispatchBatch(tabId, cb) {
-      chrome.scripting.executeScript({
-        target: { tabId: tabId },
-        files: ['content.js']
-      }, function() {
-        if (chrome.runtime.lastError) { cb({ error: 'makro_tab_not_ready' }); return; }
-        chrome.tabs.sendMessage(tabId, {
-          action: 'fasttrack_api_scrape',
-          fsns: fsns,
-          concurrency: msg.concurrency || 6
-        }, function(resp) {
-          if (chrome.runtime.lastError) { cb({ error: 'makro_tab_not_ready' }); return; }
-          if (resp && resp.started) armFastTrackWatchdog();
-          cb(resp);
-        });
-      });
-    }
-
-    chrome.tabs.query({}, function(tabs) {
-      var makroTab = null;
-      for (var i = 0; i < tabs.length; i++) {
-        var u = tabs[i].url || '';
-        if (u.indexOf('https://www.makro.co.za') === 0 && !isChallengeUrl(u)) {
-          makroTab = tabs[i];
-          break;
-        }
-      }
-
-      if (makroTab) {
-        dispatchBatch(makroTab.id, sendResponse);
-      } else {
-        // No Makro tab open — create one (homepage) and wait for it to load.
-        chrome.tabs.create({ url: 'https://www.makro.co.za/', active: false }, function(tab) {
-          if (chrome.runtime.lastError || !tab) { sendResponse({ error: 'makro_tab_failed' }); return; }
-          var tries = 0;
-          var waitTimer = setInterval(function() {
-            tries++;
-            chrome.tabs.get(tab.id, function(t) {
-              if (chrome.runtime.lastError || !t) {
-                clearInterval(waitTimer);
-                sendResponse({ error: 'makro_tab_failed' });
-                return;
-              }
-              if (t.status === 'complete' || tries > 20) {
-                clearInterval(waitTimer);
-                dispatchBatch(tab.id, sendResponse);
-              }
-            });
-          }, 500);
-        });
-      }
-    });
-    return true; // async
-  }
-
-  // ── FAST-TRACK API: STOP ──────────────────────────────────────────────────
-  // Dashboard Stop button → tell every Makro tab's content script to halt the
-  // batch loop. The content script finalizes with partial results.
-  if (msg.action === 'fasttrack_api_stop') {
-    chrome.tabs.query({}, function(tabs) {
-      for (var i = 0; i < tabs.length; i++) {
-        var u = tabs[i].url || '';
-        if (u.indexOf('https://www.makro.co.za') === 0) {
-          chrome.tabs.sendMessage(tabs[i].id, { action: 'fasttrack_api_stop' }, function() {});
-        }
-      }
-    });
-    sendResponse({ ok: true });
-    return true;
-  }
-
-  // ── FAST-TRACK API: PROGRESS/DONE FROM CONTENT → DASHBOARD ───────────────
-  if (msg.action === 'fasttrack_api_progress') {
-    clearFastTrackWatchdog();
-    notifyDashboard({ action: 'fasttrack_api_progress', done: msg.done, total: msg.total, result: msg.result });
-    sendResponse({ ok: true });
-    return true;
-  }
-  if (msg.action === 'fasttrack_api_done') {
-    console.log('[BuyBox bg] GOT fasttrack_api_done, results:', (msg.results || []).length, 'stopped:', !!msg.stopped);
-    clearFastTrackWatchdog();
-    notifyDashboard({ action: 'fasttrack_api_done', results: msg.results || [], stopped: !!msg.stopped });
-    sendResponse({ ok: true });
-    return true;
   }
 
   // ── PORTAL API RELAY (dashboard → seller tab) ────────────────────────────
@@ -544,19 +345,6 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
     chrome.scripting.executeScript({
       target: { tabId: tabId },
       files: ['portal_api.js']
-    }, function() {
-      if (chrome.runtime.lastError) { cb(false); return; }
-      cb(true);
-    });
-  }
-
-  // Inject content.js into a Makro tab if it's missing (tab opened before the
-  // extension reload). content.js guards against double-load.
-  function injectContentScript(tabId, cb) {
-    if (!chrome.scripting || !chrome.scripting.executeScript) { cb(false); return; }
-    chrome.scripting.executeScript({
-      target: { tabId: tabId },
-      files: ['content.js']
     }, function() {
       if (chrome.runtime.lastError) { cb(false); return; }
       cb(true);
@@ -848,7 +636,6 @@ function notifyDashboard(msg) {
         }
       });
     });
-    if (msg.action === 'fasttrack_api_done') console.log('[BuyBox bg] notifyDashboard done-action delivered to', sent ? 'dashboard tab(s)' : 'NOBODY');
     // Fallback: if direct message failed or no dashboard tab found,
     // ensure data is in chrome.storage.local so bridge.js syncs it
     if (!sent && msg.data && msg.action === 'scrape_done') {

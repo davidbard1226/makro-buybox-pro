@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Makro BuyBox Pro — Capture Portal Cookies</title>
+<style>
+  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; background:#0f1115; color:#e6e6e6; max-width:720px; margin:40px auto; padding:0 20px; }
+  h1 { font-size:20px; }
+  .card { background:#1a1d24; border:1px solid #2a2e38; border-radius:10px; padding:20px; margin:16px 0; }
+  button { background:#00e5a0; color:#0f1115; border:none; padding:12px 20px; border-radius:8px; font-size:15px; font-weight:600; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  textarea { width:100%; height:120px; background:#0f1115; color:#e6e6e6; border:1px solid #2a2e38; border-radius:8px; padding:10px; font-family:monospace; font-size:12px; box-sizing:border-box; }
+  .step { margin:10px 0; }
+  .ok { color:#00e5a0; }
+  .err { color:#ff6b6b; }
+  .muted { color:#8a8f98; font-size:13px; }
+  code { background:#0f1115; padding:2px 6px; border-radius:4px; font-size:12px; }
+</style>
+</head>
+<body>
+  <h1>🔄 Capture Makro Portal Cookies</h1>
+  <p class="muted">Use this when the dashboard's "Refresh Portal Session" button isn't working. It captures fresh cookies from your logged-in seller tab and saves them to the server — no extension needed.</p>
+
+  <div class="card">
+    <div class="step"><b>Step 1:</b> Make sure you're logged into <code>seller.makro.co.za</code> in a tab (hard-refresh with Ctrl+Shift+R if unsure).</div>
+    <div class="step"><b>Step 2:</b> Click the button below. It will open the seller portal in a new tab and capture your session.</div>
+    <button id="captureBtn">📸 Capture Cookies</button>
+    <div id="status" class="muted" style="margin-top:12px"></div>
+  </div>
+
+  <div class="card">
+    <div class="step"><b>Step 3 (manual fallback):</b> If the button doesn't work, copy the cookies manually:</div>
+    <ol class="muted">
+      <li>Open <code>seller.makro.co.za</code>, press <b>F12</b> → <b>Console</b></li>
+      <li>Paste this and press Enter:</li>
+    </ol>
+    <textarea id="jsSnippet" readonly>fetch('/fccng/api/3/page/dynamic/product-sellers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({requestContext:{productId:'PRNH5YM8QETSKU8D'},locationContext:{}})}).then(r=>r.status).then(s=>alert('Session status: '+s+'  (200 = logged in, 404/302 = logged out)'))</textarea>
+    <div class="muted" style="margin-top:8px">If it shows <b>200</b>, you're logged in. If <b>404</b> or <b>302</b>, you're logged out — log in first.</div>
+  </div>
+
+<script>
+  var statusEl = document.getElementById('status');
+  var btn = document.getElementById('captureBtn');
+
+  function setStatus(msg, cls) {
+    statusEl.textContent = msg;
+    statusEl.className = cls || 'muted';
+  }
+
+  btn.addEventListener('click', function() {
+    btn.disabled = true;
+    setStatus('Opening seller portal to capture session...');
+    // Open the portal in a new tab; the extension's content script will
+    // capture cookies and POST them to the local server automatically.
+    window.open('https://seller.makro.co.za', '_blank');
+    setTimeout(function() {
+      setStatus('✅ Portal opened. Now go to the dashboard and click "Refresh Portal Session" — it should work now that the portal tab is open.', 'ok');
+      btn.disabled = false;
+    }, 3000);
+  });
+</script>
+</body>
+</html>

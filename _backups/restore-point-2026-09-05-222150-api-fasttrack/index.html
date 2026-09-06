@@ -650,7 +650,6 @@
     <div class="logo">
       <div class="logo-dot"></div>
       MAKRO BUYBOX PRO
-      <span id="versionBadge" style="font-size:9px;color:var(--muted);margin-left:8px;border:1px solid var(--border);padding:1px 6px;border-radius:8px;vertical-align:middle"></span>
     </div>
 
     <div class="seller-badge">
@@ -662,7 +661,6 @@
       <span id="extLabel">Extension offline</span>
     </div>
     <button id="refreshSessionBtn" onclick="refreshPortalSession()" title="Capture fresh session cookies from your logged-in seller.makro.co.za tab and save them to the server (fixes 'SESSION EXPIRED' push errors)" style="margin-left:10px;background:var(--card);border:1px solid var(--border);color:var(--text);padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer">🔄 Refresh Portal Session</button>
-    <button id="diagBtn" onclick="diagnosePortal()" title="Dump ground truth: which tabs exist, their cookie store, and what the cookies API actually returns" style="margin-left:6px;background:var(--card);border:1px solid var(--border);color:var(--text);padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer">🔍 Diagnose</button>
   </header>
 
   <!-- INTEGRATIONS BAR -->
@@ -1172,11 +1170,9 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
                   <option value="10">Every 10 min</option>
                 </select>
                 <button class="action-btn" id="fastTrackPauseBtn" style="font-size:10px;color:#ffd60a;border-color:#ffd60a66" onclick="toggleFastTrackPause()">⏸ Pause</button>
-                <button class="action-btn" id="fastTrackRunNowBtn" style="font-size:10px;color:#818cf8;border-color:#818cf866" onclick="runFastTrackNow()" title="Scrape the fast-track list right now — no waiting for the timer">▶ Run now</button>
                 <button class="action-btn" id="fastTrackSaveBtn" style="font-size:10px;color:#00e5a0;border-color:#00e5a066" onclick="saveFastTrackNow()" title="Save fast-track list to extension storage so it survives refreshes">💾 Save</button>
               </div>
               <div id="fastTrackStatus" style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.6"></div>
-              <div id="fastTrackLastRun" style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.6"></div>
               <div id="fastTrackList" style="margin-bottom:6px"></div>
               <div style="font-size:10px;color:var(--muted);line-height:1.5">
                 Click the <b style="color:var(--text)">⚡</b> button on any product row to fast-track it. Fast-tracked
@@ -2327,39 +2323,17 @@ window.addEventListener('message', function(ev) {
     if (!state.extReady) {
       state.extReady = true;
       extensionId = d.extensionId || null;
-      window.__bbpExtVersion = d.version || null;
-      var extVer = d.version ? ' v' + d.version : '';
-      log('info', 'Extension connected' + extVer + (extensionId ? ' (id: ' + extensionId.slice(0,8) + '...)' : ''));
-      if (!d.version) {
-        log('warn', '⚠ Extension is OUTDATED — it reported no version, so it predates the fast-track API batch support. Reload it: chrome://extensions → ↻ (make sure it loads from the makro-buybox-pro\\chrome-extension folder).');
-      }
-    } else if (d.version && d.version !== window.__bbpExtVersion) {
-      // Extension was reloaded with a new version — refresh the label + log it.
-      window.__bbpExtVersion = d.version;
-      log('info', 'Extension reloaded — now v' + d.version + ' (id: ' + (d.extensionId || extensionId || '').slice(0,8) + '...)');
+      log('info', 'Extension connected' + (extensionId ? ' (id: ' + extensionId.slice(0,8) + '...)' : ''));
     }
     setExtStatus(true);
     return;
   }
 
-if (d.type === 'FASTTRACK_RESTORED') {
+  if (d.type === 'FASTTRACK_RESTORED') {
     // Bridge restored the fast-track list from chrome.storage after a refresh —
     // re-render the panel and restart the timer with the restored list.
     updateFastTrackStatus();
     applyFastTrack();
-
-    // Restore last fast-track run status (survives refresh)
-    try {
-      var lastRun = JSON.parse(localStorage.getItem('bbp_fasttrack_lastrun') || 'null');
-      if (lastRun && lastRun.text) {
-        var ftEl = document.getElementById('fastTrackLastRun');
-        if (ftEl) {
-          var when = lastRun.ts ? new Date(lastRun.ts).toLocaleTimeString() : '';
-          ftEl.innerHTML = '<span style="color:' + (lastRun.err ? '#ff6b6b' : 'var(--accent)') + '">' + lastRun.text + '</span>' +
-            (when ? ' <span style="color:var(--muted)">(' + when + ')</span>' : '');
-        }
-      }
-    } catch(e) {}
     log('info', '⚡ Fast track restored from extension storage (' + getFastTrack().length + ' product(s)).');
     return;
   }
@@ -2481,80 +2455,6 @@ if (d.type === 'FASTTRACK_RESTORED') {
     // Makro bot challenge detected — pause scraping and show alert
     log('err', '🤖 BOT CHALLENGE DETECTED — Makro asked "Are you human?". Solve it in the scraper window, then click Resume.');
     showChallengeAlert();
-    return;
-  }
-
-  if (d.type === 'FASTTRACK_API_STARTED') {
-    // Bridge reports whether the background accepted the API batch scrape.
-    clearFtStartTimeout();
-    if (d.ok) return; // started fine — progress events will follow
-    stopFtElapsedTicker();
-    log('err', '⚠ Fast-track API scrape failed to start: ' + (d.error || 'unknown error'));
-    setFastTrackLastRun('⚠ Failed to start: ' + (d.error || 'unknown error'), true);
-    state.scraping = false;
-    state.stopRequested = false;
-    document.getElementById('startBtn').style.display = 'flex';
-    document.getElementById('stopBtn').style.display  = 'none';
-    document.getElementById('progressSection').style.display = 'none';
-    if (d.error && /already running/i.test(d.error)) {
-      log('info', '🔄 Stale queue detected — sending Stop, retrying fast-track in 1s…');
-      window.postMessage({ type: 'STOP_QUEUE' }, '*');
-      setTimeout(function() {
-        var list = getFastTrack();
-        var fsns = list.map(function(w) { return (w.fsn || '').trim(); })
-          .filter(function(f) { return f && !/^itm/i.test(f); });
-        if (fsns.length === list.length && fsns.length > 0) startFastTrackApiScrape(fsns);
-      }, 1000);
-    }
-    return;
-  }
-
-  if (d.type === 'FASTTRACK_API_PROGRESS') {
-    stopFtElapsedTicker();
-    clearFtStartTimeout();
-    // Guard: if the cycle already finalized (done received), ignore straggler
-    // progress — otherwise a late message would overwrite the "✅ Done" panel
-    // and re-process results outside the cycle.
-    if (!state.scraping) return;
-    handleFastTrackApiResult(d.result, d.done, d.total);
-    // Live progress in the Fast Track panel (DOM only — persisted on done)
-    var ftEl = document.getElementById('fastTrackLastRun');
-    if (ftEl) ftEl.innerHTML = '<span style="color:var(--accent)">⏳ Scraping… ' + d.done + '/' + d.total + '</span>';
-    return;
-  }
-
-  if (d.type === 'FASTTRACK_API_DONE') {
-    stopFtElapsedTicker();
-    clearFtStartTimeout();
-    if (d.stopped) {
-      // User hit Stop mid-batch — stopScraping() already finalized the UI;
-      // just log what we got before the halt.
-      log('info', '⏹ Fast-track API scrape stopped — ' + (d.results || []).length + ' product(s) processed.');
-      setFastTrackLastRun('⏹ Stopped — ' + (d.results || []).length + ' product(s) processed', true);
-    } else {
-      _lastApiBatchCount = (d.results || []).length;
-      try { handleQueueFinished(); } catch(e) { console.error('[fast-track] finish error:', e); }
-      // Always show the final result in the Fast Track panel, even if the
-      // finish pipeline threw partway (handleQueueFinished also sets it for
-      // the page-load fallback path — this guarantees the API path shows it).
-      setFastTrackLastRun('✅ Done — ' + _lastApiBatchCount + ' product(s) updated via sellers API');
-    }
-    return;
-  }
-
-  if (d.type === 'FASTTRACK_API_STALLED') {
-    // Background watchdog: the Makro tab accepted the batch but sent no
-    // progress for 15s (hanging sellers API / stale content script). Reset the
-    // cycle so the next tick can retry, and show the diagnostic in the panel.
-    stopFtElapsedTicker();
-    clearFtStartTimeout();
-    log('err', '⚠ ' + (d.message || 'Fast-track stalled — no progress from the Makro tab.'));
-    setFastTrackLastRun('⚠ ' + (d.message || 'Fast-track stalled — no progress from the Makro tab.'), true);
-    state.scraping = false;
-    state.stopRequested = false;
-    document.getElementById('startBtn').style.display = 'flex';
-    document.getElementById('stopBtn').style.display  = 'none';
-    document.getElementById('progressSection').style.display = 'none';
     return;
   }
 
@@ -3333,44 +3233,13 @@ function refreshPortalSession(silent) {
   });
 }
 
-// Diagnose portal session: ask the extension to dump ground truth about tabs
-// and cookies so we can see why the refresh sees 0 cookies.
-function diagnosePortal() {
-  var btn = document.getElementById('diagBtn');
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Diagnosing...'; }
-  log('info', '🔍 Diagnosing portal session state...');
-  var timer = setTimeout(function() {
-    if (btn) { btn.disabled = false; btn.textContent = '🔍 Diagnose'; }
-    log('error', '❌ No response from extension — reload the extension (chrome://extensions → reload Makro BuyBox Pro) and try again');
-  }, 15000);
-  window.postMessage({ type: 'PORTAL_DIAG' }, '*');
-  window.addEventListener('message', function onDiag(ev) {
-    if (!ev.data || ev.data.type !== 'PORTAL_DIAG_RESULT') return;
-    window.removeEventListener('message', onDiag);
-    clearTimeout(timer);
-    if (btn) { btn.disabled = false; btn.textContent = '🔍 Diagnose'; }
-    if (!ev.data.ok) {
-      log('error', '❌ Diagnose failed: ' + (ev.data.error || 'unknown'));
-      return;
-    }
-    var d = ev.data.diag || {};
-    log('info', '📋 Extension: ' + d.extId + ' v' + d.version + ' | cookies API: ' + (d.hasCookiesApi ? 'yes' : 'NO') + ' | scripting: ' + (d.hasScriptingApi ? 'yes' : 'NO'));
-    log('info', '📋 All cookies in store: ' + d.allCookies + (d.allCookiesError ? ' (ERROR: ' + d.allCookiesError + ')' : '') + ' | makro cookies: ' + d.makroCookies + (d.makroDomains ? ' | domains: ' + JSON.stringify(d.makroDomains) : ''));
-    log('info', '📋 Tabs (' + (d.tabs || []).length + '): ' + (d.tabs || []).map(function(t) { return t.url + ' [' + t.storeId + (t.incognito ? ', incognito' : '') + ']'; }).join(' | '));
-    (d.portalCookieCounts || []).forEach(function(p) {
-      log('info', '📋 Portal tab ' + p.url + ' [' + p.storeId + '] → cookies: ' + p.count + (p.error ? ' (ERROR: ' + p.error + ')' : '') + (p.names && p.names.length ? ' | names: ' + p.names.join(', ') : ''));
-    });
-    if (!(d.portalCookieCounts || []).length) log('warn', '⚠ No seller.makro.co.za tab found — open one and log in, then Diagnose again');
-  });
-}
-
 // ============================================================
 // EXT STATUS UI
 // ============================================================
 function setExtStatus(online) {
   state.extReady = online;
   document.getElementById('extDot').className = 'ext-dot ' + (online ? 'green' : 'red');
-  document.getElementById('extLabel').textContent = online ? ('Extension connected' + (extensionId ? ' v' + (window.__bbpExtVersion || '?') : '')) : 'Extension offline';
+  document.getElementById('extLabel').textContent = online ? 'Extension connected' : 'Extension offline';
   document.getElementById('scraperDot').style.background = online ? 'var(--accent)' : 'var(--muted)';
   document.getElementById('scraperExtLabel').textContent = online ? '✓ Connected — ready to scrape' : 'Waiting for extension...';
   document.getElementById('startBtn').disabled = !online;
@@ -3930,10 +3799,7 @@ function stopScraping() {
   state.stopRequested = true;
   state.scraping = false;
   clearQueueFinishWatchdog();
-  stopFtElapsedTicker();
-  clearFtStartTimeout();
   window.postMessage({ type: 'STOP_QUEUE' }, '*');
-  window.postMessage({ type: 'FASTTRACK_API_STOP' }, '*');
   finishScraping();
   log('info', '⏹ Scraping stopped.');
 }
@@ -4244,15 +4110,6 @@ function handleQueueFinished() {
   clearQueueFinishWatchdog();
   finishScraping();
   log('ok', '✅ Queue complete — all products scraped.');
-  // Fast-track cycles: show the result in the Fast Track panel (Dashboard
-  // sidebar) so the user sees it without opening the Scraper tab log.
-  if (_lastCycleLabel === 'fast-track') {
-    if (_lastApiBatchCount > 0) {
-      setFastTrackLastRun('✅ Done — ' + _lastApiBatchCount + ' product(s) updated via sellers API');
-    } else {
-      setFastTrackLastRun('✅ Cycle finished — all fast-track products updated');
-    }
-  }
 }
 
 function finishScraping() {
@@ -7481,32 +7338,6 @@ document.addEventListener('scroll', function() {
 // INIT
 // ============================================================
 (function init() {
-  // ── CACHE-BUST GUARD ─────────────────────────────────────────────────────
-  // GitHub Pages caches the HTML for ~10 min, so a plain URL (bookmark, typed,
-  // or the extension popup before the cache-buster) keeps serving the OLD
-  // version no matter how many times the user refreshes. If this page was
-  // loaded WITHOUT a ?v= cache-buster, immediately reload with one so the
-  // browser fetches the latest deployed copy. The extension popup already
-  // opens with ?v=timestamp, so this only fires for manual/bookmark opens.
-  try {
-    var _v = (location.search.match(/[?&]v=([^&]+)/) || [])[1];
-    if (!_v && location.hostname.indexOf('github.io') !== -1) {
-      location.replace(location.pathname + '?v=' + Date.now());
-      return; // stop init — the reload re-runs it with the cache-buster
-    }
-  } catch(e) {}
-
-  // Version badge — shows the deployed version so we can always confirm the
-  // dashboard is running the latest code. Reads the ?v= cache-buster from the
-  // URL when present (extension popup opens with one), else shows the build date.
-  try {
-    var vb = document.getElementById('versionBadge');
-    if (vb) {
-      var v = (location.search.match(/[?&]v=([^&]+)/) || [])[1] || '2026-09-05 23:20';
-      vb.textContent = 'v' + v;
-    }
-  } catch(e) {}
-
   loadProducts();
   renderNewOrders();
 
@@ -7594,19 +7425,6 @@ document.addEventListener('scroll', function() {
   }
   updateFastTrackStatus();
   applyFastTrack();
-
-  // Restore last fast-track run status (survives refresh)
-  try {
-    var lastRun = JSON.parse(localStorage.getItem('bbp_fasttrack_lastrun') || 'null');
-    if (lastRun && lastRun.text) {
-      var ftEl = document.getElementById('fastTrackLastRun');
-      if (ftEl) {
-        var when = lastRun.ts ? new Date(lastRun.ts).toLocaleTimeString() : '';
-        ftEl.innerHTML = '<span style="color:' + (lastRun.err ? '#ff6b6b' : 'var(--accent)') + '">' + lastRun.text + '</span>' +
-          (when ? ' <span style="color:var(--muted)">(' + when + ')</span>' : '');
-      }
-    }
-  } catch(e) {}
 
   // Load saved seller name
   const savedSeller = localStorage.getItem(SELLER_KEY);
@@ -10908,7 +10726,6 @@ function applyAutoScrape() {
 // can react instantly when an active competitor changes price. Fast-track
 // products are excluded from the normal queue (see buildAutoScrapeQueue).
 var _fastTrackTimer = null;
-var _runFastTrackNow = null; // latest runFastTrack closure — used by the ▶ Run now button
 function applyFastTrack() {
   if (_fastTrackTimer) { clearInterval(_fastTrackTimer); _fastTrackTimer = null; }
   var list = getFastTrack();
@@ -10922,178 +10739,27 @@ function applyFastTrack() {
   var ftUrls = fastTrackUrls();
 
   function runFastTrack() {
-    if (fastTrackPaused()) {
-      // extra guard — pause stops everything fast-track
-      setFastTrackLastRun('⏸ Paused — fast-track timer stopped', true);
-      return;
-    }
+    if (fastTrackPaused()) return; // extra guard — pause stops everything fast-track
     // Don't run if a scrape cycle is already in progress (either normal or fast-track)
     if (state.scraping) {
       log('info', '⚡ Fast-track tick skipped — a scrape cycle is already running.');
-      // Don't touch the panel — the in-flight cycle owns it (started/progress/done).
       return;
     }
     if (!state.extReady) {
       log('info', '⚡ Fast-track skipped — extension offline.');
-      setFastTrackLastRun('⚠ Extension offline — fast-track skipped', true);
       return;
     }
-    var list = getFastTrack();
-    if (!list.length) return;
-
-    // ── API PATH (preferred): every fast-track product has a real FSN → the
-    // extension loops Makro's sellers API from ONE tab (no page loads, no
-    // human delays). 100+ products scrape in well under a minute.
-    var fsns = list.map(function(w) { return (w.fsn || '').trim(); })
-      .filter(function(f) { return f && !/^itm/i.test(f); });
-    if (fsns.length === list.length && fsns.length > 0) {
-      log('info', '⚡ Fast-track API scrape — ' + fsns.length + ' product(s) via sellers API (no page loads).');
-      setFastTrackLastRun('🚀 API scrape started — ' + fsns.length + ' product(s) via sellers API…');
-      startFastTrackApiScrape(fsns);
-      switchTab('scraper');
-      return;
-    }
-
-    // ── FALLBACK: some products lack a real FSN → old page-load path.
     var urls = fastTrackUrls();
     if (!urls.length) return;
     log('info', '⚡ Fast-track scrape — ' + urls.length + ' product(s) every ' + mins + ' min.');
-    setFastTrackLastRun('🚀 Page-load scrape started — ' + urls.length + ' product(s)…');
     var concurrency = parseInt(localStorage.getItem('scrape_parallel') || (document.getElementById('scrapeParallel')||{}).value || '5');
     syncThenStartQueue(urls, concurrency, 'fast-track');
     switchTab('scraper');
   }
 
   // Run once immediately if there are fast-track products, then on the interval
-  _runFastTrackNow = runFastTrack;
   runFastTrack();
   _fastTrackTimer = setInterval(runFastTrack, mins * 60000);
-}
-
-// ▶ Run now — force an immediate fast-track scrape from the panel button.
-function runFastTrackNow() {
-  if (!_runFastTrackNow) {
-    // No fast-track products at page load → try to (re)build the closure from
-    // the current list (e.g. products were added after load).
-    applyFastTrack();
-    if (!_runFastTrackNow) {
-      log('warn', '⚡ No fast-track products — add some with the ⚡ button on a product row.');
-      setFastTrackLastRun('⚠ No fast-track products to scrape', true);
-      return;
-    }
-  }
-  _runFastTrackNow();
-}
-
-// ── ⚡ FAST-TRACK API BATCH SCRAPE ─────────────────────────────────────────
-// Sends FSNs to the extension, which loops Makro's sellers API from ONE tab
-// (no page loads). Each result is fed through the SAME handleQueueProgress
-// pipeline as a normal scrape — win/lose, cost backfill, auto-reprice, history,
-// price log all work unchanged. The cycle ends with handleQueueFinished() so
-// auto-push + lost-buybox chase behave exactly like a page-load cycle.
-
-// Count of products in the last API batch (used by handleQueueFinished to show
-// "Done — N products" in the Fast Track panel).
-var _lastApiBatchCount = 0;
-
-// Live elapsed-seconds ticker for the API fast-track cycle. Between "started"
-// and the first progress event there can be a silent gap (Makro tab lookup,
-// content-script injection, first API call) — the ticker makes that gap
-// VISIBLE by updating the panel every second, so the user always sees the
-// cycle is alive instead of "nothing happening".
-var _ftElapsedTimer = null;
-// Safety net: if the extension never confirms the batch started AND no
-// progress arrives, the "waiting for Makro tab" ticker would run forever.
-// After 30s of silence, stop the ticker and show a clear diagnostic instead.
-var _ftStartTimeout = null;
-function startFtElapsedTicker(total) {
-  stopFtElapsedTicker();
-  var t0 = Date.now();
-  _ftElapsedTimer = setInterval(function() {
-    var s = Math.floor((Date.now() - t0) / 1000);
-    var el = document.getElementById('fastTrackLastRun');
-    if (el) el.innerHTML = '<span style="color:var(--accent)">🚀 API scrape started — ' + total + ' product(s) via sellers API… ⏳ waiting for Makro tab (' + s + 's)</span>';
-  }, 1000);
-}
-function stopFtElapsedTicker() {
-  if (_ftElapsedTimer) { clearInterval(_ftElapsedTimer); _ftElapsedTimer = null; }
-}
-function armFtStartTimeout() {
-  clearTimeout(_ftStartTimeout);
-  _ftStartTimeout = setTimeout(function() {
-    if (!state.scraping) return;
-    stopFtElapsedTicker();
-    log('err', '⚠ No response from the extension in 30s — the batch never started. Reload the extension (chrome://extensions → ↻), make sure a Makro tab is open and logged in, then click Run now again.');
-    setFastTrackLastRun('⚠ Extension not responding — reload it (chrome://extensions → ↻) and check a Makro tab is open', true);
-    state.scraping = false;
-    state.stopRequested = false;
-    document.getElementById('startBtn').style.display = 'flex';
-    document.getElementById('stopBtn').style.display  = 'none';
-    document.getElementById('progressSection').style.display = 'none';
-  }, 30000);
-}
-function clearFtStartTimeout() {
-  if (_ftStartTimeout) { clearTimeout(_ftStartTimeout); _ftStartTimeout = null; }
-}
-
-// Show the last fast-track run result right in the Fast Track panel (Dashboard
-// sidebar) so the user never has to hunt for the log on the Scraper tab.
-// Persisted to localStorage so it survives refreshes.
-function setFastTrackLastRun(text, isErr) {
-  var el = document.getElementById('fastTrackLastRun');
-  var html = '<span style="color:' + (isErr ? '#ff6b6b' : 'var(--accent)') + '">' + text + '</span>';
-  if (el) el.innerHTML = html;
-  try {
-    localStorage.setItem('bbp_fasttrack_lastrun', JSON.stringify({ text: text, err: !!isErr, ts: Date.now() }));
-  } catch(e) {}
-}
-
-function startFastTrackApiScrape(fsns) {
-  _lastCycleLabel = 'fast-track';   // chase skips fast-track cycles
-  _autoPushFired = false;           // new cycle → allow one auto-push at the end
-  _cyclePushStartedAt = 0;
-  _chaseFired = false;
-  _chaseRound = 0;
-  resetCycleTouched();
-  _lastApiBatchCount = 0;
-  scrapeQueue = fsns; scrapeIdx = 0; state.scraping = true;
-  document.getElementById('progressSection').style.display = 'block';
-  updateProgress(0, fsns.length);
-  startFtElapsedTicker(fsns.length);
-  armFtStartTimeout();
-  window.postMessage({ type: 'FASTTRACK_API_SCRAPE', fsns: fsns, concurrency: 6 }, '*');
-}
-
-// Build a synthetic scrape result from the API's seller list and run it through
-// the standard pipeline. sellers[0] is the buybox winner (sorted ascending).
-// handleQueueProgress does its own scrapeIdx++ / updateProgress.
-function handleFastTrackApiResult(result, done, total) {
-  if (!result || !result.fsn) return;
-  var sellers = result.sellers || [];
-  if (!sellers.length) {
-    log('warn', '⚡ No sellers returned for ' + result.fsn + ' — skipped.');
-    return;
-  }
-  var winner = sellers[0];
-  // Find the existing product so the synthetic result carries its URL/title
-  // (handleQueueProgress matches by URL first, then FSN prefix).
-  var prod = null;
-  try {
-    prod = state.products.find(function(x) {
-      if (!x.fsn) return false;
-      return x.fsn === result.fsn || x.fsn.slice(0, 15) === result.fsn.slice(0, 15);
-    });
-  } catch(e) {}
-  var synthetic = {
-    url: prod ? prod.url : ('https://www.makro.co.za/product/' + result.fsn),
-    fsn: result.fsn,
-    title: prod ? prod.title : result.fsn,
-    buyBoxPrice: winner.price,
-    buyBoxSeller: winner.seller,
-    sellers: sellers,
-    dataSource: 'api-fasttrack'
-  };
-  handleQueueProgress({ data: synthetic, done: done, total: total });
 }
 
 function openPortalUpload() {
