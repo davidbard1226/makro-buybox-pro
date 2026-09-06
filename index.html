@@ -4511,13 +4511,21 @@ function maybeAutoPushPrices() {
     }
 
     // ── PUSH DIRECTLY — SAME PATH AS THE SINGLE-PRODUCT PUSH ──
-    // The old flow refreshed the portal session first, then pushed. That
-    // refresh gate BLOCKED the push: refreshPortalSession's promise never
-    // settled (the REFRESH_PORTAL_SESSION_RESULT handler cleared the safety
-    // timer and _refreshSessionResolve was never set), so .then(doPush) never
-    // fired and the batch push silently never ran. The single-product push
-    // works with NO refresh — push the same way here.
-    doPush(withSku);
+    // Refresh the portal session first (captures fresh cookies from the
+    // logged-in seller.makro.co.za tab into portal-cookies.json). The old
+    // refresh gate was removed because refreshPortalSession's promise never
+    // settled (the RESULT handler cleared the timer but _refreshSessionResolve
+    // was never set) — that bug is fixed now, so the gate is safe again.
+    // If the refresh fails (no portal tab / server down), skip the push with
+    // a clear log entry instead of pushing with stale cookies.
+    refreshPortalSession(true).then(function(ok) {
+      if (!ok) {
+        addAutoPushLogEntry({ level: 'error', msg: '❌ Auto-push skipped: portal session refresh failed. Log into seller.makro.co.za and click Refresh Portal Session, then re-scrape.' });
+        log('error', '🤖 Auto-push skipped: portal session refresh failed — log into seller.makro.co.za and click Refresh Portal Session');
+        return;
+      }
+      doPush(withSku);
+    });
   } catch(e) {
     addAutoPushLogEntry({ level: 'error', msg: 'Auto-push error: ' + e.message });
     log('error', '🤖 Auto-push error: ' + e.message);
