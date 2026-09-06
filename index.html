@@ -4797,6 +4797,27 @@ function autoReprice(prod) {
   var listings = getListings();
   var listing = findListingByFsn(prod.fsn, listings);
 
+  // ── UNWINNABLE GUARD ─────────────────────────────────────────────────────
+  // If even the floor price is above the buybox, we cannot win this box
+  // without selling below cost. Don't reprice and don't queue a push — the
+  // portal guard would refuse it anyway ("REFUSED to RAISE ... above buybox
+  // ... would lose buybox"), and re-attempting it every cycle just burns
+  // portal API calls and shows a scary "0 ok, N failed" summary.
+  if (targetPrice > buybox) {
+    log('info', '⏭ Unwinnable: buybox R' + roundPrice(buybox) + ' below floor R' + roundPrice(minPrice) +
+        ' — staying at R' + (listing && listing.myPrice > 0 ? roundPrice(listing.myPrice) : '?') + ' (no change)');
+    // Clear any stale pending that would push us above the buybox
+    if (prod.pending_price != null && prod.pending_price > buybox) {
+      var staleUnwin = prod.pending_price;
+      prod.pending_price = null;
+      prod.pending_updated = null;
+      saveProducts();
+      updatePendingBadge();
+      log('info', '🧹 Cleared stale pending R' + staleUnwin + ' (above buybox R' + roundPrice(buybox) + ') for ' + String(prod.title || prod.fsn || '').slice(0, 35));
+    }
+    return;
+  }
+
   // ── DIAGNOSTIC: show the full decision for a losing product ─────────────
   // So we can see exactly why a product is (or isn't) being repriced: the
   // buybox, our current price, the floor, the target, and the outcome.
