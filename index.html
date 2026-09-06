@@ -2329,6 +2329,9 @@ window.addEventListener('message', function(ev) {
       window.__bbpExtVersion = d.version || null;
       var extVer = d.version ? ' v' + d.version : '';
       log('info', 'Extension connected' + extVer + (extensionId ? ' (id: ' + extensionId.slice(0,8) + '...)' : ''));
+      if (!d.version) {
+        log('warn', '⚠ Extension is OUTDATED — it reported no version, so it predates the fast-track API batch support. Reload it: chrome://extensions → ↻ (make sure it loads from the makro-buybox-pro\\chrome-extension folder).');
+      }
     }
     setExtStatus(true);
     return;
