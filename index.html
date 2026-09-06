@@ -5761,6 +5761,16 @@ function parseCSV(text) {
   return rows;
 }
 
+// Expand scientific-notation codes ("2.10E+09") to full digits ("2100000000").
+// Real SKUs stored as numbers in Google Sheets export as e-notation via gviz.
+function expandSciNotation(s) {
+  var m = /^(\d+(?:\.\d+)?)[eE]([+-]?\d+)$/.exec(String(s).trim());
+  if (!m) return String(s).trim();
+  var num = parseFloat(m[1] + 'e' + m[2]);
+  if (!isFinite(num) || num < 0) return String(s).trim();
+  return String(num);
+}
+
 // ── SHARED COST LOOKUP (used by bulk sync, per-product sync, and auto-match on import) ──
 var _costLookupCache = null;
 async function buildCostLookup(force) {
@@ -5781,7 +5791,7 @@ async function buildCostLookup(force) {
         var row = rows[r];
         var skuRaw = row[tab.skuCol] != null ? row[tab.skuCol].toString().trim() : '';
         if (!skuRaw) continue;
-        var sku = skuRaw.toLowerCase();
+        var sku = expandSciNotation(skuRaw).toLowerCase();
         var cost = parseFloat((row[tab.costCol] || '').toString().replace(/[R,\s]/g,''));
         if (isNaN(cost) || cost <= 0) continue;
         var minV = (tab.minCol != null && row[tab.minCol]) ? parseFloat(row[tab.minCol].toString().replace(/[R,\s]/g,'')) : NaN;
@@ -5806,7 +5816,7 @@ async function buildCostLookup(force) {
   });
 
   function findCost(sku) {
-    var k = sku.trim().toLowerCase().replace(/\s+/g,'');
+    var k = expandSciNotation(sku).toLowerCase().replace(/\s+/g,'');
     if (lookup[k]) return lookup[k];                                   // exact
     var ns = k.replace(/-[a-z0-9]{1,4}$/, '');
     if (lookup[ns]) return lookup[ns];                                 // strip suffix
