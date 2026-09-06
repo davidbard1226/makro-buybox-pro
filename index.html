@@ -3464,12 +3464,17 @@ function addPastedUrlsToProducts() {
   urls.forEach(function(u) {
     var exists = state.products.some(function(p) { return p.url === u; });
     if (exists) { skipped++; return; }
+    // Extract FSN (pid) from the URL immediately — enables FSN↔SKU matching
+    // before the first scrape. URLs without ?pid= get their FSN filled in
+    // during scraping (content.js reads the canonical link on the page).
+    var pidM = u.match(/[?&]pid=([A-Z0-9]{8,})/i);
+    var fsnFromUrl = (pidM && !/^itm/i.test(pidM[1])) ? pidM[1].toUpperCase() : '';
     // Explicit re-add overrides a previous deletion (the 3s auto-poll would
     // otherwise remove it again because its URL sits in the deleted blocklist).
     unDeleteProduct(u, '');
     state.products.push({
       url: u,
-      fsn: '', sku: '', title: u,
+      fsn: fsnFromUrl, sku: '', title: u,
       buybox_price: 0, seller: '', status: 'unknown',
       lastChecked: null, history: []
     });
@@ -6969,9 +6974,14 @@ function addProductFromSearch() {
   // Add as a stub — scraper will fill in the rest
   // Explicit re-add overrides a previous deletion (auto-poll would remove it otherwise)
   unDeleteProduct(url, '');
+  // Extract FSN (pid) from the URL immediately when present — enables
+  // FSN↔SKU matching before the first scrape. URLs without ?pid= get their
+  // FSN filled in during scraping (content.js reads the canonical link).
+  var pidM = url.match(/[?&]pid=([A-Z0-9]{8,})/i);
+  var fsnFromUrl = (pidM && !/^itm/i.test(pidM[1])) ? pidM[1].toUpperCase() : '';
   var stub = {
     url: url,
-    fsn: '', sku: '', title: url,
+    fsn: fsnFromUrl, sku: '', title: url,
     buybox_price: 0, seller: '', status: 'unknown',
     lastChecked: null, history: []
   };
