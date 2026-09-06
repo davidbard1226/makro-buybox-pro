@@ -2502,6 +2502,10 @@ if (d.type === 'FASTTRACK_RESTORED') {
 
   if (d.type === 'FASTTRACK_API_PROGRESS') {
     stopFtElapsedTicker();
+    // Guard: if the cycle already finalized (done received), ignore straggler
+    // progress — otherwise a late message would overwrite the "✅ Done" panel
+    // and re-process results outside the cycle.
+    if (!state.scraping) return;
     handleFastTrackApiResult(d.result, d.done, d.total);
     // Live progress in the Fast Track panel (DOM only — persisted on done)
     var ftEl = document.getElementById('fastTrackLastRun');

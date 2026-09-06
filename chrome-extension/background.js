@@ -419,6 +419,7 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
     return true;
   }
   if (msg.action === 'fasttrack_api_done') {
+    console.log('[BuyBox bg] GOT fasttrack_api_done, results:', (msg.results || []).length, 'stopped:', !!msg.stopped);
     clearFastTrackWatchdog();
     notifyDashboard({ action: 'fasttrack_api_done', results: msg.results || [], stopped: !!msg.stopped });
     sendResponse({ ok: true });
@@ -771,6 +772,7 @@ function notifyDashboard(msg) {
         }
       });
     });
+    if (msg.action === 'fasttrack_api_done') console.log('[BuyBox bg] notifyDashboard done-action delivered to', sent ? 'dashboard tab(s)' : 'NOBODY');
     // Fallback: if direct message failed or no dashboard tab found,
     // ensure data is in chrome.storage.local so bridge.js syncs it
     if (!sent && msg.data && msg.action === 'scrape_done') {

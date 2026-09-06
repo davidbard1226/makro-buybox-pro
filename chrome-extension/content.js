@@ -548,19 +548,26 @@
       fastTrackStopRequested = false;
 
       function worker() {
-        if (fastTrackStopRequested || idx >= fsns.length) {
-          // Stopped (or exhausted) — send done once with whatever we have so
-          // the dashboard finalizes the cycle instead of hanging.
+        if (fastTrackStopRequested || done >= fsns.length) {
+          // Stopped, or EVERY fetch has resolved — send done once with the
+          // full result set so the dashboard finalizes the cycle. (Sending
+          // done when only the last INDEX resolved raced in-flight fetches:
+          // trailing progress messages then overwrote the dashboard's
+          // "✅ Done" panel back to "Scraping…".)
           if (!doneSent) {
             doneSent = true;
+            console.log('[BuyBox v5] SENDING fasttrack_api_done, results:', results.length, 'stopped:', fastTrackStopRequested);
             chrome.runtime.sendMessage({
               action: 'fasttrack_api_done',
               results: results,
               stopped: fastTrackStopRequested
+            }, function() {
+              console.log('[BuyBox v5] fasttrack_api_done sendMessage callback, lastError:', chrome.runtime.lastError ? chrome.runtime.lastError.message : 'none');
             });
           }
           return;
         }
+        if (idx >= fsns.length) return; // all indices claimed — in-flight fetches call worker() again on resolve
         var myIdx = idx++;
         var fsn = fsns[myIdx];
         fetchSellersApi(fsn).then(function(sellers) {
