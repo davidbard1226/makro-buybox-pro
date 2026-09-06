@@ -10631,14 +10631,9 @@ function toggleFastTrackFromProduct(idx) {
     removeFromFastTrack(i);
     log('info', '⚡ Removed from fast track: ' + (p.title || p.fsn || p.url));
   } else {
-    var count = getFastTrack().length;
-    if (count >= 25) {
-      // Soft warning, not a hard block — the user decides the bot-blocking risk.
-      // Longer intervals (5–10 min) are recommended for large lists.
-      if (!confirm('You have ' + count + ' products on fast track. Scraping more than ~25 every 1–5 min can trigger Makro bot protection and get you blocked.\n\nAdd anyway? (Tip: use a 5–10 min interval for large lists.)')) {
-        return;
-      }
-    }
+    // No size restriction: the API batch scrape (no page loads, ~6 products/sec)
+    // handles 100s of products fine — the old 25-product bot-protection warning
+    // applied to the page-load path and is obsolete.
     addToFastTrack(p.url, p.fsn, p.title);
     log('info', '⚡ Added to fast track (1–5 min): ' + (p.title || p.fsn || p.url));
   }
