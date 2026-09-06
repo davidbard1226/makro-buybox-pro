@@ -255,6 +255,16 @@
       service_profile: serviceProfile,
       pick_pack_sla: pickPackSla
     };
+    // Optional/required selling-info attributes (mirrors the START SELLING form)
+    const minOq = Number(req.minOq) || 0;
+    const maxOq = Number(req.maxOq) || 0;
+    if (minOq > 0) attributeValues.min_order_quantity = minOq;
+    if (maxOq > 0) attributeValues.max_order_quantity = maxOq;
+    if (req.region) attributeValues.selling_region_preference = req.region;
+    if (req.origin) attributeValues.country_of_origin = req.origin;
+    if (req.manufacturer) attributeValues.manufacturer_details = req.manufacturer;
+    if (req.packer) attributeValues.packer_details = req.packer;
+    if (req.importer) attributeValues.importer_details = req.importer;
 
     const bulkRequests = [{
       attributeValues: attributeValues,

@@ -2070,6 +2070,52 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
         </div>
         <div style="font-size:10px;color:var(--muted);margin-top:4px">Required by the portal. If unknown, check the product page or supplier box.</div>
       </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:5px">Min Order Qty (optional)</label>
+          <input id="listMinOqInput" type="number" step="1" min="0" placeholder="e.g. 1"
+            style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:'Space Mono',monospace;font-size:13px;padding:8px 10px;border-radius:6px;outline:none">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:5px">Max Order Qty (optional)</label>
+          <input id="listMaxOqInput" type="number" step="1" min="0" placeholder="e.g. 10"
+            style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:'Space Mono',monospace;font-size:13px;padding:8px 10px;border-radius:6px;outline:none">
+        </div>
+      </div>
+      <div>
+        <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:5px">Selling Region Preference</label>
+        <select id="listRegionInput" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;padding:8px;border-radius:6px;outline:none">
+          <option value="NATIONAL" selected>National</option>
+          <option value="REGIONAL">Regional</option>
+        </select>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:5px">Country Of Origin <span style="color:#ff4d6d">*</span></label>
+          <input id="listOriginInput" type="text" placeholder="e.g. China"
+            style="width:100%;background:var(--surface2);border:1px solid #ff4d6d66;color:var(--text);font-size:13px;padding:8px 10px;border-radius:6px;outline:none">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:5px">Pick Pack SLA (days)</label>
+          <input id="listSlaInput" type="number" step="1" min="1" value="2" placeholder="e.g. 2"
+            style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:'Space Mono',monospace;font-size:13px;padding:8px 10px;border-radius:6px;outline:none">
+        </div>
+      </div>
+      <div>
+        <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:5px">Manufacturer Details <span style="color:#ff4d6d">*</span></label>
+        <input id="listManufacturerInput" type="text" placeholder="e.g. HP Inc."
+          style="width:100%;background:var(--surface2);border:1px solid #ff4d6d66;color:var(--text);font-size:13px;padding:8px 10px;border-radius:6px;outline:none">
+      </div>
+      <div>
+        <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:5px">Packer Details <span style="color:#ff4d6d">*</span></label>
+        <input id="listPackerInput" type="text" placeholder="e.g. HP Inc."
+          style="width:100%;background:var(--surface2);border:1px solid #ff4d6d66;color:var(--text);font-size:13px;padding:8px 10px;border-radius:6px;outline:none">
+      </div>
+      <div>
+        <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:5px">Importer Details (optional)</label>
+        <input id="listImporterInput" type="text" placeholder="e.g. Bonolo Online (Pty) Ltd"
+          style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;padding:8px 10px;border-radius:6px;outline:none">
+      </div>
 
       <div id="listPayloadPreview" style="font-size:11px;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px;font-family:'Space Mono',monospace;white-space:pre-wrap;max-height:180px;overflow:auto;display:none"></div>
     </div>
@@ -2898,7 +2944,7 @@ function openListOnMakroModal(prefillFsn, prefillData) {
     return;
   }
   // Reset form
-  ['listFsnInput','listSkuInput','listMrpInput','listSellInput','listDimL','listDimB','listDimH','listDimW'].forEach(function(id) {
+  ['listFsnInput','listSkuInput','listMrpInput','listSellInput','listDimL','listDimB','listDimH','listDimW','listMinOqInput','listMaxOqInput','listOriginInput','listManufacturerInput','listPackerInput','listImporterInput'].forEach(function(id) {
     var el = document.getElementById(id);
     if (el) el.value = '';
   });
@@ -2906,6 +2952,10 @@ function openListOnMakroModal(prefillFsn, prefillData) {
   if (stateEl) stateEl.value = 'ACTIVE';
   var fulEl = document.getElementById('listFulfilmentInput');
   if (fulEl) fulEl.value = 'NON_FBF';
+  var regionEl = document.getElementById('listRegionInput');
+  if (regionEl) regionEl.value = 'NATIONAL';
+  var slaEl = document.getElementById('listSlaInput');
+  if (slaEl) slaEl.value = '2';
   var prev = document.getElementById('listPayloadPreview');
   if (prev) { prev.style.display = 'none'; prev.textContent = ''; }
   var res = document.getElementById('listResult');
@@ -3009,7 +3059,15 @@ function buildListProductReq() {
     sellingPrice: sell,
     listingState: state,
     serviceProfile: fulfilment,
-    dimensions: dims
+    dimensions: dims,
+    minOq: parseInt(document.getElementById('listMinOqInput').value) || 0,
+    maxOq: parseInt(document.getElementById('listMaxOqInput').value) || 0,
+    region: document.getElementById('listRegionInput').value,
+    origin: (document.getElementById('listOriginInput').value || '').trim(),
+    manufacturer: (document.getElementById('listManufacturerInput').value || '').trim(),
+    packer: (document.getElementById('listPackerInput').value || '').trim(),
+    importer: (document.getElementById('listImporterInput').value || '').trim(),
+    pickPackSla: parseInt(document.getElementById('listSlaInput').value) || 2
   };
 }
 
@@ -3031,7 +3089,14 @@ function previewListPayload() {
         flipkart_selling_price: req.sellingPrice,
         listing_status: req.listingState,
         service_profile: req.serviceProfile,
-        pick_pack_sla: 2
+        pick_pack_sla: req.pickPackSla,
+        min_order_quantity: req.minOq || undefined,
+        max_order_quantity: req.maxOq || undefined,
+        selling_region_preference: req.region,
+        country_of_origin: req.origin,
+        manufacturer_details: req.manufacturer,
+        packer_details: req.packer,
+        importer_details: req.importer || undefined
       },
       context: { ignore_warnings: false },
       productId: req.fsn,
@@ -3056,6 +3121,9 @@ function validateListReq(req) {
   if (!(req.dimensions.length > 0) || !(req.dimensions.breadth > 0) || !(req.dimensions.height > 0)) {
     return 'Package dimensions L × B × H are required (cm).';
   }
+  if (!req.origin) return 'Country Of Origin is required (e.g. China).';
+  if (!req.manufacturer) return 'Manufacturer Details are required (e.g. HP Inc.).';
+  if (!req.packer) return 'Packer Details are required (e.g. HP Inc.).';
   return null;
 }
 
