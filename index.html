@@ -5737,7 +5737,7 @@ const GSHEET_TABS = [
   { sheet: 'Pinnacle',        skuCol: 0, costCol: 4, minCol: 5,    maxCol: null, supplierName: 'Pinnacle' },
   { sheet: 'Mustek',          skuCol: 0, costCol: 5, minCol: 6,    maxCol: null, supplierName: 'Mustek' },
   { sheet: 'Axiz',            skuCol: 0, costCol: 4, minCol: 5,    maxCol: null, supplierName: 'Axiz' },
-  { sheet: 'SMD',             skuCol: 0, costCol: 4, minCol: 5,    maxCol: null, supplierName: 'SMD' },
+  { sheet: 'SMD',             skuCol: 0, costCol: 4, minCol: 5,    maxCol: null, supplierName: 'SMD', titleMatch: true, titleCol: 1 },
   { sheet: 'VAST -Maynards',  skuCol: 0, costCol: 3, minCol: 4,    maxCol: null, supplierName: 'VAST-Maynards' },
   { sheet: 'Bundles',         skuCol: 0, costCol: 4, minCol: null,  maxCol: null, supplierName: 'Bundles' },
 ];
@@ -5771,12 +5771,41 @@ function expandSciNotation(s) {
   return String(num);
 }
 
+// ── TITLE-BASED MATCHING (fallback for suppliers with missing codes, e.g. SMD) ──
+function normalizeTitle(s) {
+  return String(s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+function titleTokens(s) {
+  return normalizeTitle(s).split(' ').filter(function(t) { return t.length >= 2; });
+}
+function tokenMatch(a, b) {
+  if (a === b) return true;
+  // Prefix match only when the shorter token is a real word/model fragment (has a letter, >=3 chars).
+  // Blocks numeric-size false matches like "65"~"65w", "98"~"980ml", "8k"~"8kw", "t1"~"t150".
+  var short = a.length <= b.length ? a : b;
+  var long  = a.length <= b.length ? b : a;
+  if (short.length >= 3 && /[a-z]/.test(short) && long.indexOf(short) === 0) return true;
+  return false;
+}
+var SPEC_SUFFIX_RE = /^(\d+(?:\.\d+)?)[a-z]+$/; // digits-then-letters: "1tb", "16gb", "24v", "100ah", "65w", "51.2v"
+var GENERIC_PFX_RE = /^(gen|sata|usb|hdmi|ddr|win|w11|w11p|nvme|ssd|hdd|ryzen|core|celeron|pentium|xeon|snapdragon|athlon|ac|ax|cat|mp)[a-z0-9]*$/; // "gen4", "sata3", "ryzen3", "w11p", "ac1200", "ax3000", "cat6", "mp3"
+var RESOLUTION_RE = /^\d{3,4}x\d{3,4}$/; // "1366x768", "1920x1080"
+function isStrongModelToken(t) {
+  if (!/[a-z]/.test(t) || !/\d/.test(t) || t.length < 3) return false;
+  if (SPEC_SUFFIX_RE.test(t)) return false;   // "1tb", "16gb", "24v", "100ah", "65w", "145t"
+  if (GENERIC_PFX_RE.test(t)) return false;   // "gen4", "sata3", "ryzen3", "w11p", "ac1200"
+  if (RESOLUTION_RE.test(t)) return false;    // "1366x768"
+  if (/^[a-z]\d{1,3}$/.test(t) && t.length <= 4) return false; // "v15", "g10", "m10", "x11", "t150", "c655"
+  return true; // "dario400", "ux5406", "lifepo4", "du7000", "as7112rdx", "9g2j5et"
+}
+
 // ── SHARED COST LOOKUP (used by bulk sync, per-product sync, and auto-match on import) ──
 var _costLookupCache = null;
 async function buildCostLookup(force) {
   if (_costLookupCache && !force) return _costLookupCache;
 
   var lookup = {};
+  var titleRows = [];
   for (var t = 0; t < GSHEET_TABS.length; t++) {
     var tab = GSHEET_TABS[t];
     var url = 'https://docs.google.com/spreadsheets/d/' + GSHEET_ID + '/gviz/tq?tqx=out:csv&sheet=' + encodeURIComponent(tab.sheet);
@@ -5786,6 +5815,7 @@ async function buildCostLookup(force) {
       var csv = await resp.text();
       if (!csv || csv.includes('<!DOCTYPE')) continue;
       var rows = parseCSV(csv);
+      if (tab.titleMatch) titleRows.push({ tab: tab, rows: rows });
       var tabMatches = 0;
       for (var r = 1; r < rows.length; r++) {
         var row = rows[r];
@@ -5807,6 +5837,21 @@ async function buildCostLookup(force) {
     } catch(e) { console.warn('Tab fetch error', e); }
   }
 
+  // Build title index for suppliers flagged with titleMatch (e.g. SMD: many rows have no code)
+  var titleIndex = [];
+  titleRows.forEach(function(tr) {
+    var tab = tr.tab;
+    for (var r = 1; r < tr.rows.length; r++) {
+      var row = tr.rows[r];
+      var titleRaw = (row[tab.titleCol] != null ? row[tab.titleCol].toString() : '').trim();
+      if (!titleRaw) continue;
+      var cost = parseFloat((row[tab.costCol] || '').toString().replace(/[R,\s]/g,''));
+      if (isNaN(cost) || cost <= 0) continue;
+      titleIndex.push({ norm: normalizeTitle(titleRaw), cost: cost, supplier: tab.supplierName, title: titleRaw });
+    }
+  });
+  console.log('[SyncCosts] Title index: ' + titleIndex.length + ' rows (SMD)');
+
   // Build fuzzy index: base SKU without brand prefixes or variant suffixes
   var brandPfx = /^(hp|canon|epson|samsung|lexmark|brother|xerox|dell|lenovo|acer|asus|lg|sony|verbatim|logitech|intel|amd|wd|seagate|kingston|sandisk|corsair|hikvision|dahua|bosch)/i;
   var fuzzy = {};
@@ -5815,7 +5860,37 @@ async function buildCostLookup(force) {
     if (!fuzzy[b]) fuzzy[b] = lookup[raw];
   });
 
-  function findCost(sku) {
+  // Conservative title fallback: only matches when the product shares a distinctive
+  // model token (e.g. "v15", "1805", "g2") with an SMD row, or titles contain each other.
+  function findCostByTitle(title) {
+    if (!title || !titleIndex.length) return null;
+    var prodTokens = titleTokens(title);
+    if (prodTokens.length < 2) return null;
+    var prodNorm = normalizeTitle(title);
+    var best = null, bestScore = 0;
+    for (var i = 0; i < titleIndex.length; i++) {
+      var e = titleIndex[i];
+      var smdTokens = e.norm.split(' ');
+      var common = 0, modelCommon = 0, strongCommon = 0;
+      for (var j = 0; j < smdTokens.length; j++) {
+        for (var k = 0; k < prodTokens.length; k++) {
+          if (tokenMatch(smdTokens[j], prodTokens[k])) {
+            common++;
+            if (/\d/.test(smdTokens[j])) modelCommon++;
+            if (isStrongModelToken(smdTokens[j])) strongCommon++;
+            break;
+          }
+        }
+      }
+      var sub = (prodNorm.indexOf(e.norm) !== -1 || e.norm.indexOf(prodNorm) !== -1) ? 3 : 0;
+      var score = common + modelCommon * 2 + strongCommon * 3 + sub;
+      var ok = (strongCommon >= 1 && score >= 10) || (sub > 0 && common >= 3);
+      if (ok && score > bestScore) { bestScore = score; best = e; }
+    }
+    return best ? { cost: best.cost, supplier: best.supplier, title: best.title, byTitle: true } : null;
+  }
+
+  function findCost(sku, title) {
     var k = expandSciNotation(sku).toLowerCase().replace(/\s+/g,'');
     if (lookup[k]) return lookup[k];                                   // exact
     var ns = k.replace(/-[a-z0-9]{1,4}$/, '');
@@ -5827,10 +5902,14 @@ async function buildCostLookup(force) {
     var nsp = np.replace(/-[a-z0-9]{1,4}$/, '');
     if (lookup[nsp]) return lookup[nsp];                               // strip both
     if (fuzzy[nsp])  return fuzzy[nsp];
+    if (title) {
+      var tm = findCostByTitle(title);
+      if (tm) return tm;
+    }
     return null;
   }
 
-  _costLookupCache = { lookup: lookup, fuzzy: fuzzy, findCost: findCost, count: Object.keys(lookup).length };
+  _costLookupCache = { lookup: lookup, fuzzy: fuzzy, findCost: findCost, count: Object.keys(lookup).length, titleIndex: titleIndex };
   return _costLookupCache;
 }
 
@@ -5858,7 +5937,7 @@ async function syncCostForProduct(idx) {
   }
   try {
     var lib = await buildCostLookup();
-    var match = lib.findCost(p.sku);
+    var match = lib.findCost(p.sku, p.title);
     if (!match) {
       alert('❌ No cost found for SKU "' + p.sku + '" in any supplier sheet.\nCheck the SKU or add it to your Google Sheet.');
       return;
@@ -5867,7 +5946,7 @@ async function syncCostForProduct(idx) {
     saveProducts();
     renderProducts();
     alert('✅ Cost synced for ' + (p.title || '').slice(0, 40) + '\n\n' +
-      'SKU: ' + p.sku + '\n' +
+      'SKU: ' + p.sku + (match.byTitle ? ' (matched by title)' : '') + '\n' +
       'Cost: R' + match.cost + ' (' + match.supplier + ')\n' +
       'Min price: R' + p.min_price + '\n' +
       'Max price: R' + p.max_price);
@@ -5886,7 +5965,7 @@ async function autoMatchCostsAfterImport() {
       // User manually set this cost (cost_override) — never clobber it with a
       // sheet match on listing pulls. They can still re-sync via the 💲 button.
       if (p.cost_override) return;
-      var match = lib.findCost(p.sku);
+      var match = lib.findCost(p.sku, p.title);
       if (match) {
         applyCostToProduct(p, match);
         updated++;
@@ -6204,7 +6283,7 @@ async function syncCostsFromSheet() {
     var updated = 0, noSku = 0, noMatch = [];
     state.products.forEach(function(p) {
       if (!p.sku) { noSku++; return; }
-      var match = lib.findCost(p.sku);
+      var match = lib.findCost(p.sku, p.title);
       if (match) {
         applyCostToProduct(p, match);
         updated++;
