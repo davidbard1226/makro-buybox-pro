@@ -2478,6 +2478,7 @@ if (d.type === 'FASTTRACK_RESTORED') {
 
   if (d.type === 'FASTTRACK_API_STARTED') {
     // Bridge reports whether the background accepted the API batch scrape.
+    clearFtStartTimeout();
     if (d.ok) return; // started fine — progress events will follow
     stopFtElapsedTicker();
     log('err', '⚠ Fast-track API scrape failed to start: ' + (d.error || 'unknown error'));
@@ -2502,6 +2503,7 @@ if (d.type === 'FASTTRACK_RESTORED') {
 
   if (d.type === 'FASTTRACK_API_PROGRESS') {
     stopFtElapsedTicker();
+    clearFtStartTimeout();
     // Guard: if the cycle already finalized (done received), ignore straggler
     // progress — otherwise a late message would overwrite the "✅ Done" panel
     // and re-process results outside the cycle.
@@ -2515,6 +2517,7 @@ if (d.type === 'FASTTRACK_RESTORED') {
 
   if (d.type === 'FASTTRACK_API_DONE') {
     stopFtElapsedTicker();
+    clearFtStartTimeout();
     if (d.stopped) {
       // User hit Stop mid-batch — stopScraping() already finalized the UI;
       // just log what we got before the halt.
@@ -2536,6 +2539,7 @@ if (d.type === 'FASTTRACK_RESTORED') {
     // progress for 15s (hanging sellers API / stale content script). Reset the
     // cycle so the next tick can retry, and show the diagnostic in the panel.
     stopFtElapsedTicker();
+    clearFtStartTimeout();
     log('err', '⚠ ' + (d.message || 'Fast-track stalled — no progress from the Makro tab.'));
     setFastTrackLastRun('⚠ ' + (d.message || 'Fast-track stalled — no progress from the Makro tab.'), true);
     state.scraping = false;
@@ -3887,6 +3891,8 @@ function stopScraping() {
   state.stopRequested = true;
   state.scraping = false;
   clearQueueFinishWatchdog();
+  stopFtElapsedTicker();
+  clearFtStartTimeout();
   window.postMessage({ type: 'STOP_QUEUE' }, '*');
   window.postMessage({ type: 'FASTTRACK_API_STOP' }, '*');
   finishScraping();
@@ -10957,6 +10963,10 @@ var _lastApiBatchCount = 0;
 // VISIBLE by updating the panel every second, so the user always sees the
 // cycle is alive instead of "nothing happening".
 var _ftElapsedTimer = null;
+// Safety net: if the extension never confirms the batch started AND no
+// progress arrives, the "waiting for Makro tab" ticker would run forever.
+// After 30s of silence, stop the ticker and show a clear diagnostic instead.
+var _ftStartTimeout = null;
 function startFtElapsedTicker(total) {
   stopFtElapsedTicker();
   var t0 = Date.now();
@@ -10968,6 +10978,23 @@ function startFtElapsedTicker(total) {
 }
 function stopFtElapsedTicker() {
   if (_ftElapsedTimer) { clearInterval(_ftElapsedTimer); _ftElapsedTimer = null; }
+}
+function armFtStartTimeout() {
+  clearTimeout(_ftStartTimeout);
+  _ftStartTimeout = setTimeout(function() {
+    if (!state.scraping) return;
+    stopFtElapsedTicker();
+    log('err', '⚠ No response from the extension in 30s — the batch never started. Reload the extension (chrome://extensions → ↻), make sure a Makro tab is open and logged in, then click Run now again.');
+    setFastTrackLastRun('⚠ Extension not responding — reload it (chrome://extensions → ↻) and check a Makro tab is open', true);
+    state.scraping = false;
+    state.stopRequested = false;
+    document.getElementById('startBtn').style.display = 'flex';
+    document.getElementById('stopBtn').style.display  = 'none';
+    document.getElementById('progressSection').style.display = 'none';
+  }, 30000);
+}
+function clearFtStartTimeout() {
+  if (_ftStartTimeout) { clearTimeout(_ftStartTimeout); _ftStartTimeout = null; }
 }
 
 // Show the last fast-track run result right in the Fast Track panel (Dashboard
@@ -10994,6 +11021,7 @@ function startFastTrackApiScrape(fsns) {
   document.getElementById('progressSection').style.display = 'block';
   updateProgress(0, fsns.length);
   startFtElapsedTicker(fsns.length);
+  armFtStartTimeout();
   window.postMessage({ type: 'FASTTRACK_API_SCRAPE', fsns: fsns, concurrency: 6 }, '*');
 }
 
