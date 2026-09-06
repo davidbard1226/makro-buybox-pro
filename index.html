@@ -4173,11 +4173,7 @@ async function handleQueueProgress(d) {
         prod.lastChecked && new Date(prod.lastChecked).getTime() > _cyclePushStartedAt) {
       log('info', '🤖 Late scrape after cycle end — pushing pending R' + prod.pending_price +
           ' for ' + String(prod.title || prod.fsn).slice(0, 40) + ' immediately.');
-      refreshPortalSession(true).then(function() {
-        doPush([prod]);
-      }).catch(function() {
-        doPush([prod]);
-      });
+      doPush([prod]);
     }
 
     // ── PRICE LOG ENTRY ───────────────────────────────────────────────────
@@ -4353,16 +4349,14 @@ function maybeAutoPushPrices() {
       return;
     }
 
-    // ── AUTO-REFRESH SESSION FIRST ──
-    // Ask the extension to capture fresh cookies (incl. HttpOnly connect.sid)
-    // from the logged-in seller tab and save them to the server, so the push
-    // below never hits SESSION EXPIRED. Waits up to 8s, then pushes anyway.
-    log('info', '🔄 Auto-refreshing portal session before push...');
-    refreshPortalSession(true).then(function() {
-      doPush(withSku);
-    }).catch(function() {
-      doPush(withSku);
-    });
+    // ── PUSH DIRECTLY — SAME PATH AS THE SINGLE-PRODUCT PUSH ──
+    // The old flow refreshed the portal session first, then pushed. That
+    // refresh gate BLOCKED the push: refreshPortalSession's promise never
+    // settled (the REFRESH_PORTAL_SESSION_RESULT handler cleared the safety
+    // timer and _refreshSessionResolve was never set), so .then(doPush) never
+    // fired and the batch push silently never ran. The single-product push
+    // works with NO refresh — push the same way here.
+    doPush(withSku);
   } catch(e) {
     addAutoPushLogEntry({ level: 'error', msg: 'Auto-push error: ' + e.message });
     log('error', '🤖 Auto-push error: ' + e.message);
