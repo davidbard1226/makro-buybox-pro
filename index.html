@@ -2496,6 +2496,13 @@ if (d.type === 'FASTTRACK_RESTORED') {
     return;
   }
 
+  if (d.type === 'UPDATE_PRICE_RESULT' && window._singlePushHandler) {
+    var h = window._singlePushHandler;
+    window._singlePushHandler = null;
+    h({ ok: d.ok, error: d.error, result: d.result });
+    return;
+  }
+
   if (d.type === 'BATCH_UPDATE_PRICES_RESULT' && window._pushResultHandler) {
     var handler = window._pushResultHandler;
     window._pushResultHandler = null;
@@ -4511,21 +4518,11 @@ function maybeAutoPushPrices() {
     }
 
     // ── PUSH DIRECTLY — SAME PATH AS THE SINGLE-PRODUCT PUSH ──
-    // Refresh the portal session first (captures fresh cookies from the
-    // logged-in seller.makro.co.za tab into portal-cookies.json). The old
-    // refresh gate was removed because refreshPortalSession's promise never
-    // settled (the RESULT handler cleared the timer but _refreshSessionResolve
-    // was never set) — that bug is fixed now, so the gate is safe again.
-    // If the refresh fails (no portal tab / server down), skip the push with
-    // a clear log entry instead of pushing with stale cookies.
-    refreshPortalSession(true).then(function(ok) {
-      if (!ok) {
-        addAutoPushLogEntry({ level: 'error', msg: '❌ Auto-push skipped: portal session refresh failed. Log into seller.makro.co.za and click Refresh Portal Session, then re-scrape.' });
-        log('error', '🤖 Auto-push skipped: portal session refresh failed — log into seller.makro.co.za and click Refresh Portal Session');
-        return;
-      }
-      doPush(withSku);
-    });
+    // Price pushes go through the extension → logged-in portal tab (live
+    // session), so NO cookie refresh is needed — portal-cookies.json is no
+    // longer involved in price pushes. If no portal tab is open, the push
+    // fails with a clear message instead of SESSION EXPIRED.
+    doPush(withSku);
   } catch(e) {
     addAutoPushLogEntry({ level: 'error', msg: 'Auto-push error: ' + e.message });
     log('error', '🤖 Auto-push error: ' + e.message);
@@ -9084,29 +9081,32 @@ function sendFileToPortal(autoUpload) {
 // DIRECT PRICE PUSH (API — NO XLS)
 // ============================================================
 
-// Helper: call local server for price push
+// Helper: push price via the EXTENSION → logged-in portal tab (live session).
+// No cookie file involved — the portal tab's own session is used, exactly like
+// the listing flow. If no portal tab is open/logged in, the push fails with a
+// clear message instead of SESSION EXPIRED.
 function portalApiCall(action, req) {
   return new Promise(function(resolve, reject) {
-    var url = action === 'portal_batch_update_prices'
-      ? 'http://localhost:4321/api/push-prices'
-      : 'http://localhost:4321/api/push-price';
-
-    var body = action === 'portal_batch_update_prices' ? req : req;
-
-    fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      if (data.ok) resolve(data);
-      else reject(new Error(data.error || 'Server error'));
-    })
-    .catch(function(e) {
-      console.error('[portalApiCall] fetch failed:', e.message || e);
-      reject(new Error('Cannot reach server (' + (e.message || e) + ') — run: node server.js'));
-    });
+    var timer = setTimeout(function() {
+      window._pushResultHandler = null;
+      window._singlePushHandler = null;
+      reject(new Error('No response from extension — is seller.makro.co.za open and logged in?'));
+    }, 25000);
+    if (action === 'portal_batch_update_prices') {
+      window._pushResultHandler = function(r) {
+        clearTimeout(timer);
+        if (r.ok) resolve(r);
+        else reject(new Error(r.error || 'Batch push failed'));
+      };
+      window.postMessage({ type: 'BATCH_UPDATE_PRICES', items: req.items || req }, '*');
+    } else {
+      window._singlePushHandler = function(r) {
+        clearTimeout(timer);
+        if (r.ok) resolve(r);
+        else reject(new Error(r.error || 'Push failed'));
+      };
+      window.postMessage({ type: 'UPDATE_PRICE', req: req }, '*');
+    }
   });
 }
 
