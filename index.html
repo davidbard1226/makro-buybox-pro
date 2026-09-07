@@ -3122,14 +3122,11 @@ function previewListPayload() {
         packer_details: req.packer,
         importer_details: req.importer || undefined
       },
-      context: { ignore_warnings: false },
-      productId: req.fsn,
-      skuId: req.skuId,
       packages: [{
-        package_length: req.dimensions.length,
-        package_breadth: req.dimensions.breadth,
-        package_height: req.dimensions.height,
-        package_weight: req.dimensions.weight
+        length_p0: req.dimensions.length,
+        breadth_p1: req.dimensions.breadth,
+        height_p2: req.dimensions.height,
+        weight_p3: req.dimensions.weight
       }]
     }] }, null, 2);
   }

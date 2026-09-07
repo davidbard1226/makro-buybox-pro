@@ -240,11 +240,14 @@
     if (!(mrp > 0)) throw new Error('Base price (MRP) must be > 0');
     if (!(sellingPrice > 0)) throw new Error('Selling price must be > 0');
 
+    // Packages use the portal's entity-attribute naming (verified from the
+    // portal's own chunk_497.js `it`/`rt` builders): length_p0, breadth_p1,
+    // height_p2, weight_p3 — NOT package_length/package_breadth/etc.
     const packages = [{
-      package_length: Number(dims.length) || 0,
-      package_breadth: Number(dims.breadth) || 0,
-      package_height: Number(dims.height) || 0,
-      package_weight: Number(dims.weight) || 0
+      length_p0: Number(dims.length) || 0,
+      breadth_p1: Number(dims.breadth) || 0,
+      height_p2: Number(dims.height) || 0,
+      weight_p3: Number(dims.weight) || 0
     }];
 
     const attributeValues = {
@@ -266,18 +269,17 @@
     if (req.packer) attributeValues.packer_details = req.packer;
     if (req.importer) attributeValues.importer_details = req.importer;
 
+    // Bulk request item shape matches the portal's own builder (chunk_497.js):
+    //   t=[{attributeValues:_}], w.Z.each(c,(e=>{t[0][e.entityName]=e.packages}))
+    // → { attributeValues: {...}, packages: [...] }  (packages is a top-level
+    //   sibling of attributeValues, NOT nested under context/productId/skuId).
     const bulkRequests = [{
       attributeValues: attributeValues,
-      context: { ignore_warnings: false },
-      productId: fsn,
-      skuId: skuId,
       packages: packages
     }];
 
     // The portal's own submit (chunk_497.js) wraps the payload in sellerId:
     //   M=(t,e)=>postJson(h.QG2,{sellerId:y,bulkRequests:t},null,{headers:e})
-    // Our old payload was just {bulkRequests} — missing sellerId, which the
-    // portal rejects with HTTP 500. Include it now.
     const payload = { sellerId: sellerId, bulkRequests: bulkRequests };
 
     if (req.dryRun) {
