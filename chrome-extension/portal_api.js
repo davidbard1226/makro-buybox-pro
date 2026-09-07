@@ -57,14 +57,19 @@
   }
 
   // ── NAPI HELPER ───────────────────────────────────────────────────────────
+  // Headers mirror the portal's own XHR exactly (captured live 2026-09-07 via
+  // setRequestHeader interception on the latch-on POST): Content-Type, Accept,
+  // sourceid, fk-csrf-token, X-LOCATION-ID, X-Requested-With. The portal does
+  // NOT send x-seller-id (sellerId travels in the query string + body), and
+  // sending it made create-update-listings reject with HTTP 500.
   function napi(path, opts) {
     opts = opts || {};
     const auth = readAppData();
     const headers = Object.assign({
       'Content-Type': 'application/json',
+      'Accept': 'application/json, text/javascript, */*; q=0.01',
       'FK-CSRF-TOKEN': getCsrf(),
       'X-LOCATION-ID': auth.locationId,
-      'x-seller-id': auth.sellerId,
       'X-Requested-With': 'XMLHttpRequest'
     }, opts.headers || {});
     return fetch(SELLER_HOST + path, {
