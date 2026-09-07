@@ -79,7 +79,10 @@
           var detail = '';
           try {
             var j = JSON.parse(txt);
-            detail = (j && (j.message || j.error || j.msg)) ? (j.message || j.error || j.msg) : txt;
+            var m = j && (j.message || j.error || j.msg);
+            if (m && typeof m === 'object') { detail = JSON.stringify(m); }
+            else if (m) { detail = String(m); }
+            else { detail = txt; }
           } catch (e) { detail = txt; }
           if (!detail || detail.length > 600) detail = (detail || '').slice(0, 600);
           throw new Error('HTTP ' + r.status + (detail ? ': ' + detail : ''));
@@ -298,16 +301,21 @@
       listing_status: av(listingState, ''),
       mrp: av(mrp, 'INR'),
       flipkart_selling_price: av(sellingPrice, 'INR'),
-      minimum_order_quantity: av(Number(req.minOq) || 0, ''),
-      max_order_quantity_allowed: av(Number(req.maxOq) || 0, ''),
       service_profile: av(serviceProfile, ''),
       shipping_days: av(pickPackSla, 'DAY'),
-      forbid_shipping: av(req.region === 'REGIONAL' ? 'regional' : 'none', ''),
+      forbid_shipping: { qualifier: '', value: req.region === 'REGIONAL' ? 'regional' : 'none' },
       country_of_origin: av(countryCode(req.origin), ''),
       manufacturer_details: av(req.manufacturer || '', ''),
-      packer_details: av(req.packer || '', ''),
-      importer_details: av(req.importer || '', '')
+      packer_details: av(req.packer || '', '')
     };
+    // Optional fields are OMITTED when empty — the portal never sends
+    // {"value":"0"} or {"value":""} for them (verified live: empty MaxOQ and
+    // empty Importer are absent from the captured request; sending 0/"" → 500).
+    const minOq = Number(req.minOq) || 0;
+    const maxOq = Number(req.maxOq) || 0;
+    if (minOq > 0) attributeValues.minimum_order_quantity = av(minOq, '');
+    if (maxOq > 0) attributeValues.max_order_quantity_allowed = av(maxOq, '');
+    if (req.importer && String(req.importer).trim()) attributeValues.importer_details = av(String(req.importer).trim(), '');
 
     const bulkRequests = [{
       attributeValues: attributeValues,

@@ -3112,22 +3112,23 @@ function previewListPayload() {
     var av = function(v, q) { return [{ value: String(v), qualifier: q || '' }]; };
     var codes = { 'south africa':'ZA','china':'CN','usa':'US','united states':'US','uk':'GB','united kingdom':'GB','germany':'DE','france':'FR','italy':'IT','spain':'ES','japan':'JP','korea':'KR','south korea':'KR','india':'IN','australia':'AU','canada':'CA','brazil':'BR','mexico':'MX','netherlands':'NL','poland':'PL','sweden':'SE','switzerland':'CH','taiwan':'TW','thailand':'TH','vietnam':'VN','indonesia':'ID','malaysia':'MY','singapore':'SG','turkey':'TR','uae':'AE','portugal':'PT','belgium':'BE','austria':'AT','denmark':'DK','finland':'FI','norway':'NO','ireland':'IE','new zealand':'NZ','israel':'IL','hong kong':'HK','pakistan':'PK','nigeria':'NG','kenya':'KE','egypt':'EG','morocco':'MA','argentina':'AR','chile':'CL','colombia':'CO','peru':'PE' };
     var cc = function(name) { if (!name) return ''; var n = String(name).trim(); if (/^[A-Za-z]{2}$/.test(n)) return n.toUpperCase(); return (codes[n.toLowerCase()] || n).toUpperCase(); };
+    var attrVals = {
+      sku_id: av(req.skuId),
+      listing_status: av(req.listingState),
+      mrp: av(req.mrp, 'INR'),
+      flipkart_selling_price: av(req.sellingPrice, 'INR'),
+      service_profile: av(req.serviceProfile),
+      shipping_days: av(req.pickPackSla, 'DAY'),
+      forbid_shipping: { qualifier: '', value: req.region === 'REGIONAL' ? 'regional' : 'none' },
+      country_of_origin: av(cc(req.origin)),
+      manufacturer_details: av(req.manufacturer || ''),
+      packer_details: av(req.packer || '')
+    };
+    if (Number(req.minOq) > 0) attrVals.minimum_order_quantity = av(req.minOq);
+    if (Number(req.maxOq) > 0) attrVals.max_order_quantity_allowed = av(req.maxOq);
+    if (req.importer && String(req.importer).trim()) attrVals.importer_details = av(String(req.importer).trim());
     prev.textContent = JSON.stringify({ sellerId: (function(){ try { var d=JSON.parse(localStorage.getItem('__appData')||'{}'); return (d.sellerConfig&&d.sellerConfig.sellerId)||''; } catch(e){ return ''; } })(), bulkRequests: [{
-      attributeValues: {
-        sku_id: av(req.skuId),
-        listing_status: av(req.listingState),
-        mrp: av(req.mrp, 'INR'),
-        flipkart_selling_price: av(req.sellingPrice, 'INR'),
-        minimum_order_quantity: av(req.minOq || 0),
-        max_order_quantity_allowed: av(req.maxOq || 0),
-        service_profile: av(req.serviceProfile),
-        shipping_days: av(req.pickPackSla, 'DAY'),
-        forbid_shipping: av(req.region === 'REGIONAL' ? 'regional' : 'none'),
-        country_of_origin: av(cc(req.origin)),
-        manufacturer_details: av(req.manufacturer || ''),
-        packer_details: av(req.packer || ''),
-        importer_details: av(req.importer || '')
-      },
+      attributeValues: attrVals,
       context: { ignore_warnings: false },
       productId: req.fsn,
       skuId: req.skuId,
