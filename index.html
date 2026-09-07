@@ -3106,7 +3106,7 @@ function previewListPayload() {
   var prev = document.getElementById('listPayloadPreview');
   if (prev) {
     prev.style.display = 'block';
-    prev.textContent = JSON.stringify({ bulkRequests: [{
+    prev.textContent = JSON.stringify({ sellerId: (function(){ try { var d=JSON.parse(localStorage.getItem('__appData')||'{}'); return (d.sellerConfig&&d.sellerConfig.sellerId)||''; } catch(e){ return ''; } })(), bulkRequests: [{
       attributeValues: {
         sku_id: req.skuId,
         mrp: req.mrp,

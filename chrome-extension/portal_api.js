@@ -274,7 +274,11 @@
       packages: packages
     }];
 
-    const payload = { bulkRequests: bulkRequests };
+    // The portal's own submit (chunk_497.js) wraps the payload in sellerId:
+    //   M=(t,e)=>postJson(h.QG2,{sellerId:y,bulkRequests:t},null,{headers:e})
+    // Our old payload was just {bulkRequests} — missing sellerId, which the
+    // portal rejects with HTTP 500. Include it now.
+    const payload = { sellerId: sellerId, bulkRequests: bulkRequests };
 
     if (req.dryRun) {
       return { dryRun: true, payload: payload, sellerId: sellerId };
