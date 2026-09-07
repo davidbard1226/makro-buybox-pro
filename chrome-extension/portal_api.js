@@ -73,7 +73,18 @@
       credentials: 'include',
       body: opts.body ? JSON.stringify(opts.body) : undefined
     }).then(function(r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
+      if (!r.ok) {
+        // Surface the portal's actual error body — HTTP 500 alone is useless.
+        return r.text().then(function(txt) {
+          var detail = '';
+          try {
+            var j = JSON.parse(txt);
+            detail = (j && (j.message || j.error || j.msg)) ? (j.message || j.error || j.msg) : txt;
+          } catch (e) { detail = txt; }
+          if (!detail || detail.length > 600) detail = (detail || '').slice(0, 600);
+          throw new Error('HTTP ' + r.status + (detail ? ': ' + detail : ''));
+        });
+      }
       return r.json();
     });
   }
