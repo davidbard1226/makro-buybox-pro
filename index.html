@@ -12233,8 +12233,17 @@ function safeSet(key, value) {
     return true;
   } catch(e) {
     console.error('STORAGE WRITE FAILED for key "' + key + '":', e);
-    showStorageFullBanner();
-    return false;
+    // Auto-recover: prune the biggest consumers, then retry the write once.
+    // (The old code only showed the banner — the prune never actually ran.)
+    try {
+      pruneStorage();
+      localStorage.setItem(key, value);
+      return true;
+    } catch(e2) {
+      console.error('STORAGE STILL FULL after prune for key "' + key + '":', e2);
+      showStorageFullBanner();
+      return false;
+    }
   }
 }
 
@@ -12244,23 +12253,23 @@ function safeSet(key, value) {
 // pruneStorage() trims the biggest consumers so saves succeed again.
 // Called on load and automatically when a save fails.
 function pruneStorage() {
-  // 1. Price log → 500 entries (was 2000)
+  // 1. Price log → 200 entries (was 500)
   var pl = getPriceLog();
-  if (pl.length > 500) { pl.length = 500; safeSet(PRICE_LOG_KEY, JSON.stringify(pl)); }
-  // 2. Auto-push log → 100 entries (was 2000)
+  if (pl.length > 200) { pl.length = 200; safeSet(PRICE_LOG_KEY, JSON.stringify(pl)); }
+  // 2. Auto-push log → 50 entries (was 100)
   var al = getAutoPushLog();
-  if (al.length > 100) { al.length = 100; safeSet(AUTO_PUSH_LOG_KEY, JSON.stringify(al)); }
-  // 3. Korvex history → 200 observations per FSN (was 500)
+  if (al.length > 50) { al.length = 50; safeSet(AUTO_PUSH_LOG_KEY, JSON.stringify(al)); }
+  // 3. Korvex history → 100 observations per FSN (was 200)
   var kh = getKorvexHistory();
   var khChanged = false;
   Object.keys(kh).forEach(function(fsn) {
-    if (kh[fsn].length > 200) { kh[fsn].splice(0, kh[fsn].length - 200); khChanged = true; }
+    if (kh[fsn].length > 100) { kh[fsn].splice(0, kh[fsn].length - 100); khChanged = true; }
   });
   if (khChanged) safeSet(KORVEX_HISTORY_KEY, JSON.stringify(kh));
-  // 4. Product history → 15 entries per product (was 30)
+  // 4. Product history → 10 entries per product (was 15)
   var changed = false;
   state.products.forEach(function(p) {
-    if (p.history && p.history.length > 15) { p.history = p.history.slice(-15); changed = true; }
+    if (p.history && p.history.length > 10) { p.history = p.history.slice(-10); changed = true; }
   });
   if (changed) safeSet(STORAGE_KEY, JSON.stringify(state.products));
   // 5. Stale portal upload blob — the bridge keeps its own copy in
@@ -12271,6 +12280,29 @@ function pruneStorage() {
     localStorage.removeItem('portal_upload_file');
     localStorage.removeItem('portal_upload_filename');
   }
+  // 6. Raw S_listing template (base64 cache) — only needed for the XLS push
+  //    path; API push (the current path) doesn't use it. Drop when critical;
+  //    the user can re-import the S_listing export anytime.
+  if (storageUsage() > 4.5 * 1048576 && localStorage.getItem('makro_listings_raw')) {
+    localStorage.removeItem('makro_listings_raw');
+    localStorage.removeItem('makro_listings_filename');
+  }
+}
+
+// Immediate "free space" action for the storage-full banner: drop caches and
+// trim logs/histories right now, then report how much room was freed.
+function freeStorageNow() {
+  try {
+    localStorage.removeItem('makro_listings_raw');
+    localStorage.removeItem('makro_listings_filename');
+    localStorage.removeItem('portal_upload_file');
+    localStorage.removeItem('portal_upload_filename');
+  } catch(e) {}
+  pruneStorage();
+  var used = storageUsage();
+  var banner = document.getElementById('storageFullBanner');
+  if (banner) banner.remove();
+  log('ok', '🧹 Storage freed — ' + (used / 1048576).toFixed(2) + ' MB used now. Saves resumed. (Raw S_listing template dropped — re-import it only if you ever use XLS push.)');
 }
 
 function showStorageFullBanner() {
@@ -12279,8 +12311,9 @@ function showStorageFullBanner() {
   b = document.createElement('div');
   b.id = 'storageFullBanner';
   b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#ff4d6d;color:#fff;padding:10px 16px;font-size:13px;text-align:center;font-family:inherit';
-  b.innerHTML = '⚠ <b>Storage full — data NOT saved!</b> Go to the 💾 Backup tab, download a backup, then free space. ' +
-    '<button onclick="this.parentNode.remove()" style="margin-left:10px;background:#fff;color:#ff4d6d;border:none;border-radius:4px;padding:4px 10px;cursor:pointer">Dismiss</button>';
+  b.innerHTML = '⚠ <b>Storage full — data NOT saved!</b> ' +
+    '<button onclick="freeStorageNow()" style="margin-left:10px;background:#fff;color:#ff4d6d;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-weight:bold">🧹 Free Space Now</button> ' +
+    '<button onclick="this.parentNode.remove()" style="margin-left:6px;background:transparent;color:#fff;border:1px solid #fff;border-radius:4px;padding:4px 10px;cursor:pointer">Dismiss</button>';
   document.body.appendChild(b);
 }
 
