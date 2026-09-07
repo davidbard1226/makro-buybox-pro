@@ -251,53 +251,79 @@
     if (!(mrp > 0)) throw new Error('Base price (MRP) must be > 0');
     if (!(sellingPrice > 0)) throw new Error('Selling price must be > 0');
 
-    // Packages use the portal's entity-attribute naming (verified from the
-    // portal's own chunk_497.js `it`/`rt` builders): length_p0, breadth_p1,
-    // height_p2, weight_p3 — NOT package_length/package_breadth/etc.
+    // ── PAYLOAD SHAPE: captured LIVE from the portal's own START SELLING form
+    // (2026-09-07, FSN INTHHYAGY4G9RCAY → HTTP 200 "created"). Every attribute
+    // value is an ARRAY of {value, qualifier}; prices use qualifier "INR",
+    // SLA "DAY", dims "CM"/"KG". Attribute names are the form's field names:
+    //   shipping_days (NOT pick_pack_sla), forbid_shipping (NOT
+    //   selling_region_preference), max_order_quantity_allowed (NOT
+    //   max_order_quantity). sellerId goes BOTH in the query string and body.
+    const av = function(v, q) { return [{ value: String(v), qualifier: q || '' }]; };
+
+    // Country names → ISO 3166-1 alpha-2 codes (the portal's select sends codes).
+    var COUNTRY_CODES = {
+      'south africa': 'ZA', 'china': 'CN', 'usa': 'US', 'united states': 'US',
+      'united states of america': 'US', 'uk': 'GB', 'united kingdom': 'GB',
+      'germany': 'DE', 'france': 'FR', 'italy': 'IT', 'spain': 'ES',
+      'japan': 'JP', 'korea': 'KR', 'south korea': 'KR', 'india': 'IN',
+      'australia': 'AU', 'canada': 'CA', 'brazil': 'BR', 'mexico': 'MX',
+      'netherlands': 'NL', 'poland': 'PL', 'sweden': 'SE', 'switzerland': 'CH',
+      'taiwan': 'TW', 'thailand': 'TH', 'vietnam': 'VN', 'indonesia': 'ID',
+      'malaysia': 'MY', 'singapore': 'SG', 'turkey': 'TR', 'uae': 'AE',
+      'united arab emirates': 'AE', 'portugal': 'PT', 'belgium': 'BE',
+      'austria': 'AT', 'denmark': 'DK', 'finland': 'FI', 'norway': 'NO',
+      'ireland': 'IE', 'new zealand': 'NZ', 'israel': 'IL', 'russia': 'RU',
+      'hong kong': 'HK', 'pakistan': 'PK', 'bangladesh': 'BD', 'sri lanka': 'LK',
+      'nigeria': 'NG', 'kenya': 'KE', 'egypt': 'EG', 'morocco': 'MA',
+      'argentina': 'AR', 'chile': 'CL', 'colombia': 'CO', 'peru': 'PE'
+    };
+    function countryCode(name) {
+      if (!name) return '';
+      var n = String(name).trim();
+      if (/^[A-Za-z]{2}$/.test(n)) return n.toUpperCase();
+      return (COUNTRY_CODES[n.toLowerCase()] || n).toUpperCase();
+    }
+
     const packages = [{
-      length_p0: Number(dims.length) || 0,
-      breadth_p1: Number(dims.breadth) || 0,
-      height_p2: Number(dims.height) || 0,
-      weight_p3: Number(dims.weight) || 0
+      id: { value: 'packages-0', qualifier: '' },
+      length: av(Number(dims.length) || 0, 'CM'),
+      breadth: av(Number(dims.breadth) || 0, 'CM'),
+      height: av(Number(dims.height) || 0, 'CM'),
+      weight: av(Number(dims.weight) || 0, 'KG'),
+      sku_id: av(skuId, '')
     }];
 
     const attributeValues = {
-      sku_id: skuId,
-      mrp: mrp,
-      flipkart_selling_price: sellingPrice,
-      listing_status: listingState,
-      service_profile: serviceProfile,
-      pick_pack_sla: pickPackSla
+      sku_id: av(skuId, ''),
+      listing_status: av(listingState, ''),
+      mrp: av(mrp, 'INR'),
+      flipkart_selling_price: av(sellingPrice, 'INR'),
+      minimum_order_quantity: av(Number(req.minOq) || 0, ''),
+      max_order_quantity_allowed: av(Number(req.maxOq) || 0, ''),
+      service_profile: av(serviceProfile, ''),
+      shipping_days: av(pickPackSla, 'DAY'),
+      forbid_shipping: av(req.region === 'REGIONAL' ? 'regional' : 'none', ''),
+      country_of_origin: av(countryCode(req.origin), ''),
+      manufacturer_details: av(req.manufacturer || '', ''),
+      packer_details: av(req.packer || '', ''),
+      importer_details: av(req.importer || '', '')
     };
-    // Optional/required selling-info attributes (mirrors the START SELLING form)
-    const minOq = Number(req.minOq) || 0;
-    const maxOq = Number(req.maxOq) || 0;
-    if (minOq > 0) attributeValues.min_order_quantity = minOq;
-    if (maxOq > 0) attributeValues.max_order_quantity = maxOq;
-    if (req.region) attributeValues.selling_region_preference = req.region;
-    if (req.origin) attributeValues.country_of_origin = req.origin;
-    if (req.manufacturer) attributeValues.manufacturer_details = req.manufacturer;
-    if (req.packer) attributeValues.packer_details = req.packer;
-    if (req.importer) attributeValues.importer_details = req.importer;
 
-    // Bulk request item shape matches the portal's own builder (chunk_497.js):
-    //   t=[{attributeValues:_}], w.Z.each(c,(e=>{t[0][e.entityName]=e.packages}))
-    // → { attributeValues: {...}, packages: [...] }  (packages is a top-level
-    //   sibling of attributeValues, NOT nested under context/productId/skuId).
     const bulkRequests = [{
       attributeValues: attributeValues,
+      context: { ignore_warnings: false },
+      productId: fsn,
+      skuId: skuId,
       packages: packages
     }];
 
-    // The portal's own submit (chunk_497.js) wraps the payload in sellerId:
-    //   M=(t,e)=>postJson(h.QG2,{sellerId:y,bulkRequests:t},null,{headers:e})
     const payload = { sellerId: sellerId, bulkRequests: bulkRequests };
 
     if (req.dryRun) {
       return { dryRun: true, payload: payload, sellerId: sellerId };
     }
 
-    const j = await napi('/napi/listing/create-update-listings', {
+    const j = await napi('/napi/listing/create-update-listings?sellerId=' + encodeURIComponent(sellerId), {
       method: 'POST',
       headers: { sourceid: 'ui.latch-on' },
       body: payload

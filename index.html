@@ -3106,27 +3106,38 @@ function previewListPayload() {
   var prev = document.getElementById('listPayloadPreview');
   if (prev) {
     prev.style.display = 'block';
+    // Mirrors the portal's exact payload (captured live 2026-09-07):
+    // every attribute value is [{value, qualifier}]; prices "INR", SLA "DAY",
+    // dims "CM"/"KG"; sellerId also goes in the query string.
+    var av = function(v, q) { return [{ value: String(v), qualifier: q || '' }]; };
+    var codes = { 'south africa':'ZA','china':'CN','usa':'US','united states':'US','uk':'GB','united kingdom':'GB','germany':'DE','france':'FR','italy':'IT','spain':'ES','japan':'JP','korea':'KR','south korea':'KR','india':'IN','australia':'AU','canada':'CA','brazil':'BR','mexico':'MX','netherlands':'NL','poland':'PL','sweden':'SE','switzerland':'CH','taiwan':'TW','thailand':'TH','vietnam':'VN','indonesia':'ID','malaysia':'MY','singapore':'SG','turkey':'TR','uae':'AE','portugal':'PT','belgium':'BE','austria':'AT','denmark':'DK','finland':'FI','norway':'NO','ireland':'IE','new zealand':'NZ','israel':'IL','hong kong':'HK','pakistan':'PK','nigeria':'NG','kenya':'KE','egypt':'EG','morocco':'MA','argentina':'AR','chile':'CL','colombia':'CO','peru':'PE' };
+    var cc = function(name) { if (!name) return ''; var n = String(name).trim(); if (/^[A-Za-z]{2}$/.test(n)) return n.toUpperCase(); return (codes[n.toLowerCase()] || n).toUpperCase(); };
     prev.textContent = JSON.stringify({ sellerId: (function(){ try { var d=JSON.parse(localStorage.getItem('__appData')||'{}'); return (d.sellerConfig&&d.sellerConfig.sellerId)||''; } catch(e){ return ''; } })(), bulkRequests: [{
       attributeValues: {
-        sku_id: req.skuId,
-        mrp: req.mrp,
-        flipkart_selling_price: req.sellingPrice,
-        listing_status: req.listingState,
-        service_profile: req.serviceProfile,
-        pick_pack_sla: req.pickPackSla,
-        min_order_quantity: req.minOq || undefined,
-        max_order_quantity: req.maxOq || undefined,
-        selling_region_preference: req.region,
-        country_of_origin: req.origin,
-        manufacturer_details: req.manufacturer,
-        packer_details: req.packer,
-        importer_details: req.importer || undefined
+        sku_id: av(req.skuId),
+        listing_status: av(req.listingState),
+        mrp: av(req.mrp, 'INR'),
+        flipkart_selling_price: av(req.sellingPrice, 'INR'),
+        minimum_order_quantity: av(req.minOq || 0),
+        max_order_quantity_allowed: av(req.maxOq || 0),
+        service_profile: av(req.serviceProfile),
+        shipping_days: av(req.pickPackSla, 'DAY'),
+        forbid_shipping: av(req.region === 'REGIONAL' ? 'regional' : 'none'),
+        country_of_origin: av(cc(req.origin)),
+        manufacturer_details: av(req.manufacturer || ''),
+        packer_details: av(req.packer || ''),
+        importer_details: av(req.importer || '')
       },
+      context: { ignore_warnings: false },
+      productId: req.fsn,
+      skuId: req.skuId,
       packages: [{
-        length_p0: req.dimensions.length,
-        breadth_p1: req.dimensions.breadth,
-        height_p2: req.dimensions.height,
-        weight_p3: req.dimensions.weight
+        id: { value: 'packages-0', qualifier: '' },
+        length: av(req.dimensions.length, 'CM'),
+        breadth: av(req.dimensions.breadth, 'CM'),
+        height: av(req.dimensions.height, 'CM'),
+        weight: av(req.dimensions.weight, 'KG'),
+        sku_id: av(req.skuId)
       }]
     }] }, null, 2);
   }
@@ -3189,10 +3200,12 @@ function handleListProductResult(d) {
   var status = (r.result && r.result.status) || '';
   var bulk = (r.result && r.result.bulkResponse) || [];
   var skuOut = bulk.length ? (bulk[0].skuID || bulk[0].skuId || '') : '';
+  var listingOut = bulk.length ? (bulk[0].listingID || bulk[0].listingId || '') : '';
+  var itemStatus = bulk.length ? (bulk[0].status || '') : '';
   if (status === 'success' || (r.result && r.result.bulkResponse)) {
-    res.textContent = '✅ Listing submitted! Status: ' + status + (skuOut ? ' · SKU: ' + skuOut : '');
+    res.textContent = '✅ Listing submitted! Status: ' + status + (itemStatus ? ' · Item: ' + itemStatus : '') + (skuOut ? ' · SKU: ' + skuOut : '') + (listingOut ? ' · Listing ID: ' + listingOut : '');
     res.style.color = '#00e5a0';
-    showImportBanner('✅ Listed on Makro: ' + skuOut || 'success', '#00e5a0');
+    showImportBanner('✅ Listed on Makro: ' + (skuOut || 'success'), '#00e5a0');
     // Refresh listings so the new product shows up
     setTimeout(function() { pullPortalListings(); }, 1500);
   } else {
