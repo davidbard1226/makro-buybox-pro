@@ -124,6 +124,26 @@ This is the flow for products **already on the Makro catalog** (you have the FSN
 
 **Automation implication:** The dashboard can generate the exact payload (FSN + SKU + prices from cost engine) and the extension can submit it via this API — no UI file-upload needed. This is the cleanest "list to catalog" path.
 
+### ⭐ Latch-on payload shape — VERIFIED LIVE (2026-09-08)
+Root cause of the extension's HTTP 500 (`{"error":{"message":"Failed to update Listings."}}`) was payload shape, NOT server state. Captured the portal's own submit (FSN `LBTH8MMF646PNDVQ` → 200 "created") and diffed against the extension's payload:
+
+- Every ATTRIBUTE value is an ARRAY `[{value, qualifier}]` (prices qualifier `INR`, SLA `DAY`).
+- **`forbid_shipping` is an ARRAY `[{qualifier, value}]`** — a bare object `{qualifier, value}` → 500.
+- **Package dims (`length`/`breadth`/`height`/`weight`/`sku_id`) are OBJECTS `{value, qualifier}`** — array form → 500.
+- Optional fields (empty MaxOQ, empty Importer) are OMITTED, never sent as `{"value":"0"}`/`{"value":""}`.
+- Field names: `shipping_days` (not `pick_pack_sla`), `forbid_shipping` (not `selling_region_preference`), `max_order_quantity_allowed` (not `max_order_quantity`).
+- `sellerId` goes BOTH in the query string and body. Header `sourceid: ui.latch-on`.
+- Verified harmless: `service_profile` NON_FBF or FBF; `shipping_days`; package id `packages-0`/`21`/`100`/`timestamp`.
+- Success: `{"result":{"status":"success","bulkResponse":[{"listingID":"…","status":"created","globalErrors":[],"attributeErrors":{}}]}}`.
+
+### ⭐ Deactivate a listing (cleanup) — VERIFIED LIVE (2026-09-08)
+The portal has NO delete for active listings (no delete endpoint in the main bundle; Bulk Actions only offer Request Download/Upload; Edit modal has no delete). The supported removal is **deactivation** via the same `create-update-listings` endpoint with `listing_status: INACTIVE`:
+
+- A minimal payload (`listing_status` only) is REJECTED: `shipping => Mandatory field(s) [service_profile] are missing`, `pricing => [selling_price, mrp]`, `address_label => [packer_details]`, and `packages => Max allowed packages is 1. You've provided 0!`.
+- Required: full attribute set (from `get-listings-info-by-id` → `attributeData`: `mrp`, `ssp` → `flipkart_selling_price`, `service_profile`, `shipping_days`, `forbid_shipping`, `country_of_origin`, `manufacturer_details`, `packer_details`, optional `minimum_order_quantity`/`max_order_quantity_allowed`/`importer_details`) + `packages` with dims from `info.packages[0].dimensions`.
+- Response is `status: "created"` (same as create) — the listing then appears under `internal_state: INACTIVE` and disappears from ACTIVE.
+- The extension's `listProduct()` already supports `listingState: 'INACTIVE'` for this.
+
 ## Integration options for the dashboard
 
 ### Option A — Extension pulls orders (recommended first step)
