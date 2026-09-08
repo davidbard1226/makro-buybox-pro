@@ -3119,7 +3119,7 @@ function previewListPayload() {
       flipkart_selling_price: av(req.sellingPrice, 'INR'),
       service_profile: av(req.serviceProfile),
       shipping_days: av(req.pickPackSla, 'DAY'),
-      forbid_shipping: { qualifier: '', value: req.region === 'REGIONAL' ? 'regional' : 'none' },
+      forbid_shipping: [{ qualifier: '', value: req.region === 'REGIONAL' ? 'regional' : 'none' }],
       country_of_origin: av(cc(req.origin)),
       manufacturer_details: av(req.manufacturer || ''),
       packer_details: av(req.packer || '')
@@ -3134,11 +3134,11 @@ function previewListPayload() {
       skuId: req.skuId,
       packages: [{
         id: { value: 'packages-0', qualifier: '' },
-        length: av(req.dimensions.length, 'CM'),
-        breadth: av(req.dimensions.breadth, 'CM'),
-        height: av(req.dimensions.height, 'CM'),
-        weight: av(req.dimensions.weight, 'KG'),
-        sku_id: av(req.skuId)
+        length: { value: String(req.dimensions.length), qualifier: 'CM' },
+        breadth: { value: String(req.dimensions.breadth), qualifier: 'CM' },
+        height: { value: String(req.dimensions.height), qualifier: 'CM' },
+        weight: { value: String(req.dimensions.weight), qualifier: 'KG' },
+        sku_id: { value: String(req.skuId), qualifier: '' }
       }]
     }] }, null, 2);
   }

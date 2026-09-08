@@ -260,9 +260,13 @@
     if (!(sellingPrice > 0)) throw new Error('Selling price must be > 0');
 
     // ── PAYLOAD SHAPE: captured LIVE from the portal's own START SELLING form
-    // (2026-09-07, FSN INTHHYAGY4G9RCAY → HTTP 200 "created"). Every attribute
+    // (2026-09-08, FSN LBTH8MMF646PNDVQ → HTTP 200 "created"). Every ATTRIBUTE
     // value is an ARRAY of {value, qualifier}; prices use qualifier "INR",
-    // SLA "DAY", dims "CM"/"KG". Attribute names are the form's field names:
+    // SLA "DAY". BUT two exceptions verified live (array/object mixups → 500):
+    //   • forbid_shipping is an ARRAY [{qualifier, value}] (NOT a bare object)
+    //   • package dims (length/breadth/height/weight/sku_id) are OBJECTS
+    //     {value, qualifier} (NOT arrays)
+    // Attribute names are the form's field names:
     //   shipping_days (NOT pick_pack_sla), forbid_shipping (NOT
     //   selling_region_preference), max_order_quantity_allowed (NOT
     //   max_order_quantity). sellerId goes BOTH in the query string and body.
@@ -292,13 +296,17 @@
       return (COUNTRY_CODES[n.toLowerCase()] || n).toUpperCase();
     }
 
+    // Package dims are OBJECTS {value, qualifier} — NOT arrays (verified live:
+    // the portal's own create-update-listings payload sends
+    // "length":{"value":"10","qualifier":"CM"}; array form → HTTP 500).
+    const pkg = function(v, q) { return { value: String(v), qualifier: q || '' }; };
     const packages = [{
       id: { value: 'packages-0', qualifier: '' },
-      length: av(Number(dims.length) || 0, 'CM'),
-      breadth: av(Number(dims.breadth) || 0, 'CM'),
-      height: av(Number(dims.height) || 0, 'CM'),
-      weight: av(Number(dims.weight) || 0, 'KG'),
-      sku_id: av(skuId, '')
+      length: pkg(Number(dims.length) || 0, 'CM'),
+      breadth: pkg(Number(dims.breadth) || 0, 'CM'),
+      height: pkg(Number(dims.height) || 0, 'CM'),
+      weight: pkg(Number(dims.weight) || 0, 'KG'),
+      sku_id: pkg(skuId, '')
     }];
 
     const attributeValues = {
@@ -308,7 +316,7 @@
       flipkart_selling_price: av(sellingPrice, 'INR'),
       service_profile: av(serviceProfile, ''),
       shipping_days: av(pickPackSla, 'DAY'),
-      forbid_shipping: { qualifier: '', value: req.region === 'REGIONAL' ? 'regional' : 'none' },
+      forbid_shipping: [{ qualifier: '', value: req.region === 'REGIONAL' ? 'regional' : 'none' }],
       country_of_origin: av(countryCode(req.origin), ''),
       manufacturer_details: av(req.manufacturer || '', ''),
       packer_details: av(req.packer || '', '')
