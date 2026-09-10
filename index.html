@@ -8039,8 +8039,11 @@ document.addEventListener('scroll', function() {
   // Load ⚡ Fast Track (interval + status + start timer)
   var ftSel = document.getElementById('fastTrackInterval');
   if (ftSel) {
-    var savedFt = localStorage.getItem('bbp_fasttrack_interval');
-    if (savedFt && ['1','2','3','4','5'].indexOf(savedFt) !== -1) ftSel.value = savedFt;
+    // Accept the FULL valid range (1–20), not just 1–5 — otherwise a saved
+    // 6–20 min interval silently fell back to the 2-min HTML default on every
+    // refresh and the fast-track timer re-armed at 2 min.
+    var savedFt = parseInt(localStorage.getItem('bbp_fasttrack_interval') || '', 10);
+    if (!isNaN(savedFt) && savedFt >= 1 && savedFt <= 20) ftSel.value = String(savedFt);
   }
   updateFastTrackStatus();
   applyFastTrack();
