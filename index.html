@@ -1380,7 +1380,7 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
                       <label style="font-size:11px;display:flex;align-items:center;gap:4px;cursor:pointer">
                         <input type="checkbox" id="pricerMaxEnabled" onchange="buildPricerPreview()" style="width:14px;height:14px"> On
                       </label>
-                      <input id="pricerMaxPrice" type="number" value="9999" min="0" step="1"
+                      <input id="pricerMaxPrice" type="number" value="" min="0" step="1"
                         style="flex:1;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:5px;font-size:12px"
                         oninput="buildPricerPreview()">
                     </div>
@@ -4970,7 +4970,10 @@ function autoReprice(prod) {
   var targetPrice = rawTarget;
   if (targetPrice < ABSOLUTE_PRICE_FLOOR) targetPrice = ABSOLUTE_PRICE_FLOOR; // never below R150 absolute floor
   if (targetPrice < minPrice) targetPrice = minPrice;   // never below floor
-  if (maxPrice && targetPrice > maxPrice) targetPrice = maxPrice; // never above ceiling
+  // NOTE: max_price is no longer a ceiling — the floor (min price) is the only
+  // per-product rule, and RRP auto-raises with the price. Removed the old
+  // "never above maxPrice" clamp so stale auto-populated max values (min*1.2)
+  // can't block a chase when a competitor raises.
 
   // Update the listing's myPrice
   var listings = getListings();
@@ -6914,8 +6917,8 @@ function updatePushPreview() {
   var listing = getListings().find(function(l) { return l.fsn === p.fsn; });
   var hardFloor = p.min_price > 0 ? p.min_price : 0;
   var basePrice = listing && listing.basePrice > 0 ? listing.basePrice : 0;
-  // RRP auto-raises with the price — the real ceiling is Max Price
-  var ceiling = p.max_price > 0 ? p.max_price : 0;
+  // No per-product ceiling — RRP auto-raises with the price (col I written below)
+  var ceiling = 0;
   var hasCost = p.cost_price > 0;
 
   var guardLines = [];
@@ -6981,8 +6984,8 @@ function pushProductToPortal() {
   var listing = getListings().find(function(l) { return l.fsn === p.fsn; });
   var hardFloor = p.min_price > 0 ? p.min_price : 0;
   var basePrice = listing && listing.basePrice > 0 ? listing.basePrice : 0;
-  // RRP auto-raises with the price (col I written below) — the real ceiling is Max Price
-  var ceiling = p.max_price > 0 ? p.max_price : 0;
+  // No per-product ceiling — RRP auto-raises with the price (col I written below)
+  var ceiling = 0;
   var allowBelow = document.getElementById('pushAllowBelowFloor') && document.getElementById('pushAllowBelowFloor').checked;
 
   // FAIL-SAFES (all overridable via the checkbox):
@@ -8251,7 +8254,7 @@ function buildPricerPreview() {
   const minEnabled  = document.getElementById('pricerMinEnabled').checked;
   const maxEnabled  = document.getElementById('pricerMaxEnabled').checked;
   const minPrice    = minEnabled ? parseFloat(document.getElementById('pricerMinPrice').value) || 0    : null;
-  const maxPrice    = maxEnabled ? parseFloat(document.getElementById('pricerMaxPrice').value) || 9999 : null;
+  const maxPrice    = maxEnabled ? parseFloat(document.getElementById('pricerMaxPrice').value) || null : null;
   const allowBelow  = document.getElementById('pricerAllowBelowFloor') && document.getElementById('pricerAllowBelowFloor').checked;
 
   const scrapedMap = {};
@@ -8676,7 +8679,7 @@ function generatePriceUpdate(autoMode) {
   const minEnabled  = document.getElementById('pricerMinEnabled').checked;
   const maxEnabled  = document.getElementById('pricerMaxEnabled').checked;
   const minPrice    = minEnabled ? parseFloat(document.getElementById('pricerMinPrice').value) || 0    : null;
-  const maxPrice    = maxEnabled ? parseFloat(document.getElementById('pricerMaxPrice').value) || 9999 : null;
+  const maxPrice    = maxEnabled ? parseFloat(document.getElementById('pricerMaxPrice').value) || null : null;
   const allowBelow  = document.getElementById('pricerAllowBelowFloor') && document.getElementById('pricerAllowBelowFloor').checked;
 
   // Check we have the raw template file — Makro requires the exact exported
@@ -8730,20 +8733,17 @@ function generatePriceUpdate(autoMode) {
     // R150 absolute floor (unless overridden) + product min floor.
     var hardFloor = scraped.min_price > 0 ? scraped.min_price : 0;   // 0 when overridden & missing
 
-    // ── BASE PRICE (RRP) — auto-raised with the price, never a hard ceiling ──
+    // ── BASE PRICE (RRP) — auto-raised with the price, never a ceiling ──
     // Makro collapses RRP to the selling price after updates, so RRP must not
     // block a justified raise (e.g. competitor raises back to R36,000 while RRP
-    // sits at R33,000). The real ceiling is the product's Max Price. When the
-    // new price exceeds the current RRP, col I (Base Price) is raised to match
-    // (newBasePrice) so the portal accepts selling price == MRP.
+    // sits at R33,000). When the new price exceeds the current RRP, col I
+    // (Base Price) is raised to match (newBasePrice) so the portal accepts
+    // selling price == MRP.
     var basePrice = l.basePrice && l.basePrice > 0 ? l.basePrice : null;
-    if (basePrice && basePrice < hardFloor) {
-      // Base Price is below min price — product is unprofitable at any valid price, skip it
-      skippedNoCost++;
-      return;
-    }
-    // Effective ceiling = product maxPrice (user's real ceiling)
-    var effectiveCeiling = scraped.max_price > 0 ? scraped.max_price : null;
+    // NO per-product ceiling — the floor (min price) is the only per-product
+    // rule. The Price Updater's global Max Price field (if enabled) still caps
+    // via calcNewPrice. RRP auto-raises with the price, so it never blocks.
+    var effectiveCeiling = null;
 
     // Helper: apply floor + ceiling to any candidate price
     function applyGuards(price) {
