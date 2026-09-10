@@ -4610,11 +4610,15 @@ function doPush(withSku) {
         return;
       }
 
+      // MRP (RRP) must never be below the selling price or the portal rejects
+      // the push — auto-raise it to the new price when needed (Makro collapses
+      // RRP to the selling price after updates, so RRP can't be trusted as a ceiling).
+      var mrp = Math.max(p.mrp || 0, (curListing && curListing.basePrice > 0 ? curListing.basePrice : 0), newPrice);
       var req = {
         fsn: p.fsn,
         skuId: p.sku,
         sellingPrice: newPrice,
-        mrp: p.mrp || newPrice,
+        mrp: mrp,
         listingState: 'ACTIVE',
         serviceProfile: 'NON_FBF',
         pickPackSla: 2
@@ -6910,7 +6914,8 @@ function updatePushPreview() {
   var listing = getListings().find(function(l) { return l.fsn === p.fsn; });
   var hardFloor = p.min_price > 0 ? p.min_price : 0;
   var basePrice = listing && listing.basePrice > 0 ? listing.basePrice : 0;
-  var ceiling = basePrice > 0 ? (p.max_price > 0 ? Math.min(basePrice, p.max_price) : basePrice) : (p.max_price > 0 ? p.max_price : 0);
+  // RRP auto-raises with the price — the real ceiling is Max Price
+  var ceiling = p.max_price > 0 ? p.max_price : 0;
   var hasCost = p.cost_price > 0;
 
   var guardLines = [];
@@ -6939,6 +6944,7 @@ function updatePushPreview() {
     if (violatesMin)   { newPrice = hardFloor; clamped.push('raised to min floor'); }
   }
   if (ceiling > 0 && newPrice > ceiling) { newPrice = ceiling; clamped.push('lowered to ceiling'); }
+  var rrpAutoRaise = basePrice > 0 && newPrice > basePrice;
 
   var oldPrice = listing && listing.myPrice > 0 ? Math.round(listing.myPrice) : null;
   var diff = oldPrice !== null ? newPrice - oldPrice : null;
@@ -6947,6 +6953,7 @@ function updatePushPreview() {
     (diff !== null ? ' <span style="color:' + (diff < 0 ? '#ff9500' : 'var(--accent)') + '">(' + (diff > 0 ? '+' : '') + 'R' + diff + ' vs current)</span>' : '') +
     '</div>';
   if (clamped.length) html += '<div style="color:#ff9500;font-size:11px;margin-top:4px">⚠ ' + clamped.join(', ') + ' by price guards</div>';
+  if (rrpAutoRaise) html += '<div style="color:#a78bfa;font-size:11px;margin-top:4px">🛡 RRP (Base Price) will auto-raise from R' + basePrice + ' to R' + newPrice + '</div>';
   if (violatesCost && !allowBelow) html += '<div style="color:#ff4444;font-size:11px;margin-top:4px">⛔ No cost price — update blocked. Tick the override to force.</div>';
   preview.innerHTML = html;
 }
@@ -6974,7 +6981,8 @@ function pushProductToPortal() {
   var listing = getListings().find(function(l) { return l.fsn === p.fsn; });
   var hardFloor = p.min_price > 0 ? p.min_price : 0;
   var basePrice = listing && listing.basePrice > 0 ? listing.basePrice : 0;
-  var ceiling = basePrice > 0 ? (p.max_price > 0 ? Math.min(basePrice, p.max_price) : basePrice) : (p.max_price > 0 ? p.max_price : 0);
+  // RRP auto-raises with the price (col I written below) — the real ceiling is Max Price
+  var ceiling = p.max_price > 0 ? p.max_price : 0;
   var allowBelow = document.getElementById('pushAllowBelowFloor') && document.getElementById('pushAllowBelowFloor').checked;
 
   // FAIL-SAFES (all overridable via the checkbox):
@@ -7026,15 +7034,26 @@ function pushProductToPortal() {
     // Find the row for this FSN (col 4) and write Selling Price (col 9)
     var changed = false;
     var update = null;
+    var updates = [];
     for (var r = 2; r < rows.length; r++) {
       var fsn = String(rows[r][4] || '').trim();
       if (fsn !== p.fsn) continue;
+      // Auto-raise Base Price (col 8) when the new price exceeds the current RRP
+      if (basePrice > 0 && newPrice > basePrice) {
+        var bpAddr = XLSX.utils.encode_cell({ r: r, c: 8 });
+        if (!sh[bpAddr]) sh[bpAddr] = {};
+        sh[bpAddr].t = 'n';
+        sh[bpAddr].v = newPrice;
+        sh[bpAddr].w = String(newPrice);
+        updates.push({ r: r, c: 8, value: newPrice });
+      }
       var cellAddr = XLSX.utils.encode_cell({ r: r, c: 9 });
       if (!sh[cellAddr]) sh[cellAddr] = {};
       sh[cellAddr].t = 'n';
       sh[cellAddr].v = newPrice;
       sh[cellAddr].w = String(newPrice);
       update = { r: r, c: 9, value: newPrice };
+      updates.push(update);
       changed = true;
       break;
     }
@@ -7060,7 +7079,7 @@ function pushProductToPortal() {
     var buildNote = '';
     var patchFail = '';
     try {
-      var patched = patchXlsPrices(rawBase64, [update]);
+      var patched = patchXlsPrices(rawBase64, updates);
       if (patched && patched.base64) {
         var ok = true;
         var badCells = [];
@@ -8711,20 +8730,20 @@ function generatePriceUpdate(autoMode) {
     // R150 absolute floor (unless overridden) + product min floor.
     var hardFloor = scraped.min_price > 0 ? scraped.min_price : 0;   // 0 when overridden & missing
 
-    // ── BASE PRICE (RRP) CEILING — never write a price above Makro's Base Price ───
-    // Base Price comes from col I of the S_listing XLS. It is the RRP ceiling on Makro.
-    // If our calculated price exceeds it, clamp down to basePrice.
-    // If basePrice itself is below hardFloor, that is a data problem — skip with warning.
+    // ── BASE PRICE (RRP) — auto-raised with the price, never a hard ceiling ──
+    // Makro collapses RRP to the selling price after updates, so RRP must not
+    // block a justified raise (e.g. competitor raises back to R36,000 while RRP
+    // sits at R33,000). The real ceiling is the product's Max Price. When the
+    // new price exceeds the current RRP, col I (Base Price) is raised to match
+    // (newBasePrice) so the portal accepts selling price == MRP.
     var basePrice = l.basePrice && l.basePrice > 0 ? l.basePrice : null;
     if (basePrice && basePrice < hardFloor) {
       // Base Price is below min price — product is unprofitable at any valid price, skip it
       skippedNoCost++;
       return;
     }
-    // Effective ceiling = lower of (basePrice, product maxPrice)
-    var effectiveCeiling = basePrice
-      ? (scraped.max_price > 0 ? Math.min(basePrice, scraped.max_price) : basePrice)
-      : (scraped.max_price > 0 ? scraped.max_price : null);
+    // Effective ceiling = product maxPrice (user's real ceiling)
+    var effectiveCeiling = scraped.max_price > 0 ? scraped.max_price : null;
 
     // Helper: apply floor + ceiling to any candidate price
     function applyGuards(price) {
@@ -8735,6 +8754,13 @@ function generatePriceUpdate(autoMode) {
       }
       if (effectiveCeiling && price > effectiveCeiling) price = effectiveCeiling;
       return price;
+    }
+
+    // RRP auto-raise: when the new price exceeds the current Base Price (RRP),
+    // raise col I to match so the portal never rejects selling price > MRP.
+    function withBaseRaise(entry, price) {
+      entry.newBasePrice = (basePrice && price > basePrice) ? price : undefined;
+      return entry;
     }
 
     // Priority 1: auto-repriced price (set by autoReprice after scrape)
@@ -8748,8 +8774,8 @@ function generatePriceUpdate(autoMode) {
         return;
       }
       var safePrice1 = applyGuards(scraped.pending_price);
-      priceMap[l.fsn] = { newPrice: safePrice1, sku: l.sku, title: l.title, oldPrice: l.myPrice,
-        hitFloor: safePrice1 === hardFloor, hitCeiling: effectiveCeiling && safePrice1 === effectiveCeiling };
+      priceMap[l.fsn] = withBaseRaise({ newPrice: safePrice1, sku: l.sku, title: l.title, oldPrice: l.myPrice,
+        hitFloor: safePrice1 === hardFloor, hitCeiling: effectiveCeiling && safePrice1 === effectiveCeiling }, safePrice1);
       updateCount++;
       return;
     }
@@ -8759,8 +8785,8 @@ function generatePriceUpdate(autoMode) {
     // OPT-OUT: raising a winning price flips us WIN→LOSE. Default OFF (bbp_raise_wins).
     if (localStorage.getItem('bbp_raise_wins') === '1' && scraped.status === 'win' && l.myPrice > 0 && l.myPrice < hardFloor) {
       var raisedPrice = applyGuards(hardFloor);
-      priceMap[l.fsn] = { newPrice: raisedPrice, sku: l.sku, title: l.title, oldPrice: l.myPrice,
-        hitFloor: true, hitCeiling: effectiveCeiling && raisedPrice === effectiveCeiling, raisedFromLoss: true };
+      priceMap[l.fsn] = withBaseRaise({ newPrice: raisedPrice, sku: l.sku, title: l.title, oldPrice: l.myPrice,
+        hitFloor: true, hitCeiling: effectiveCeiling && raisedPrice === effectiveCeiling, raisedFromLoss: true }, raisedPrice);
       updateCount++;
       return;
     }
@@ -8772,8 +8798,8 @@ function generatePriceUpdate(autoMode) {
     if (!result) return;
     if (result.clamped) { skippedClamped++; return; }
     var safePrice2 = applyGuards(result.price);
-    priceMap[l.fsn] = { newPrice: safePrice2, sku: l.sku, title: l.title, oldPrice: l.myPrice,
-      hitFloor: safePrice2 === hardFloor, hitCeiling: effectiveCeiling && safePrice2 === effectiveCeiling };
+    priceMap[l.fsn] = withBaseRaise({ newPrice: safePrice2, sku: l.sku, title: l.title, oldPrice: l.myPrice,
+      hitFloor: safePrice2 === hardFloor, hitCeiling: effectiveCeiling && safePrice2 === effectiveCeiling }, safePrice2);
     updateCount++;
   });
 
@@ -8804,14 +8830,23 @@ function generatePriceUpdate(autoMode) {
     // Row 0 = headers, Row 1 = descriptions, Row 2+ = data
     // Col index 4 = FSN, Col index 9 = Your Selling Price
     let changed = 0;
+    let rrpRaised = 0;
     const changeLog = [];
     const updates = [];   // {r, c, value} for the in-place binary patcher
     for (let r = 2; r < rows.length; r++) {
       const fsn = String(rows[r][4] || '').trim();
       if (!fsn) continue;
 
-      // Write Base Price (col 8) if user edited it
-      if (basePriceMap[fsn] !== undefined) {
+      // Write Base Price (col 8): auto-raised RRP wins over the stored base price
+      if (priceMap[fsn] !== undefined && priceMap[fsn].newBasePrice) {
+        const bpAddr = XLSX.utils.encode_cell({ r: r, c: 8 });
+        if (!sh[bpAddr]) sh[bpAddr] = {};
+        sh[bpAddr].t = 'n';
+        sh[bpAddr].v = priceMap[fsn].newBasePrice;
+        sh[bpAddr].w = String(priceMap[fsn].newBasePrice);
+        updates.push({ r: r, c: 8, value: priceMap[fsn].newBasePrice });
+        rrpRaised++;
+      } else if (basePriceMap[fsn] !== undefined) {
         const bpAddr = XLSX.utils.encode_cell({ r: r, c: 8 });
         if (!sh[bpAddr]) sh[bpAddr] = {};
         sh[bpAddr].t = 'n';
@@ -8913,12 +8948,13 @@ function generatePriceUpdate(autoMode) {
     updatePendingBadge();
 
     if (autoMode) {
-      return { filename: filename, changed: changed, changeLog: changeLog, skippedNoCost: skippedNoCost, skippedClamped: skippedClamped, buildNote: buildNote, staleDays: staleDays };
+      return { filename: filename, changed: changed, rrpRaised: rrpRaised, changeLog: changeLog, skippedNoCost: skippedNoCost, skippedClamped: skippedClamped, buildNote: buildNote, staleDays: staleDays };
     }
 
     document.getElementById('pricerResult').innerHTML =
       '✅ <span style="color:var(--accent)">Downloaded <b>' + filename + '</b> — ' +
       changed + ' prices updated.' +
+      (rrpRaised ? ' <span style="color:#a78bfa">🛡 RRP auto-raised on ' + rrpRaised + '.</span>' : '') +
       (buildNote ? ' <span style="color:#00e5a0;font-size:11px">(' + buildNote + ')</span>' : '') +
       (staleDays > 30 ? ' <span style="color:#ff9500">⚠ Template stamp is ' + Math.round(staleDays) + ' days old — re-download a fresh S_listing for current data (Request Download).</span>' : '') +
       (skippedNoCost ? ' <span style="color:#818cf8">⚠ ' + skippedNoCost + ' skipped — no cost/min price set (safety guard).</span>' : '') +
@@ -9163,7 +9199,7 @@ async function pushSinglePrice() {
       fsn: fsn,
       skuId: sku,
       sellingPrice: price,
-      mrp: mrp > 0 ? mrp : price,
+      mrp: Math.max(mrp, price),
       listingState: 'ACTIVE',
       serviceProfile: 'NON_FBF',
       pickPackSla: 2
@@ -9220,7 +9256,7 @@ async function pushAllRepricedPrices() {
         fsn: p.fsn,
         skuId: p.sku,
         sellingPrice: newPrice,
-        mrp: p.mrp || newPrice,
+        mrp: Math.max(p.mrp || 0, newPrice),
         listingState: 'ACTIVE',
         serviceProfile: 'NON_FBF',
         pickPackSla: 2
