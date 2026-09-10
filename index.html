@@ -2199,6 +2199,13 @@ One URL per line. Minimum: makro.co.za product pages."></textarea>
           style="width:100%;background:var(--surface2);border:1px solid #a78bfa;color:#a78bfa;font-family:'Space Mono',monospace;font-size:13px;padding:8px 10px;border-radius:6px;outline:none">
         <div id="editMaxHint" style="font-size:11px;color:var(--muted);margin-top:5px">Leave blank to auto-set to 20% above min price</div>
       </div>
+      <div>
+        <label style="font-size:11px;display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 10px;background:#2a1f0e;border:1px solid #ff9500;border-radius:6px">
+          <input type="checkbox" id="editLockInput" style="width:15px;height:15px">
+          <span style="color:#ff9500;font-weight:600">🔒 Lock price — never raise above current</span>
+        </label>
+        <div style="font-size:10px;color:var(--muted);margin-top:4px">For specials (e.g. Black Friday): the repricer keeps beating competitors <b>downward</b> but never raises this product above its current price. Unlock when the special ends.</div>
+      </div>
     </div>
 
     <div style="margin-top:20px;padding:10px;background:var(--surface2);border-radius:6px;font-size:11px;color:var(--muted);line-height:1.7" id="editCalcPreview"></div>
@@ -3953,6 +3960,11 @@ function importPricesFromSheet(input) {
           // unless the explicit "raise wins" opt-in is on.
           var impListing = findListingByFsn(u.product.fsn);
           var impCur = impListing && impListing.myPrice > 0 ? impListing.myPrice : (u.oldPrice || 0);
+          // LOCKED products (🔒) are never raised — the lock is a hard cap.
+          if (u.product.priceLock && impCur > 0 && u.newPrice > impCur) {
+            raiseBlocked++;
+            return;
+          }
           if (impCur > 0 && u.newPrice > impCur && localStorage.getItem('bbp_raise_wins') !== '1') {
             raiseBlocked++;
             return;
@@ -4600,6 +4612,17 @@ function doPush(withSku) {
       var buyboxNow = p.buybox_price > 0 ? p.buybox_price : 0;
       var isRaise = curPrice > 0 && newPrice > curPrice;
       var aboveBuybox = buyboxNow > 0 && newPrice > buyboxNow;
+      // A LOCKED product (🔒, e.g. Black Friday special) is never raised —
+      // the lock is a hard cap at its current price, regardless of the global
+      // "raise wins" checkbox. Drops below the lock are always allowed.
+      if (p.priceLock && isRaise) {
+        log('error', '  ⛔ [' + idx + '/' + withSku.length + '] ' + (p.title || p.fsn).substring(0, 40) +
+            ' — REFUSED to RAISE R' + (curPrice || '?') + ' → R' + newPrice + ' (🔒 price locked)');
+        failed++;
+        errors.push(p.fsn + ': refused raise R' + (curPrice || '?') + '→R' + newPrice + ' (locked)');
+        setTimeout(pushNext, 600);
+        return;
+      }
       if ((isRaise || aboveBuybox) && localStorage.getItem('bbp_raise_wins') !== '1') {
         log('error', '  ⛔ [' + idx + '/' + withSku.length + '] ' + (p.title || p.fsn).substring(0, 40) +
             ' — REFUSED to RAISE R' + (curPrice || '?') + ' → R' + newPrice +
@@ -4912,7 +4935,8 @@ function autoReprice(prod) {
     // If so, flag it as pending so generatePriceUpdate raises it to the floor.
     // OPT-OUT: raising a winning price can flip us WIN→LOSE (we go above the
     // competitor). Default OFF — "just scrape every hour, beat by configured amount" keeps the box.
-    if (localStorage.getItem('bbp_raise_wins') === '1' && prod.cost_price > 0) {
+    // LOCKED products (🔒) are never flagged for a raise — the lock is a hard cap.
+    if (localStorage.getItem('bbp_raise_wins') === '1' && prod.cost_price > 0 && !prod.priceLock) {
       var winMin = prod.min_price || calcMinViablePrice(prod.cost_price, getProductProfitPct(prod));
       var winListing = findListingByFsn(prod.fsn);
       var winMyPrice = winListing ? winListing.myPrice : null;
@@ -5650,6 +5674,7 @@ function renderProducts() {
       <td style="display:flex;gap:2px;white-space:nowrap">
         <button class="action-btn" style="font-size:10px;padding:1px 3px;${inWatchlist(p) ? 'color:#ffd60a;border-color:#ffd60a66' : ''}" onclick="toggleWatchlistFromProduct(${realIdx})" title="${inWatchlist(p) ? 'Remove from 10-min watchlist' : 'Add to 10-min watchlist'}">⭐</button>
         <button class="action-btn" style="font-size:10px;padding:1px 3px;${inFastTrack(p) ? 'color:#00e5a0;border-color:#00e5a066' : ''}" onclick="toggleFastTrackFromProduct(${realIdx})" title="${inFastTrack(p) ? 'Remove from fast track (1-5 min)' : 'Add to fast track (1-5 min)'}">⚡</button>
+        <button class="action-btn" style="font-size:10px;padding:1px 3px;${p.priceLock ? 'color:#ff4d6d;border-color:#ff4d6d66' : ''}" onclick="togglePriceLock(${realIdx})" title="${p.priceLock ? 'Unlock price — allow raises again' : 'Lock price — never raise above current (Black Friday special)'}">🔒</button>
         <button class="action-btn" style="font-size:10px;padding:1px 3px" onclick="openPushModal(${realIdx})" title="Push new price to seller portal">🚀</button>
         <button class="action-btn" style="font-size:10px;padding:1px 3px;color:#ff9500;border-color:#ff950066" onclick="openListOnMakroModal('${escHtml(p.fsn||'')}', {mrp: ${p.mrp||0}, price: ${p.buybox_price||0}})" title="List this product on the Makro portal (latch-on, WRITE)">📦</button>
         <button class="action-btn" style="font-size:10px;padding:1px 3px" onclick="syncCostForProduct(${realIdx})" title="Sync cost price from supplier sheets (by SKU)">💲</button>
@@ -6670,6 +6695,7 @@ function openEditModal(idx) {
   document.getElementById('editCostInput').value = p.cost_price > 0 ? p.cost_price : '';
   document.getElementById('editMinInput').value  = p.min_price != null ? p.min_price : '';
   document.getElementById('editMaxInput').value  = p.max_price != null ? p.max_price : '';
+  document.getElementById('editLockInput').checked = !!p.priceLock;
 
   // Set profit pct selector — per-product override if set, else global pref
   var savedPct = parseFloat(localStorage.getItem('min_profit_pct')) || 7;
@@ -6749,6 +6775,9 @@ function saveEditModal() {
   var min  = document.getElementById('editMinInput').value.trim();
   var max  = document.getElementById('editMaxInput').value.trim();
   var pct  = parseFloat(document.getElementById('editMinProfitPct').value) || 7;
+
+  // Price lock — never raise above current (e.g. Black Friday special)
+  p.priceLock = document.getElementById('editLockInput').checked;
 
   // Per-product min profit % override — drives auto Min/Max for THIS product
   p.min_profit_pct = pct;
@@ -6927,6 +6956,7 @@ function updatePushPreview() {
   if (basePrice > 0) guardLines.push('🛡 Base Price (RRP): <b style="color:#a78bfa">R' + basePrice + '</b>');
   guardLines.push('🛡 Absolute floor: <b style="color:#ff9500">R' + ABSOLUTE_PRICE_FLOOR + '</b>');
   guardLines.push('🛡 Cost price: <b style="color:' + (hasCost ? 'var(--accent)' : '#ff4444') + '">' + (hasCost ? 'R' + Math.round(p.cost_price) : '⚠ NONE — update blocked') + '</b>');
+  if (p.priceLock) guardLines.push('🔒 Price LOCKED: <b style="color:#ff4d6d">never raise above current</b>');
   guards.innerHTML = guardLines.join(' &nbsp;·&nbsp; ');
 
   if (newPrice === null) {
@@ -7011,6 +7041,16 @@ function pushProductToPortal() {
   }
   if (!allowBelow && hardFloor > 0 && newPrice < hardFloor) newPrice = hardFloor;
   if (ceiling > 0 && newPrice > ceiling) newPrice = ceiling;
+
+  // 🔒 LOCKED products are never raised — the lock is a hard cap at the
+  // current listing price (e.g. Black Friday special). Drops are always fine.
+  var curMyPrice = listing && listing.myPrice > 0 ? listing.myPrice : 0;
+  if (p.priceLock && curMyPrice > 0 && newPrice > curMyPrice) {
+    document.getElementById('pushResult').innerHTML =
+      '<span style="color:#ff4444">❌ R' + newPrice + ' is ABOVE the current price R' + Math.round(curMyPrice) +
+      ' — this product is 🔒 price-locked (never raise).<br>Unlock it in the Products tab (🔒 button) to allow raises.</span>';
+    return;
+  }
 
   // Need the raw listing template to build the XLS — Makro requires the exact
   // exported file (only price/stock may change), so we never rebuild it.
@@ -8301,7 +8341,8 @@ function buildPricerPreview() {
       clamped:  previewClamped,
       clampDir: previewClampDir,
       status:   scraped.status,
-      seller:   scraped.seller
+      seller:   scraped.seller,
+      locked:   !!scraped.priceLock
     });
   });
 
@@ -8378,9 +8419,10 @@ function buildPricerPreview() {
     const changeStr   = (change >= 0 ? '+' : '') + 'R' + change.toFixed(2);
     const rowStyle    = r.clamped ? 'opacity:0.5;background:rgba(255,149,0,0.05)' : '';
     const clampBadge  = r.clamped ? ' <span style="color:#ff9500;font-size:9px">⚠ ' + (r.clampDir === 'floor' ? 'R150 FLOOR' : r.clampDir.toUpperCase()) + '</span>' : '';
+    const lockBadge   = r.locked ? ' <span style="color:#ff4d6d;font-size:9px">🔒</span>' : '';
     html += '<tr style="border-bottom:1px solid var(--border);' + rowStyle + '">' +
       '<td style="padding:5px 4px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml(r.title) + '">' +
-        escHtml(r.title.slice(0, 28)) + clampBadge + '</td>' +
+        escHtml(r.title.slice(0, 28)) + clampBadge + lockBadge + '</td>' +
       '<td style="text-align:right;padding:5px 4px;color:var(--muted)">R' + r.myPrice.toFixed(2) + '</td>' +
       '<td style="text-align:right;padding:5px 4px;color:var(--muted)">R' + r.buybox.toFixed(2) + '</td>' +
       '<td style="text-align:right;padding:5px 4px;color:' + (r.clamped ? '#ff9500' : 'var(--accent)') + ';font-weight:700">R' + r.newPrice.toFixed(2) + '</td>' +
@@ -8743,7 +8785,10 @@ function generatePriceUpdate(autoMode) {
     // NO per-product ceiling — the floor (min price) is the only per-product
     // rule. The Price Updater's global Max Price field (if enabled) still caps
     // via calcNewPrice. RRP auto-raises with the price, so it never blocks.
-    var effectiveCeiling = null;
+    // EXCEPTION: a LOCKED product (🔒, e.g. Black Friday special) is capped at
+    // its current price — the repricer keeps beating competitors downward but
+    // never raises it above where it is now.
+    var effectiveCeiling = (scraped.priceLock && l.myPrice > 0) ? l.myPrice : null;
 
     // Helper: apply floor + ceiling to any candidate price
     function applyGuards(price) {
@@ -8783,7 +8828,8 @@ function generatePriceUpdate(autoMode) {
     // Priority 2: WIN but selling below floor (at a loss) — raise to floor regardless of winsOnly
     // e.g. winning at R356 but min viable price is R390 — must raise even though we're winning.
     // OPT-OUT: raising a winning price flips us WIN→LOSE. Default OFF (bbp_raise_wins).
-    if (localStorage.getItem('bbp_raise_wins') === '1' && scraped.status === 'win' && l.myPrice > 0 && l.myPrice < hardFloor) {
+    // LOCKED products (🔒) are never raised — the lock is a hard cap, even above the floor.
+    if (localStorage.getItem('bbp_raise_wins') === '1' && scraped.status === 'win' && l.myPrice > 0 && l.myPrice < hardFloor && !scraped.priceLock) {
       var raisedPrice = applyGuards(hardFloor);
       priceMap[l.fsn] = withBaseRaise({ newPrice: raisedPrice, sku: l.sku, title: l.title, oldPrice: l.myPrice,
         hitFloor: true, hitCeiling: effectiveCeiling && raisedPrice === effectiveCeiling, raisedFromLoss: true }, raisedPrice);
@@ -9249,6 +9295,14 @@ async function pushAllRepricedPrices() {
   for (var i = 0; i < toPush.length; i++) {
     var p = toPush[i];
     var newPrice = p.new_price || p.buybox_price;
+    // LOCKED products (🔒) are never raised — the lock is a hard cap.
+    var curListing = findListingByFsn(p.fsn);
+    var curPrice = curListing && curListing.myPrice > 0 ? curListing.myPrice : 0;
+    if (p.priceLock && curPrice > 0 && newPrice > curPrice) {
+      failed++;
+      errors.push(p.fsn + ': refused raise (🔒 locked)');
+      continue;
+    }
     resultEl.innerHTML = '<span style="color:#ffd60a">⏳ [' + (i+1) + '/' + toPush.length + '] Pushing ' + (p.title || p.fsn).substring(0,40) + ' → R' + newPrice.toFixed(2) + '...</span>';
 
     try {
@@ -11087,6 +11141,16 @@ function toggleFastTrackFromProduct(idx) {
     addToFastTrack(p.url, p.fsn, p.title);
     log('info', '⚡ Added to fast track (1–5 min): ' + (p.title || p.fsn || p.url));
   }
+}
+function togglePriceLock(idx) {
+  var p = state.products[idx];
+  if (!p) return;
+  p.priceLock = !p.priceLock;
+  saveProducts();
+  renderProducts();
+  log('info', p.priceLock
+    ? '🔒 Price LOCKED for ' + String(p.title || p.fsn || '').slice(0, 35) + ' — repricer will never raise above current (lowers still allowed)'
+    : '🔓 Price UNLOCKED for ' + String(p.title || p.fsn || '').slice(0, 35) + ' — raises allowed again');
 }
 function getFastTrackInterval() {
   var sel = document.getElementById('fastTrackInterval');
